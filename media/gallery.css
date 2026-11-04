@@ -1,0 +1,349 @@
+/* Element gallery. Mock widgets get their colors from gallery.js (inline
+   var(--vscode-*) set through the DOM); this file only sizes and arranges them,
+   so a rule here should never name a theme color for a mock part. */
+
+/* ---------------------------------------------------------------- cards */
+
+.gb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+.gb-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+}
+.gb-card.wide { grid-column: 1 / -1; }
+.gb-card-head { display: flex; align-items: baseline; gap: 10px; }
+.gb-card-head h3 { margin: 0; font-size: 1.05em; font-weight: 600; flex: 1; }
+.gb-worst { font-size: 0.85em; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.gb-blurb { margin: -4px 0 0; font-size: 0.9em; }
+.gb-preview {
+  overflow-x: auto;
+  padding: 2px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.gb-subhead {
+  margin: 10px 0 4px;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+.gb-subhead:first-child { margin-top: 0; }
+
+/* Key chips and hover linking */
+.gb-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.gb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px 1px 4px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.78em;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+  border-radius: 9px;
+  cursor: pointer;
+}
+.gb-chip:hover { background: var(--vscode-list-hoverBackground); }
+.gb-chip.unset { border-style: dashed; color: var(--vscode-descriptionForeground); }
+.gb-chip.src-user { border-color: var(--vscode-charts-orange); }
+.gb-unset-note { font-size: 0.8em; margin-left: 4px; }
+.gb-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(128, 128, 128, 0.6);
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+.gb-dot-lg { width: 14px; height: 14px; border-radius: 3px; }
+.gb-chip.gb-hl {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+  border-style: solid;
+}
+.gb-preview .gb-hl {
+  outline: 2px dashed var(--vscode-editorWarning-foreground) !important;
+  outline-offset: 1px !important;
+}
+
+.gb-defs > summary { cursor: pointer; font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+.gb-defs table { margin-top: 4px; }
+
+/* Side-by-side states */
+.gb-states { display: flex; flex-wrap: wrap; gap: 12px 14px; align-items: flex-start; margin: 4px 0; }
+.gb-state { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.gb-state-body { display: flex; align-items: center; min-height: 26px; }
+.gb-state figcaption, .gb-labeled-label {
+  font-size: 0.78em;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Stacked states: mock on the left, label on the right */
+.gb-labeled {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  gap: 3px 12px;
+  align-items: center;
+}
+.gb-labeled-mock { min-width: 0; }
+
+.gb-surface { padding: 10px; }
+.gb-surface-flush { padding: 4px 0; }
+.gb-surface-flush .gb-labeled-label { padding-right: 10px; }
+.gb-disabled { opacity: 0.4; }
+.gb-strike { text-decoration: line-through; }
+.wb-spacer { flex: 1; }
+.codicon { font-size: 16px; vertical-align: text-bottom; }
+
+/* ------------------------------------------------------------- workbench */
+
+.wb {
+  display: grid;
+  min-width: 940px;
+  grid-template-columns: 44px 190px minmax(0, 1fr) 240px;
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-areas:
+    "title title title title"
+    "act side editor aux"
+    "act side panel aux"
+    "status status status status";
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+.wb-editor { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+.wb-group1, .wb-group2 { min-width: 0; overflow: hidden; }
+.wb-aux { grid-area: aux; min-width: 0; display: flex; flex-direction: column; }
+.wb-chat { display: flex; flex-direction: column; gap: 8px; padding: 0 10px 10px; flex: 1; justify-content: flex-end; }
+
+/* Chat views */
+.gb-chat-req { padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; font-size: 12px; }
+.gb-chat-slash { padding: 0 4px; border-radius: 3px; }
+.gb-chat-resp { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 12px; }
+.gb-chat-who { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+.gb-chat-avatar { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; }
+.gb-chat-avatar .codicon { font-size: 12px; }
+.gb-chat-file { display: flex; align-items: center; gap: 2px; padding: 3px 6px; border-radius: 4px; }
+.gb-chat-input {
+  display: flex; align-items: flex-end; gap: 6px; min-width: 200px; min-height: 44px;
+  padding: 6px 6px 6px 10px; border: 1px solid transparent; border-radius: 8px; box-sizing: border-box; font-size: 12px;
+}
+.gb-chat-text { flex: 1; align-self: flex-start; }
+.gb-chat-send { display: inline-flex; padding: 3px; border-radius: 4px; }
+.gb-chat-send .codicon { font-size: 14px; }
+.gb-chat-caption { font-size: 11px; }
+.wb-title { grid-area: title; display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 10px; }
+.wb-menu { font-size: 12px; white-space: pre; }
+.wb-cc { display: flex; align-items: center; gap: 4px; padding: 1px 60px 1px 8px; border-radius: 6px; font-size: 12px; margin-left: 30px; }
+.wb-activity { grid-area: act; display: flex; flex-direction: column; }
+.wb-act { position: relative; display: flex; justify-content: center; align-items: center; height: 44px; border-left: 2px solid transparent; }
+.wb-act .codicon { font-size: 22px; }
+.wb-act-badge { position: absolute; right: 6px; bottom: 6px; min-width: 14px; padding: 0 3px; font-size: 9px; line-height: 14px; text-align: center; border-radius: 7px; }
+.wb-side { grid-area: side; grid-row: 2 / 4; padding-bottom: 8px; }
+.wb-side-title { padding: 8px 12px 6px 20px; font-size: 11px; }
+.wb-section { display: flex; align-items: center; gap: 2px; height: 22px; font-size: 11px; font-weight: 700; }
+.wb-editor { grid-area: editor; min-width: 0; align-content: start; }
+.wb-tabs { display: flex; height: 35px; }
+.wb-panel { grid-area: panel; }
+.wb-panel-tabs { display: flex; align-items: center; gap: 16px; padding: 4px 10px 0; font-size: 11px; }
+.wb-term { padding: 6px 10px 10px; font-family: var(--vscode-editor-font-family); font-size: 12px; }
+.wb-status { grid-area: status; display: flex; align-items: center; height: 22px; font-size: 12px; }
+.wb-remote { padding: 0 9px; }
+
+/* ----------------------------------------------------------------- trees */
+
+.gb-tree-row { display: flex; align-items: center; height: 22px; padding-right: 10px; white-space: nowrap; }
+.gb-tree-indent { display: inline-block; width: 8px; height: 22px; margin-left: 8px; flex: none; }
+.gb-twistie-space { display: inline-block; width: 16px; flex: none; }
+.gb-tree-row > .codicon { margin-right: 6px; flex: none; }
+.gb-tree-label { flex: 1; }
+.gb-tree-trail { margin-left: 12px; font-size: 12px; }
+.gb-hlmatch { font-weight: 700; }
+
+/* ----------------------------------------------------- buttons & inputs */
+
+.gb-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.gb-split { padding-right: 4px; }
+.gb-split-sep { align-self: stretch; margin: 0 2px 0 6px; }
+.gb-iconbtn { display: inline-flex; padding: 3px; border-radius: 5px; }
+.gb-input {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 220px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  line-height: 18px;
+}
+.gb-input-caret { width: 1px; height: 16px; margin-left: 1px; }
+.gb-input-options { padding-right: 2px; }
+.gb-toggle { display: inline-flex; padding: 1px; border: 1px solid transparent; border-radius: 3px; }
+.gb-validation { width: 260px; }
+.gb-validation .gb-input { width: auto; }
+.gb-validation-msg { padding: 4px 6px; font-size: 12px; border: 1px solid transparent; border-top: none; }
+.gb-dropdown { display: flex; align-items: center; width: 180px; padding: 2px 6px; border: 1px solid transparent; border-radius: 2px; }
+.gb-dropdown-list { width: 180px; border: 1px solid transparent; border-top: none; }
+.gb-dropdown-opt { padding: 2px 6px; white-space: nowrap; }
+.gb-check { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid transparent; border-radius: 3px; }
+.gb-check .codicon { font-size: 14px; }
+.gb-check-row { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; }
+.gb-radio { display: inline-block; padding: 3px 10px; border: 1px solid transparent; border-radius: 3px; }
+.gb-setting { padding: 4px 0 4px 12px; }
+.gb-setting-desc { font-size: 12px; }
+
+.gb-badge { display: inline-block; min-width: 18px; padding: 1px 6px; text-align: center; font-size: 11px; line-height: 16px; border-radius: 9px; }
+.gb-progress { width: 180px; height: 2px; position: relative; overflow: hidden; }
+.gb-progress-bar { position: absolute; left: 20%; width: 35%; height: 2px; }
+.gb-keys { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
+.gb-key { display: inline-block; padding: 1px 5px; border: 1px solid transparent; border-radius: 3px; font-size: 11px; line-height: 14px; }
+.gb-actbar { width: 48px; }
+
+/* ----------------------------------------------------------------- tabs */
+
+.gb-tabstrip { display: flex; }
+.gb-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 35px;
+  padding: 0 10px;
+  white-space: nowrap;
+  box-sizing: border-box;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+}
+.gb-tab .codicon { font-size: 14px; }
+.gb-crumbs { display: flex; align-items: center; gap: 2px; height: 22px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.gb-crumbs .codicon { font-size: 14px; }
+.gb-crumb-picker { padding: 4px 0; border: 1px solid transparent; }
+
+/* --------------------------------------------------------------- editor */
+
+.gb-editor {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: 1.5;
+  padding: 4px 0;
+  white-space: pre;
+}
+.gb-line { display: flex; align-items: stretch; border: 1px solid transparent; }
+.gb-gutter-mark { flex: 0 0 3px; margin-right: 2px; }
+.gb-ln { flex: 0 0 34px; padding-right: 14px; text-align: right; }
+.gb-code { flex: 1; padding-right: 14px; }
+.gb-codelens-line { line-height: 1.2; }
+.gb-codelens { font-size: 0.85em; }
+.gb-guide { display: inline-block; }
+.gb-cursor { display: inline-block; width: 2px; height: 1.2em; vertical-align: text-bottom; }
+.gb-inlay { padding: 0 3px; border-radius: 3px; font-size: 0.9em; }
+.gb-ghost { font-style: italic; border: 1px solid transparent; }
+.gb-ws { letter-spacing: 0; }
+.gb-bracket-match, .gb-mark { border: 1px solid transparent; }
+.gb-squiggle { text-decoration-skip-ink: none; text-underline-offset: 3px; border: 1px solid transparent; }
+.gb-ruler { display: inline-block; height: 1.2em; margin-right: 6px; vertical-align: text-bottom; }
+
+.gb-problems { padding: 4px 0; font-size: 12px; }
+.gb-problem { display: flex; align-items: center; gap: 4px; padding: 2px 10px; }
+
+/* -------------------------------------------------------------- widgets */
+
+.gb-widget { display: inline-block; border: 1px solid transparent; }
+.gb-suggest { width: 360px; }
+.gb-suggest-row { display: flex; align-items: center; height: 22px; padding: 0 6px; white-space: nowrap; }
+.gb-suggest-detail { font-size: 0.9em; opacity: 0.7; }
+.gb-suggest-status { padding: 2px 6px; font-size: 12px; }
+.gb-hover { max-width: 380px; }
+.gb-hover-code { padding: 4px 8px; font-family: var(--vscode-editor-font-family); white-space: pre-wrap; }
+.gb-hover-text { padding: 6px 8px; }
+.gb-hover-status { padding: 3px 8px; font-size: 12px; }
+
+.gb-find { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; }
+.gb-find .gb-input { width: 200px; }
+.gb-find-count { min-width: 70px; font-size: 12px; padding: 0 6px; }
+
+.gb-peek { margin-top: 2px; }
+.gb-peek-title { display: flex; align-items: center; gap: 4px; padding: 2px 10px; height: 24px; }
+.gb-peek-body { display: grid; grid-template-columns: 1fr 260px; }
+.gb-peek-editor { font-family: var(--vscode-editor-font-family); white-space: pre; padding: 4px 0; }
+.gb-peek-results { padding: 2px 0; font-size: 12px; }
+.gb-peek-row { display: flex; align-items: center; height: 22px; padding: 0 8px; white-space: pre; }
+.gb-peek-indent { padding-left: 26px; }
+
+.gb-diff { display: grid; grid-template-columns: 1fr 1fr; }
+.gb-diff-side { min-width: 0; overflow: hidden; }
+.gb-unchanged { padding: 3px 10px; font-size: 12px; }
+
+.gb-menubar { display: flex; gap: 2px; padding: 3px 6px; font-size: 13px; }
+.gb-menubar-item { padding: 2px 8px; border: 1px solid transparent; border-radius: 4px; }
+.gb-menu { width: 240px; padding: 4px 0; margin: 2px 0 0 60px; border-radius: 5px; }
+.gb-menu-item { display: flex; justify-content: space-between; margin: 0 4px; padding: 3px 12px; border: 1px solid transparent; border-radius: 3px; }
+.gb-menu-key { opacity: 0.9; }
+.gb-menu-sep { height: 1px; margin: 4px 0; }
+
+.gb-quick { width: 100%; max-width: 520px; padding-bottom: 4px; border-radius: 6px; }
+.gb-quick-title { padding: 4px 10px; text-align: center; font-size: 12px; }
+.gb-quick-input { padding: 6px; }
+.gb-quick-input .gb-input { width: auto; }
+.gb-quick-row { display: flex; align-items: center; gap: 4px; height: 24px; margin: 0 6px; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+.gb-quick-desc { font-size: 12px; }
+
+.gb-toast { display: block; width: 100%; max-width: 440px; margin-bottom: 8px; padding: 8px 10px; border-radius: 4px; }
+.gb-toast-msg { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
+.gb-toast-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+.gb-center { display: block; max-width: 440px; }
+.gb-center .gb-toast-msg { padding: 6px 10px; }
+.gb-center-head { padding: 4px 10px; font-size: 11px; font-weight: 600; }
+.gb-banner { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; }
+
+.gb-panel { font-size: 12px; }
+.gb-ptab { padding: 4px 0; border-bottom: 1px solid transparent; }
+.gb-panel-filter { width: 140px; margin: 2px 0; }
+.gb-panel-section { display: flex; align-items: center; gap: 2px; height: 22px; padding: 0 4px; margin-top: 6px; font-weight: 700; font-size: 11px; }
+.gb-panel-body { padding: 6px 10px; font-family: var(--vscode-editor-font-family); }
+
+.gb-statusbar { display: flex; align-items: center; height: 22px; min-width: 520px; font-size: 12px; }
+.gb-sitem { display: inline-flex; align-items: center; gap: 2px; height: 22px; padding: 0 6px; white-space: nowrap; }
+
+.gb-terminal { padding: 8px 12px; font-family: var(--vscode-editor-font-family); font-size: 12px; border: 1px solid transparent; }
+.gb-ansi-grid { display: grid; grid-template-columns: repeat(8, minmax(90px, 1fr)); gap: 2px 8px; margin-bottom: 8px; }
+.gb-ansi { white-space: nowrap; }
+.gb-ansi .codicon { font-size: 12px; }
+.gb-term-line { white-space: pre; line-height: 1.6; }
+.gb-term-badge { font-weight: 700; }
+.gb-term-cursor { display: inline-block; min-width: 0.6em; }
+
+.gb-preformat { padding: 1px 4px; border-radius: 3px; font-family: var(--vscode-editor-font-family); }
+.gb-codeblock { padding: 6px 10px; font-family: var(--vscode-editor-font-family); border-radius: 3px; }
+.gb-quote { padding: 4px 10px; }
+.gb-separator { width: 260px; height: 0; margin: 8px 0; }
+/* A demo box in the borders card; not the .gb-box section wrapper from inspector.css. */
+.gb-demo-box { display: inline-block; padding: 6px 12px; border: 1px solid transparent; border-radius: 2px; }
+.gb-sash-demo { position: relative; width: 120px; height: 40px; border: 1px dashed rgba(128, 128, 128, 0.4); }
+.gb-sash { position: absolute; left: 58px; top: 0; bottom: 0; width: 4px; }
+.gb-scroll-demo { display: flex; gap: 6px; padding: 6px; }
+.gb-slider { display: inline-block; width: 10px; height: 46px; }
+
+/* --------------------------------------------- extension contributions */
+
+.gb-contrib h4 { margin: 14px 0 4px; font-size: 0.95em; }
+.gb-contrib h4 .muted { font-weight: normal; font-size: 0.9em; }

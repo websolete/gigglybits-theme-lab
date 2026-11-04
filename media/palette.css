@@ -1,0 +1,148 @@
+/* Palette Lab layout. Candidate colors are set per element from palette.js; the live
+   editor text and comment colors come from the theme variables below. */
+
+/* The Palette Lab stacks Start from, the palette and the previews in one column. */
+.gb-palette { display: flex; flex-direction: column; gap: var(--gb-space-5); }
+.gb-palette h4 { margin: var(--gb-space-3) 0 var(--gb-space-1); }
+/* Box headings come from .gb-box in inspector.css. */
+.gb-pl-main { display: flex; flex-direction: column; gap: var(--gb-space-4); min-width: 0; }
+.gb-pl-summary { display: flex; flex-direction: column; gap: var(--gb-space-3); }
+.gb-pl-summary > h3 { margin-bottom: 0; }
+.gb-pl-previews-box .gb-tabpanel { padding-top: var(--gb-space-4); }
+
+/* Labelled rows (fieldRow in palette.js): a label column, then the control column, so the
+   labels in one box line up. The summary and chrome rows carry longer labels. */
+.gb-pl-controls { display: flex; flex-direction: column; gap: var(--gb-space-2); }
+.gb-pl-field { display: grid; grid-template-columns: var(--gb-pl-label, 6.5em) minmax(0, 1fr); gap: var(--gb-space-3); align-items: center; }
+.gb-pl-summary, .gb-pl-chrome { --gb-pl-label: 8.5em; }
+.gb-pl-field-name { color: var(--vscode-descriptionForeground); }
+.gb-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+.gb-pl-field-control { display: flex; gap: var(--gb-space-2); align-items: center; min-width: 0; }
+.gb-pl-field-control input[type="range"] { flex: 1; min-width: 0; }
+.gb-pl-hue-number { width: 4.5em; }
+.gb-pl-picker { width: 2.5em; height: 1.8em; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
+.gb-pl-value { flex: none; width: 5ch; font-family: var(--vscode-editor-font-family); }
+
+.gb-pl-paste-row { display: flex; flex-direction: column; gap: var(--gb-space-2); align-items: flex-start; }
+.gb-pl-paste { align-self: stretch; min-height: 2.5em; font-family: var(--vscode-editor-font-family); }
+.gb-pl-invalid { color: var(--vscode-editorWarning-foreground); margin: var(--gb-space-1) 0; }
+.gb-pl-error { color: var(--vscode-errorForeground); margin: var(--gb-space-1) 0; }
+
+.gb-pl-swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: var(--gb-space-2); }
+.gb-pl-swatch {
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  min-width: 0; padding: var(--gb-space-1); text-align: left;
+}
+.gb-pl-fill { height: 40px; border-radius: 2px; }
+.gb-pl-hex { font-family: var(--vscode-editor-font-family); }
+.gb-pl-oklch { font-size: 0.85em; }
+
+.gb-pl-lowest { margin: 0; }
+.gb-pl-legend { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); margin: var(--gb-space-3) 0 0; }
+.gb-pl-contrast { border-collapse: collapse; }
+.gb-pl-contrast th, .gb-pl-contrast td { padding: 2px 10px 2px 0; text-align: left; font-weight: normal; }
+.gb-pl-contrast thead th { color: var(--vscode-descriptionForeground); }
+.gb-pl-dot {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  vertical-align: middle; border: 1px solid rgba(128, 128, 128, 0.5);
+}
+
+/* Workbench tab: the Frame and Editor boxes, side by side when they fit. */
+.gb-ch { display: flex; flex-direction: column; gap: var(--gb-space-3); }
+.gb-ch > p.muted { margin: 0; }
+.gb-ch-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--gb-space-3); align-items: start; }
+.gb-ch-choices { display: flex; flex-direction: column; gap: var(--gb-space-2); }
+.gb-ch-choices > p.muted { margin: 0; }
+.gb-ch-picks { flex-wrap: wrap; align-items: center; }
+.gb-fr-pick { min-height: 24px; padding: var(--gb-space-1) var(--gb-space-2); }
+.gb-fr-custom-color { width: 2.5em; height: 1.8em; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
+.gb-ch-actions { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); }
+.gb-ch-actions button[disabled] { opacity: 0.5; cursor: default; }
+.gb-ch-actions button.secondary[disabled]:hover { background: var(--vscode-button-secondaryBackground); }
+.gb-ch-controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.gb-ch-controls label { display: inline-flex; gap: 4px; align-items: center; }
+.gb-ch-label { color: var(--vscode-descriptionForeground); }
+.gb-ch-picks { display: inline-flex; gap: 4px; }
+.gb-ch-pick { min-height: 24px; padding: var(--gb-space-1) var(--gb-space-2); }
+.gb-ch-picked { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
+
+/* Workbench and Widgets stages: the candidate drawn by gallery.js inside .gb-pl-scope, which
+   redefines the --vscode-* variables, beside the edit panel. The Previews box is the
+   container, so the panel sits beside the drawing only when the box itself is wide. */
+.gb-pl-previews-box { container-type: inline-size; }
+.gb-pl-stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gb-space-4); align-items: start; }
+/* Beside the drawing only on a very wide tab, so the drawing keeps most of the width. */
+@container (min-width: 75rem) {
+  .gb-pl-stage { grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); }
+  .gb-pl-edit { position: sticky; top: 0; max-block-size: 100vh; overflow: auto; }
+}
+.gb-pl-stage-main { display: flex; flex-direction: column; gap: var(--gb-space-3); min-width: 0; }
+.gb-pl-fit { min-width: 0; overflow: hidden; border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35)); border-radius: 4px; }
+.gb-pl-scope { line-height: 1.4; font-size: 13px; }
+.gb-pl-scope [data-keys] { cursor: pointer; }
+/* The pick outlines use the Lab's own focus color, captured outside .gb-pl-scope: inside it
+   --vscode-focusBorder is the candidate's, which can vanish against the candidate's colors. */
+.gb-pl-stage { --gb-pl-pick: var(--vscode-focusBorder); --gb-pl-pick-hover: var(--vscode-editorWarning-foreground); }
+.gb-pl-scope .gb-pl-hover { outline: 1px dashed var(--gb-pl-pick-hover); outline-offset: -1px; }
+.gb-pl-scope .gb-pl-picked { outline: 2px dashed var(--gb-pl-pick) !important; outline-offset: 1px; }
+
+.gb-pl-widget-list { gap: var(--gb-space-4); }
+.gb-pl-widget { display: flex; flex-direction: column; gap: var(--gb-space-1); min-width: 0; }
+.gb-pl-widget-head { display: flex; align-items: baseline; gap: var(--gb-space-3); }
+.gb-pl-widget-head h4 { margin: 0; flex: 1; }
+.gb-pl-widget-blurb { margin: 0; font-size: 0.9em; }
+.gb-pl-widget-preview { overflow-x: auto; border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35)); border-radius: 4px; }
+.gb-pl-widget-picker summary { cursor: pointer; }
+.gb-pl-widget-picker details[open] > summary { margin-bottom: var(--gb-space-2); }
+.gb-pl-widgets { display: flex; flex-direction: column; gap: var(--gb-space-3); }
+.gb-pl-widgets > p.muted { margin: 0; }
+
+/* Edit panel */
+.gb-pl-edit { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+.gb-pl-edit h4 { margin: 0; }
+.gb-pl-edit p { margin: 0; }
+.gb-pl-edit-what { font-weight: 600; overflow-wrap: anywhere; }
+.gb-pl-around-head { margin: var(--gb-space-2) 0 0; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-descriptionForeground); }
+.gb-pl-key { display: flex; flex-direction: column; gap: var(--gb-space-1); padding-top: var(--gb-space-2); border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25)); }
+.gb-pl-key-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); }
+.gb-pl-key-head code { overflow-wrap: anywhere; }
+.gb-pl-key-role { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); }
+.gb-pl-key-note { font-size: 0.9em; }
+.gb-pl-dot-none { border-style: dashed; }
+.gb-pl-color { width: 2.5em; height: 1.8em; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
+.gb-pl-reset { padding: 0 var(--gb-space-2); min-height: 24px; }
+.gb-pl-disclose > summary { cursor: pointer; color: var(--vscode-descriptionForeground); }
+.gb-pl-disclose[open] > summary { margin-bottom: var(--gb-space-1); }
+.gb-pl-edits ul { list-style: none; margin: 0 0 var(--gb-space-2); padding: 0; display: flex; flex-direction: column; gap: var(--gb-space-1); }
+.gb-pl-edits li { display: flex; align-items: center; gap: var(--gb-space-1); }
+.gb-pl-roles { display: flex; flex-direction: column; gap: var(--gb-space-2); }
+.gb-pl-role { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--gb-space-2); align-items: center; }
+.gb-ch-readout { display: flex; flex-wrap: wrap; gap: var(--gb-space-1) var(--gb-space-4); }
+
+.gb-pl-decide { display: flex; flex-direction: column; gap: var(--gb-space-2); max-width: 46rem; }
+.gb-pl-decide .gb-pl-field:has(.gb-pl-note) { align-items: start; }
+.gb-pl-name, .gb-pl-note { width: 100%; box-sizing: border-box; }
+.gb-pl-buttons { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); align-items: center; }
+.gb-pl-buttons .muted { flex-basis: 100%; }
+/* inspector.css styles every button alike, so a disabled decision button would look and
+   hover like an enabled one. Dim it and keep its resting background on hover. */
+.gb-pl-buttons button[disabled] { opacity: 0.5; cursor: default; }
+.gb-pl-buttons button[disabled]:hover { background: var(--vscode-button-background); }
+.gb-pl-buttons button.secondary[disabled]:hover { background: var(--vscode-button-secondaryBackground); }
+
+.gb-pl-row { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); align-items: center; padding: var(--gb-space-1) 0; }
+.gb-pl-mini { display: inline-flex; gap: 2px; }
+.gb-pl-row-note { flex: 1; }
+
+/* Start from > Saved: your saved themes, with their slot and Load, Use and Delete. */
+.gb-pl-lib-row { border-bottom: 1px solid var(--vscode-panel-border, transparent); }
+.gb-pl-lib-row:last-child { border-bottom: none; }
+.gb-pl-row-slot { min-width: 5em; }
+.gb-pl-lib-actions { display: flex; flex-wrap: wrap; gap: var(--gb-space-1); margin-left: auto; }
+.gb-pl-lib-empty { margin: 0; }
+
+/* The palette catalog's decisions and decided list, shown only with this repository open. */
+.gb-pl-catalog { margin-top: var(--gb-space-3); }

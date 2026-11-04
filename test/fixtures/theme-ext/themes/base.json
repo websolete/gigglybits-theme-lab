@@ -1,0 +1,12 @@
+// Base layer, included by child.json. Comments and trailing commas are legal here.
+{
+  "colors": {
+    "editor.background": "#000000",
+    "editor.foreground": "#cccccc",
+    "sideBar.background": "#111111",
+  },
+  "tokenColors": [
+    { "settings": { "foreground": "#cccccc" } },
+    { "name": "Comment", "scope": "comment", "settings": { "foreground": "#666666", "fontStyle": "italic" } }
+  ]
+}

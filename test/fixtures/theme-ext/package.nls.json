@@ -1,0 +1,5 @@
+{
+  "displayName": "Fixture Themes",
+  "highlightDescription": "Background of a fixture highlight.",
+  "darkLabel": { "message": "Fixture Dark (localized)", "comment": ["nls entries can be objects"] }
+}

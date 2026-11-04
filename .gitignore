@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+*.vsix
+.claude/
+.copirate/
+.github/
+.vscode/
+.mcp.json
+AGENTS.md
+

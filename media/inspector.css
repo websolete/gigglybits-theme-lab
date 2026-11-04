@@ -1,0 +1,266 @@
+:root {
+  --gb-space-1: 4px;
+  --gb-space-2: 8px;
+  --gb-space-3: 12px;
+  --gb-space-4: 16px;
+  --gb-space-5: 24px;
+  --gb-space-6: 32px;
+  --gb-radius: 2px;
+  --gb-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+  --gb-text-sm: 0.85em;
+  --gb-heading-size: 1.1em;
+}
+
+body {
+  margin: 0;
+  padding: 0 20px 48px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+.muted { color: var(--vscode-descriptionForeground); }
+.mono { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
+.warn { color: var(--vscode-editorWarning-foreground); margin-top: 4px; }
+
+/* Summary */
+.summary h1 { font-size: 1.5em; font-weight: 600; margin: 18px 0 4px; }
+.summary .files { margin-top: 4px; font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.chip {
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 0.85em;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.chip.warn-chip {
+  background: transparent;
+  color: var(--vscode-editorWarning-foreground);
+  border: 1px solid currentColor;
+}
+
+/* Controls */
+.controls {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 0;
+  background: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+}
+.controls .spacer { flex: 1; }
+input[type="search"], select {
+  font: inherit;
+  padding: 4px 6px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+}
+input[type="search"] { min-width: 260px; }
+.check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+button {
+  font: inherit;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+button:hover { background: var(--vscode-button-hoverBackground); }
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+input:focus, select:focus, button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* Sections */
+details.section { margin-top: 18px; }
+details.section > summary {
+  cursor: pointer;
+  font-size: 1.1em;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.count {
+  margin-left: 8px;
+  font-size: 0.85em;
+  font-weight: normal;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Color cards */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.card {
+  display: flex;
+  gap: 10px;
+  padding: 6px;
+  cursor: pointer;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, transparent);
+}
+.card:hover { border-color: var(--vscode-focusBorder); }
+/* Translucent colors are laid over their usual surface by inspector.js, with a
+   narrow strip of the bare surface on the left for comparison. */
+.swatch {
+  flex: 0 0 84px;
+  height: 46px;
+  display: flex;
+  overflow: hidden;
+  border-radius: 3px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.45));
+}
+.swatch .fill { flex: 1; }
+.swatch .bare { flex: 0 0 14px; border-right: 1px dashed rgba(128, 128, 128, 0.5); }
+.swatch .sample {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.05em;
+}
+.meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+.key {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+.value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+}
+.raw { opacity: 0.75; }
+.overridden { text-decoration: line-through; }
+
+/* Badges */
+.badge {
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid currentColor;
+  font-family: var(--vscode-font-family);
+  font-size: 0.78em;
+  white-space: nowrap;
+}
+.badge.theme { color: var(--vscode-charts-blue); }
+.badge.user { color: var(--vscode-charts-orange); }
+.badge.default { color: var(--vscode-descriptionForeground); }
+.badge.aaa, .badge.aa { color: var(--vscode-charts-green); }
+.badge.large { color: var(--vscode-charts-yellow); }
+.badge.fail { color: var(--vscode-charts-red); }
+
+/* Rule tables */
+table.rules { width: 100%; border-collapse: collapse; margin-top: 6px; }
+table.rules th, table.rules td {
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.9em;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+}
+table.rules th { font-weight: 600; color: var(--vscode-descriptionForeground); }
+table.rules tbody tr { cursor: pointer; }
+table.rules tbody tr:hover { background: var(--vscode-list-hoverBackground); }
+.token-sample {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  background: var(--vscode-editor-background);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Copy toast */
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  max-width: 60vw;
+  padding: 6px 12px;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  color: var(--vscode-notifications-foreground);
+  background: var(--vscode-notifications-background);
+  border: 1px solid var(--vscode-notifications-border, var(--vscode-widget-border, transparent));
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none; }
+}
+
+/* A bordered box around one region of a view. Border only: the page background shows
+   inside, as on VS Code's own pages. */
+.gb-box {
+  border: 1px solid var(--gb-border);
+  border-radius: var(--gb-radius);
+  padding: var(--gb-space-4);
+  margin: 0;
+  min-width: 0;
+  min-inline-size: 0;
+}
+.gb-box > h2:first-child,
+.gb-box > h3:first-child,
+.gb-box > h4:first-child,
+.gb-box > legend:first-child {
+  font-size: var(--gb-heading-size);
+  font-weight: 600;
+  margin: 0 0 var(--gb-space-3);
+}
+.gb-box > legend:first-child { padding: 0 var(--gb-space-1); margin-bottom: 0; }
+
+/* Tabs (GB.tabs in shared.js). Every button above gets the primary button background, so
+   a tab overrides it on rest and hover or it would read as a primary button. */
+.gb-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gb-space-1);
+  border-bottom: 1px solid var(--gb-border);
+}
+.gb-tab,
+.gb-tab:hover {
+  min-height: 24px;
+  padding: var(--gb-space-1) var(--gb-space-3);
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+}
+.gb-tab:hover { color: var(--vscode-foreground); }
+.gb-tab[aria-selected="true"] {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--vscode-focusBorder);
+}
+.gb-tabpanel { padding-top: var(--gb-space-3); }

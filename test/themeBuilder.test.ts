@@ -1,0 +1,346 @@
+/**
+ * @jest-environment jsdom
+ */
+// scripts/theme-builder.js turns one catalog palette into a dark theme. These tests pin the
+// rules the variants rely on: readable, distinct syntax roles on generic scopes only, and
+// exactly the element gallery's color keys set (or explained in UNSET_KEYS).
+import * as fs from 'fs';
+import * as path from 'path';
+import type { PaletteEntry } from '../src/paletteCatalog';
+
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+const GB = require('../media/shared.js');
+const TB = require('../scripts/theme-builder.js');
+
+const entry = (id: string, name: string, colors: string[], source: PaletteEntry['source'] = 'generated'): PaletteEntry => ({
+  id,
+  name,
+  source,
+  ...(source === 'generated' ? { rule: 'triad', baseHue: 0, lightness: 0.5, chroma: 0.1 } : {}),
+  colors,
+  status: 'include',
+  note: '',
+  decidedAt: '2026-11-03T00:00:00.000Z',
+});
+
+// Copied from palettes/catalog.json at planning.
+const CANDY = entry('triad-h210-l0.75-c0.130', 'Candy', ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8']);
+const LOG_CABIN = entry('complementary-h68-l0.51-c0.170', 'Log Cabin', ['#8f5805', '#ad6d0d', '#0669af', '#2c82c9', '#865c2b']);
+const PASTED = entry('pasted-ff8800-336699', 'Pasted', ['#ff8800', '#336699'], 'pasted');
+
+const BG = GB.parseColor('#1e1e1e');
+const contrast = (hex: string) => GB.contrastRatio(GB.parseColor(hex), BG);
+
+function oklab(hex: string): [number, number, number] {
+  const { l, c, h } = GB.hexToOklch(hex);
+  const rad = (h * Math.PI) / 180;
+  return [l, c * Math.cos(rad), c * Math.sin(rad)];
+}
+const distance = (a: string, b: string) => {
+  const x = oklab(a);
+  const y = oklab(b);
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+};
+
+/** Flattens tokenColors the way src/themeSource.ts addTokenRules does. */
+const flatten = (rules: any[]) =>
+  rules.map(r => ({
+    scope: Array.isArray(r.scope) ? r.scope.join(', ') : r.scope,
+    foreground: r.settings?.foreground,
+    fontStyle: r.settings?.fontStyle,
+  }));
+
+let galleryKeys: Set<string>;
+
+beforeAll(() => {
+  (window as any).GB = GB;
+  const src = fs.readFileSync(path.join(__dirname, '..', 'media', 'gallery.js'), 'utf8');
+  new Function(src)();
+  const gallery = (window as any).GBGallery;
+  const byKey = new Map<string, any>();
+  for (const [key, value] of Object.entries({ 'editor.background': '#1e1e1e', 'editor.foreground': '#cccccc' })) {
+    const rgba = GB.parseColor(value);
+    byKey.set(key, { key, prop: GB.varFor(key), value, rgba, hex: GB.toHex(rgba), source: 'theme' });
+  }
+  const model = { byKey, tokens: [] };
+  const { node } = gallery.render({
+    model,
+    tokens: model.tokens,
+    snapshot: { contributions: {} },
+    ui: { filter: '', source: 'all', lowContrast: false },
+    copy: () => undefined,
+    sourceBadge: (s: string) => document.createTextNode(s),
+    contrastBadge: (r: number) => document.createTextNode(r.toFixed(1)),
+    trackOpen: (d: HTMLElement) => d,
+  });
+  galleryKeys = new Set<string>();
+  for (const el of node.querySelectorAll('[data-keys]')) {
+    for (const k of el.getAttribute('data-keys')!.split(' ')) {galleryKeys.add(k);}
+  }
+});
+
+describe('roleColors', () => {
+  it.each([CANDY, LOG_CABIN, PASTED])('reads at least 4.5:1 on #1e1e1e for every role ($name)', p => {
+    const roles: string[] = TB.roleColors(p);
+    expect(roles).toHaveLength(TB.ROLE_NAMES.length);
+    for (const hex of roles) {
+      expect({ hex, ok: contrast(hex) >= 4.5 }).toEqual({ hex, ok: true });
+    }
+  });
+
+  it('keeps a palette color that already reads, and lifts one that does not', () => {
+    expect(TB.roleColors(CANDY)).toEqual(CANDY.colors);
+    expect(TB.roleColors(LOG_CABIN)[0]).not.toBe('#8f5805');
+  });
+
+  it('keeps every Log Cabin role with a different source color at least 0.05 apart in OKLab', () => {
+    const roles: string[] = TB.roleColors(LOG_CABIN);
+    for (let i = 0; i < roles.length; i++) {
+      for (let j = 0; j < i; j++) {
+        const d = distance(roles[i], roles[j]);
+        expect({ pair: `${TB.ROLE_NAMES[j]}/${TB.ROLE_NAMES[i]}`, d, ok: d >= 0.05 }).toMatchObject({ ok: true });
+      }
+    }
+  });
+
+  it('repeats a short palette from its first color and leaves the repeats equal', () => {
+    const roles: string[] = TB.roleColors(PASTED);
+    expect(roles[2]).toBe(roles[0]);
+    expect(roles[4]).toBe(roles[0]);
+    expect(roles[3]).toBe(roles[1]);
+  });
+});
+
+describe('buildTheme', () => {
+  const candy = () => TB.buildTheme(CANDY);
+
+  it('names the theme and its file after the palette', () => {
+    expect(TB.themeLabel(CANDY)).toBe('GigglyBits Dark (Candy)');
+    expect(TB.themeFileName(CANDY)).toBe('gigglybits-dark-triad-h210-l0.75-c0.130-color-theme.json');
+  });
+
+  it('gives each generic scope its role color, and comments a muted italic', () => {
+    const rules = flatten(candy().tokenColors);
+    const fg = (scope: string) => GB.resolveTokenStyle(rules, scope).foreground;
+    expect(fg('keyword.control.ts')).toBe('#20c3d9');
+    expect(fg('storage.type.ts')).toBe('#20c3d9');
+    expect(fg('storage.modifier.ts')).toBe('#20c3d9');
+    expect(fg('entity.name.function.ts')).toBe('#dc8fd5');
+    expect(fg('support.function.ts')).toBe('#dc8fd5');
+    expect(fg('string.quoted.double.ts')).toBe('#ceaa3e');
+    expect(fg('string.template.ts')).toBe('#ceaa3e');
+    expect(fg('entity.name.type.class.ts')).toBe('#6cdaed');
+    expect(fg('entity.name.type.interface.ts')).toBe('#6cdaed');
+    expect(fg('support.type.primitive.ts')).toBe('#6cdaed');
+    expect(fg('constant.numeric.decimal.ts')).toBe('#eeafe8');
+    expect(fg('constant.language.boolean.ts')).toBe('#eeafe8');
+    expect(fg('variable.other.readwrite.ts')).toBeUndefined();
+    const comment = GB.resolveTokenStyle(rules, 'comment.line.double-slash.ts');
+    expect(contrast(comment.foreground)).toBeGreaterThanOrEqual(4.5);
+    expect(comment.fontStyle).toBe('italic');
+  });
+
+  it('sets no semantic token rules and only generic scope selectors', () => {
+    const theme = candy();
+    expect(theme).not.toHaveProperty('semanticTokenColors');
+    expect(theme.semanticHighlighting).toBe(true);
+    expect(TB.GENERIC_SCOPES).toEqual([
+      'keyword', 'storage.type', 'storage.modifier', 'entity.name.function', 'support.function', 'string',
+      'entity.name.type', 'entity.name.class', 'support.type', 'support.class', 'constant.numeric', 'constant.language', 'comment',
+    ]);
+    for (const rule of theme.tokenColors) {
+      expect(Object.keys(rule.settings).every((k: string) => k === 'foreground' || k === 'fontStyle')).toBe(true);
+      const selectors: string[] = Array.isArray(rule.scope) ? rule.scope : [rule.scope];
+      for (const sel of selectors) {expect(TB.GENERIC_SCOPES).toContain(sel);}
+    }
+  });
+
+  it('sets exactly the gallery keys minus UNSET_KEYS, and explains each unset key', () => {
+    expect(galleryKeys.size).toBeGreaterThan(300);
+    const unset: Record<string, string> = TB.UNSET_KEYS;
+    expect(Object.keys(unset).length).toBeLessThanOrEqual(10);
+    expect(Object.keys(unset)).toEqual(expect.arrayContaining(['contrastBorder', 'contrastActiveBorder']));
+    for (const reason of Object.values(unset)) {expect(reason.trim()).not.toBe('');}
+    const expected = [...galleryKeys].filter(k => !(k in unset)).sort();
+    expect(Object.keys(candy().colors).sort()).toEqual(expected);
+  });
+
+  it('keeps text readable on the surfaces it sits on', () => {
+    const c = candy().colors;
+    const pairs: [string, string, string?][] = [
+      ['editor.foreground', 'editor.background'],
+      ['foreground', 'sideBar.background'],
+      ['sideBar.foreground', 'sideBar.background'],
+      ['statusBar.foreground', 'statusBar.background'],
+      ['tab.activeForeground', 'tab.activeBackground'],
+      ['tab.inactiveForeground', 'tab.inactiveBackground'],
+      ['list.activeSelectionForeground', 'list.activeSelectionBackground', 'sideBar.background'],
+      ['button.foreground', 'button.background'],
+    ];
+    for (const [fg, bg, under] of pairs) {
+      let back = GB.parseColor(c[bg]);
+      back = GB.over(back, GB.parseColor(c[under ?? 'editor.background']));
+      const ratio = GB.contrastRatio(GB.parseColor(c[fg]), back);
+      expect({ fg, bg, ok: ratio >= 4.5 }).toEqual({ fg, bg, ok: true });
+    }
+  });
+
+  it('sets the chat input and chat view keys from existing roles, and a transparent window border in a Dark frame', () => {
+    const c = TB.buildColors(CANDY);
+    expect(c['inlineChatInput.border']).toBe(c['input.border']);
+    expect(c['inlineChatInput.focusBorder']).toBe(c.focusBorder);
+    expect(c['chat.requestBackground']).toBe(c['editorWidget.background']);
+    expect(c['chat.linesRemovedForeground']).toBe(c.errorForeground);
+    expect(c['editorGroup.border']).toBe(c['sideBar.border']);
+    // An array path names the key itself; a dotted string would be read as c.window.activeBorder.
+    expect(c).toHaveProperty(['window.activeBorder'], '#00000000');
+    expect(TB.buildColors(CANDY, { frame: { style: 'filled', color: '#336699' } })['window.activeBorder']).toBe('#336699');
+  });
+
+  it('a role edit moves its keys and the roles made from it; a key edit moves one key; bad values are dropped', () => {
+    const plain = TB.buildColors(CANDY);
+    const edited = TB.buildColors(CANDY, {}, { swatches: { accent: '#ff0000', raised: 'blue' }, keys: { errorForeground: '#00ff00' } });
+    expect(edited.focusBorder).toBe('#ff0000');
+    expect(edited['button.background']).toBe('#ff0000');
+    expect(edited['inputOption.activeBackground']).toBe('#ff000040');
+    // Text on the accent follows it: black reads better than white on pure red.
+    expect(edited['button.foreground']).toBe('#000000');
+    expect(edited['menu.background']).toBe(plain['menu.background']);
+    expect(edited.errorForeground).toBe('#00ff00');
+    expect(edited['editorError.foreground']).toBe(plain['editorError.foreground']);
+    // A 6-digit edit of a translucent role keeps the role's alpha.
+    expect(TB.buildColors(CANDY, {}, { swatches: { accentSoft: '#123456' } })['inputOption.activeBackground']).toBe('#12345640');
+  });
+
+  it('a syntax role edit reaches the token rules; no edits builds the shipped theme unchanged', () => {
+    const rules = TB.buildTheme(CANDY, {}, { swatches: { kw: '#abcdef' } }).tokenColors;
+    expect(rules.find((r: any) => r.name === 'Keyword').settings.foreground).toBe('#abcdef');
+    expect(TB.buildTheme(CANDY, {}, { swatches: {}, keys: {} })).toEqual(TB.buildTheme(CANDY));
+  });
+
+  it.each([CANDY, LOG_CABIN, PASTED])('is a standalone dark theme with hex values only ($name)', p => {
+    const theme = TB.buildTheme(p);
+    expect(theme.type).toBe('dark');
+    expect(theme).not.toHaveProperty('include');
+    expect(theme.name).toBe(TB.themeLabel(p));
+    expect(theme.colors['editor.background']).toBe('#1e1e1e');
+    for (const [key, value] of Object.entries(theme.colors)) {
+      expect({ key, value, ok: /^#[0-9a-f]{6}([0-9a-f]{2})?$/.test(value as string) }).toMatchObject({ ok: true });
+    }
+  });
+});
+
+describe('Frame and Editor', () => {
+  const included: PaletteEntry[] = require('../palettes/catalog.json').palettes.filter((p: PaletteEntry) => p.status === 'include');
+  const BASELINE = path.join(__dirname, 'fixtures', 'frame-baseline');
+  const INPUT_OUTLINES = ['input.border', 'dropdown.border', 'checkbox.border', 'inlineChatInput.border', 'panelInput.border'];
+  const EXCEPT = new Set(['window.activeBorder', ...INPUT_OUTLINES]);
+  const LISTED_FRAME_KEYS = [
+    'titleBar.activeBackground', 'titleBar.activeForeground', 'titleBar.border', 'commandCenter.background', 'commandCenter.foreground',
+    'commandCenter.border', 'activityBar.background', 'activityBar.foreground', 'activityBar.inactiveForeground', 'activityBar.activeBorder',
+    'activityBar.activeBackground', 'activityBar.border', 'activityBarBadge.background', 'activityBarBadge.foreground', 'statusBar.background',
+    'statusBar.foreground', 'statusBar.border', 'statusBar.noFolderBackground', 'statusBar.noFolderForeground', 'statusBar.noFolderBorder',
+    'statusBarItem.remoteBackground', 'statusBarItem.remoteForeground', 'statusBarItem.hoverBackground', 'statusBarItem.hoverForeground',
+    'window.activeBorder',
+  ];
+  /** Keys whose values differ between two builds. */
+  const changed = (a: Record<string, string>, b: Record<string, string>) =>
+    [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => a[k] !== b[k]);
+  /** Contrast of fg over bg, each translucent value composited over what it sits on. */
+  const ratio = (c: Record<string, string>, fg: string, bg: string, under = 'editor.background') => {
+    const back = GB.over(GB.parseColor(c[bg]), GB.parseColor(c[under]));
+    return GB.contrastRatio(GB.over(GB.parseColor(c[fg]), back), back);
+  };
+
+  it('builds every included palette with default settings exactly as the shipped baseline, apart from the window border and input outlines', () => {
+    expect(included.length).toBe(9);
+    for (const entry of included) {
+      const shipped = JSON.parse(fs.readFileSync(path.join(BASELINE, TB.themeFileName(entry)), 'utf8'));
+      const built = TB.buildTheme(entry);
+      const diff = changed(shipped.colors, built.colors).filter(k => !EXCEPT.has(k));
+      expect({ palette: entry.name, diff }).toEqual({ palette: entry.name, diff: [] });
+      expect(built.tokenColors).toEqual(shipped.tokenColors);
+    }
+  });
+
+  it('puts every frame key under a frame swatch and every other key under an editor swatch', () => {
+    expect(TB.FRAME_KEYS).toEqual(expect.arrayContaining(LISTED_FRAME_KEYS));
+    const frame = new Set(TB.FRAME_KEYS);
+    for (const key of Object.keys(TB.buildColors(included[0]))) {
+      const group = TB.SWATCHES[TB.SWATCH_OF[key]][2];
+      expect({ key, group }).toEqual({ key, group: frame.has(key) ? 'frame' : 'editor' });
+    }
+  });
+
+  it('a Frame change moves only frame keys, and in a Filled frame an Editor change moves no frame key', () => {
+    const frame = new Set(TB.FRAME_KEYS);
+    for (const entry of included) {
+      const base = TB.buildColors(entry);
+      for (const f of [{ index: 1 }, { color: '#336699' }, { style: 'filled' }, { style: 'filled', index: 2 }]) {
+        const outside = changed(base, TB.buildColors(entry, { frame: f })).filter(k => !frame.has(k));
+        expect({ palette: entry.name, frame: f, outside }).toEqual({ palette: entry.name, frame: f, outside: [] });
+      }
+      const filled = { style: 'filled', index: 0 };
+      const filledBase = TB.buildColors(entry, { frame: filled });
+      for (const editor of [{ index: 1 }, { index: 2 }, { surfaces: 'rich' }, { surfaces: 'tinted', index: 1 }]) {
+        const inside = changed(filledBase, TB.buildColors(entry, { ...editor, frame: filled })).filter(k => frame.has(k));
+        expect({ palette: entry.name, editor, inside }).toEqual({ palette: entry.name, editor, inside: [] });
+      }
+    }
+  });
+
+  it('frame text reads 4.5:1 and inactive icons 3:1 for every included palette, every frame color and both styles', () => {
+    const TEXT: Array<[string, string, string?]> = [
+      ['titleBar.activeForeground', 'titleBar.activeBackground'],
+      ['statusBar.foreground', 'statusBar.background'],
+      ['activityBar.foreground', 'activityBar.background'],
+      ['activityBarBadge.foreground', 'activityBarBadge.background', 'activityBar.background'],
+      ['statusBar.noFolderForeground', 'statusBar.noFolderBackground'],
+      ['statusBarItem.hoverForeground', 'statusBarItem.hoverBackground', 'statusBar.background'],
+      ['statusBarItem.remoteForeground', 'statusBarItem.remoteBackground', 'statusBar.background'],
+    ];
+    const low: string[] = [];
+    for (const entry of included) {
+      entry.colors.forEach((_, index) => {
+        for (const style of ['dark', 'filled']) {
+          const c = TB.buildColors(entry, { frame: { index, style } });
+          for (const [fg, bg, under] of TEXT) {
+            const r = ratio(c, fg, bg, under);
+            if (r < 4.5) {low.push(`${entry.name} ${index} ${style} ${fg}: ${r.toFixed(2)}`);}
+          }
+          const r = ratio(c, 'activityBar.inactiveForeground', 'activityBar.background');
+          if (r < 3) {low.push(`${entry.name} ${index} ${style} activityBar.inactiveForeground: ${r.toFixed(2)}`);}
+        }
+      });
+    }
+    expect(low).toEqual([]);
+  });
+
+  it('input outlines read 3:1 on the editor and the side bar for every included palette and surface style', () => {
+    const low: string[] = [];
+    for (const entry of included) {
+      for (const surfaces of ['neutral', 'tinted', 'rich']) {
+        const c = TB.buildColors(entry, { surfaces });
+        for (const key of INPUT_OUTLINES) {
+          for (const bg of ['editor.background', 'sideBar.background']) {
+            const r = ratio(c, key, bg);
+            if (r < 3) {low.push(`${entry.name} ${surfaces} ${key} on ${bg}: ${r.toFixed(2)}`);}
+          }
+        }
+      }
+    }
+    expect(low).toEqual([]);
+  });
+
+  it('sets the same keys in a Filled frame as in a Dark one', () => {
+    for (const entry of included) {
+      const dark = Object.keys(TB.buildColors(entry, { frame: { style: 'dark' } }));
+      const filled = Object.keys(TB.buildColors(entry, { frame: { style: 'filled' } }));
+      expect({ palette: entry.name, keys: filled }).toEqual({ palette: entry.name, keys: dark });
+    }
+  });
+
+  it('ignores a frame color that is not a hex color and a style it does not know', () => {
+    expect(TB.buildColors(CANDY, { frame: { color: 'blue', style: 'neon' } })).toEqual(TB.buildColors(CANDY));
+  });
+});

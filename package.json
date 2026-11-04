@@ -1,0 +1,269 @@
+{
+  "name": "gigglybits-vscode-theme",
+  "displayName": "GigglyBits Theme Laboratory",
+  "description": "An easy-to-use and powerful theme customizer for VS Code.",
+  "version": "0.0.11",
+  "publisher": "Websolete",
+  "icon": "media/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/websolete/gigglybits-vscode-theme.git"
+  },
+  "homepage": "https://github.com/websolete/gigglybits-vscode-theme#readme",
+  "bugs": {
+    "url": "https://github.com/websolete/gigglybits-vscode-theme/issues"
+  },
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Themes",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onWebviewPanel:gigglybits.themeLab",
+    "onWebviewPanel:gigglybits.paletteInspector",
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gigglybits.openThemeLab",
+        "title": "Open Theme Lab",
+        "category": "GigglyBits"
+      },
+      {
+        "command": "gigglybits.openPaletteInspector",
+        "title": "Open Palette Inspector",
+        "category": "GigglyBits"
+      },
+      {
+        "command": "gigglybits.identity.set",
+        "title": "Set Workspace Color",
+        "category": "GigglyBits"
+      },
+      {
+        "command": "gigglybits.identity.next",
+        "title": "Next Workspace Color",
+        "category": "GigglyBits"
+      },
+      {
+        "command": "gigglybits.identity.clear",
+        "title": "Clear Workspace Color",
+        "category": "GigglyBits"
+      },
+      {
+        "command": "gigglybits.chooseTheme",
+        "title": "Choose Theme",
+        "category": "GigglyBits"
+      }
+    ],
+    "configuration": {
+      "title": "GigglyBits",
+      "properties": {
+        "gigglybits.library": {
+          "type": "array",
+          "default": [],
+          "scope": "application",
+          "markdownDescription": "Your saved themes, written by **Save theme** in the Theme Lab (**GigglyBits: Open Theme Lab**). Each is bound to one of the slots GigglyBits Theme 1 to 12. Use the Theme Lab or **GigglyBits: Choose Theme** rather than editing this by hand."
+        },
+        "gigglybits.identity.hue": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 359,
+          "scope": "resource",
+          "markdownDescription": "This workspace's color as an OKLCH hue (0-359). Its brightness and intensity follow the active theme. Set by **GigglyBits: Set Workspace Color**."
+        },
+        "gigglybits.identity.pinnedColor": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+          "scope": "resource",
+          "markdownDescription": "A fixed hex color for this workspace, used exactly as entered under every theme. Takes the place of `#gigglybits.identity.hue#`."
+        },
+        "gigglybits.identity.regions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "titleBar",
+              "activityBar",
+              "statusBar",
+              "borders"
+            ],
+            "enumDescriptions": [
+              "Title bar and window border",
+              "Activity bar",
+              "Status bar",
+              "Tabs and borders"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "titleBar",
+            "activityBar",
+            "statusBar",
+            "borders"
+          ],
+          "description": "The parts of the window the workspace color fills."
+        },
+        "gigglybits.identity.offerOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Offer a color the first time a folder with no color of its own is opened."
+        }
+      }
+    },
+    "themes": [
+      {
+        "label": "GigglyBits Dark (Candy)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-triad-h210-l0.75-c0.130-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Log Cabin)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-complementary-h68-l0.51-c0.170-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Rat Poison)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-triad-h281-l0.52-c0.150-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Not Feeling Well)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-complementary-h281-l0.80-c0.155-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Southwest)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-split-complementary-h227-l0.53-c0.080-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Snake in the Grass)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-analogous-h164-l0.55-c0.120-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Fashion Army)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-triad-h112-l0.71-c0.115-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Day at the Spa)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-square-h316-l0.72-c0.140-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Salamander)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-dark-shades-h30-l0.67-c0.165-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Dark (Lab)",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-lab-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 1",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-1-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 2",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-2-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 3",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-3-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 4",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-4-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 5",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-5-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 6",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-6-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 7",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-7-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 8",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-8-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 9",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-9-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 10",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-10-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 11",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-11-color-theme.json"
+      },
+      {
+        "label": "GigglyBits Theme 12",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gigglybits-theme-12-color-theme.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "check-types": "tsc --noEmit",
+    "check-types:test": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "eslint src test",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch -p ./",
+    "package": "npm run check-types && npm run check-types:test && npm run lint && npm run themes:check && node esbuild.js --production && npm run smoke:bundle",
+    "smoke:bundle": "node scripts/smoke-bundle.js",
+    "themes": "node scripts/build-themes.js",
+    "themes:check": "node scripts/build-themes.js --check",
+    "test": "npm run check-types:test && jest",
+    "verify": "npm run check-types && npm run lint && npm test",
+    "clean": "node -e \"for (const d of ['dist', 'out']) require('fs').rmSync(d, { recursive: true, force: true })\"",
+    "pack": "vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "install:local": "node scripts/install-local.js",
+    "build:pack": "npm run clean && npm run pack",
+    "dev:quick": "npm run build:pack && npm run install:local",
+    "full:patch": "npm run version:patch && npm run dev:quick"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/codicons": "^0.0.46-24",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.14.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "jsonc-parser": "^3.3.1",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.14.0"
+  }
+}

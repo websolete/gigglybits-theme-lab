@@ -1,0 +1,30 @@
+# Everything listed here stays out of the .vsix. The package should hold only
+# dist/, media/, themes/, package.json, README.md and CHANGELOG.md.
+# vsce keeps a file if ANY "!" negation matches it, regardless of order, so add
+# negations sparingly and keep them narrow.
+.vscode/**
+.vscode-test/**
+.claude/**
+.copirate/**
+.github/**
+src/**
+test/**
+scripts/**
+docs/**
+palettes/**
+out/**
+coverage/**
+node_modules/**
+**/*.map
+**/*.ts
+esbuild.js
+eslint.config.mjs
+jest.config.js
+tsconfig*.json
+package-lock.json
+.gitignore
+.mcp.json
+AGENTS.md
+*.vsix
+# Full-size logo source (about 1 MB). The package ships media/icon.png, a 256 px copy, instead.
+media/gigglybits.png

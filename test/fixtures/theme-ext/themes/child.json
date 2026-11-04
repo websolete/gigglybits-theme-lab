@@ -1,0 +1,16 @@
+{
+  "include": "./base.json",
+  "semanticHighlighting": true,
+  "colors": {
+    "editor.background": "#1a1a1a",
+    "statusBar.background": "#202020",
+    "sideBar.background": null
+  },
+  "tokenColors": [
+    { "scope": ["keyword", "storage"], "settings": { "foreground": "#ff8800" } }
+  ],
+  "semanticTokenColors": {
+    "variable.readonly": "#88ccff",
+    "parameter": { "foreground": "#aaaaaa", "italic": true }
+  }
+}

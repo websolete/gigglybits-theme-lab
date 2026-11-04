@@ -1,0 +1,14 @@
+{
+  "name": "fixture-theme",
+  "displayName": "%displayName%",
+  "publisher": "fixture",
+  "contributes": {
+    "colors": [
+      { "id": "fixture.highlight", "description": "%highlightDescription%", "defaults": { "dark": "#ff0000", "light": "#00ff00", "highContrast": null } }
+    ],
+    "themes": [
+      { "id": "Fixture Dark", "label": "%darkLabel%", "uiTheme": "vs-dark", "path": "./themes/child.json" },
+      { "label": "Fixture Light", "uiTheme": "vs", "path": "./themes/light.json" }
+    ]
+  }
+}
