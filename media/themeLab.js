@@ -1,14 +1,17 @@
 // @ts-check
 // Theme Lab webview: the place to build, try and pick a GigglyBits theme. It draws the
-// Palette Lab (palette.js) and hands it the installed theme list (themeList.js) for its
-// Start from > Shipped tab; the header names the active theme. It asks the extension host
-// for both the theme list and the palette catalog. The Palette Inspector is the separate
-// debugging view; a header button opens it.
+// Palette Lab (palette.js), whose Start step offers Wheel and Saved, and asks the extension
+// host for your saved themes. The page has no header; the Palette Inspector, the separate
+// debugging view, opens from its command.
 //
 // The Palette Lab's ui state persists through vscode.setState. On a fresh open (no saved
 // state) the host's first 'start' message picks the starting palette; a tab restored by a
 // reload keeps its edits. 'identity' messages carry this folder's own color, if any, which the
 // Frame box mentions because VS Code draws it over any theme's frame.
+//
+// Every saved change also goes to the host as 'previewState', which the floating Theme Preview
+// window, the Lab's only preview, draws; a 'pickPart' from that window opens the part in the
+// Edit panel. 'previewDetached' says whether that window is open, which the Preview card shows.
 (function () {
   // @ts-ignore acquireVsCodeApi is provided by the webview host
   const vscode = acquireVsCodeApi();
@@ -16,15 +19,13 @@
   const { h, parseColor, toHex } = window.GB;
   // @ts-ignore provided by palette.js
   const PaletteLab = window.GBPalette;
-  // @ts-ignore provided by themeList.js
-  const ThemeList = window.GBThemeList;
 
   const restored = vscode.getState();
   /** A fresh open: no saved state, so the host's start may set the palette. */
   const fresh = !restored;
   const saved = restored || {};
   const ui = {
-    /** Palette Lab: rule, hue, lightness, chroma, paste text and the current candidate. */
+    /** Palette Lab: rule, hue, lightness, chroma and the current candidate. */
     palette: saved.palette || {},
   };
 
@@ -34,26 +35,38 @@
   let identityFill = null;
   /** Why the Lab opened on the defaults, from the 'start' message. @type {string | null} */
   let startNote = null;
+  /**
+   * VS Code's modern UI settings from the latest 'modernUI' message, which the Workbench preview
+   * draws with; never saved to state. Null draws the classic workbench.
+   * @type {{ modern: boolean, uppercase: boolean, tabStyle: string } | null}
+   */
+  let modernUI = null;
+  /**
+   * Whether the Theme Preview window, the Lab's only preview, is open, from the host's
+   * 'previewDetached' messages; the Preview card says so. Never saved: the window does not
+   * survive a reload.
+   */
+  let detached = false;
 
-  /** Latest 'catalog' message from the host. @type {{ catalog: any, path: string | null, reason?: string }} */
-  let catalogState = { catalog: null, path: null, reason: 'Waiting for the extension to send the palette catalog.' };
-  /** Latest 'catalogError' message, cleared by the next catalog. @type {string | null} */
-  let catalogError = null;
   /**
-   * Latest 'themes' message from the host; null until it arrives. `bases` holds each listed
-   * theme's palette by label (src/themeList.ts themeBases).
-   * @type {{ themes: string[], active: string | null, bases: Record<string, any> } | null}
+   * Latest 'library' message: your saved themes (src/themeLibrary.ts SavedTheme), your style
+   * groups (StyleGroup), and whether a folder is open, which decides whether Use in this
+   * project is offered.
+   * @type {{ themes: any[], groups: any[], hasFolder: boolean }}
    */
-  let themesState = null;
+  let libraryState = { themes: [], groups: [], hasFolder: false };
+
   /**
-   * Latest 'library' message: your saved themes (src/themeLibrary.ts SavedTheme) and whether a
-   * folder is open, which decides whether Use in this project is offered.
-   * @type {{ themes: any[], hasFolder: boolean }}
+   * Hands the Palette Lab state and the style groups to the host, which passes them to the
+   * floating Theme Preview window, so it follows every change, a color drag included.
    */
-  let libraryState = { themes: [], hasFolder: false };
+  function postPreviewState() {
+    vscode.postMessage({ type: 'previewState', palette: ui.palette, groups: libraryState.groups });
+  }
 
   function saveState() {
     vscode.setState(ui);
+    postPreviewState();
   }
 
   let toastTimer;
@@ -80,95 +93,48 @@
     return rgba ? toHex(rgba).slice(0, 7) : '#1e1e1e';
   }
 
-  /**
-   * Use on a shipped theme also loads its palette into the Palette Lab as a starting point.
-   * A label with no base (none is sent for a file name that encodes no palette) only switches.
-   */
-  function startFromTheme(label) {
-    const base = themesState && themesState.bases[label];
-    if (!base) return;
-    PaletteLab.startFrom(ui.palette, base);
-    saveState();
-    renderPalette();
-  }
-
-  /** The installed theme list for the Start from > Shipped tab; null until the host sends it. */
-  function themeList() {
-    if (!themesState) return null;
-    const post = message => {
-      if (message && message.type === 'selectTheme') startFromTheme(message.label);
-      vscode.postMessage(message);
-    };
-    return ThemeList.render({ themes: themesState.themes, active: themesState.active, post });
-  }
-
-  /** Names the active theme in the header once the host has said which it is. */
-  function renderActive() {
-    const slot = document.getElementById('lab-active');
-    if (!slot) return;
-    slot.replaceChildren(themesState && themesState.active
-      ? h('span', { class: 'gb-lab-active' }, `Active: ${themesState.active}`)
-      : '');
-  }
-
   function paletteSection() {
     const lab = PaletteLab.render({
-      catalog: catalogState.catalog,
-      catalogPath: catalogState.path,
-      catalogReason: catalogState.reason || '',
       liveBackground: liveBackground(),
       ui: ui.palette,
       save: saveState,
       post: message => vscode.postMessage(message),
       copy,
-      shipped: themeList(),
       library: libraryState.themes,
+      groups: libraryState.groups,
       hasFolder: libraryState.hasFolder,
       identityFill,
       startNote,
+      modernUI,
+      detached,
     });
     return h('section', { id: 'section-palette' },
-      catalogError ? h('p', { class: 'gb-pl-error' }, `Palette catalog error: ${catalogError}`) : null,
       h('div', { class: 'gb-lab' }, lab));
   }
 
-  /** Redraws only the Palette Lab, so a catalog update leaves the rest of the page alone. */
+  /** Redraws only the Palette Lab, so a host message leaves the rest of the page alone. */
   function renderPalette() {
     const current = document.getElementById('section-palette');
     if (current) current.replaceWith(paletteSection());
+    postPreviewState();
   }
 
+  /** The page is the Lab alone: no header; the Palette Inspector stays a command. */
   function renderShell() {
-    const inspectorBtn = h('button', {
-      class: 'secondary',
-      title: 'Open the Palette Inspector, the debugging view of every color in effect',
-      onclick: () => vscode.postMessage({ type: 'openPaletteInspector' }),
-    }, 'Open Palette Inspector');
-
-    document.getElementById('app').replaceChildren(
-      h('header', { class: 'summary lab-header' },
-        h('div', null,
-          h('h1', null, 'Theme Lab'),
-          h('div', { class: 'muted' }, 'Build a palette, try it in VS Code, and save the ones worth keeping.')),
-        h('span', { class: 'spacer' }),
-        h('div', { id: 'lab-active', class: 'muted' }),
-        inspectorBtn),
-      h('main', { id: 'results' }, paletteSection()),
-    );
-    renderActive();
+    document.getElementById('app').replaceChildren(h('main', { id: 'results' }, paletteSection()));
   }
 
-  /** Applies a fresh open's first 'start': a shipped base, the last Try, a saved theme, or a note. */
+  /**
+   * Applies a fresh open's first 'start': the last Try, a saved theme, or a note. A last Try
+   * of pasted colors opens on Wheel, since Start has no Paste tab.
+   */
   function applyStart(start) {
     if (!fresh || startApplied) return;
     startApplied = true;
     const s = start || {};
-    if (s.base) {
-      PaletteLab.startFrom(ui.palette, s.base);
-      ui.palette.startTab = s.base.source === 'pasted' ? 'paste' : 'wheel';
-    } else if (s.lastTry) {
+    if (s.lastTry) {
       PaletteLab.restoreTry(ui.palette, s.lastTry);
-      ui.palette.startTab = s.lastTry.mode === 'pasted' ? 'paste' : 'wheel';
+      ui.palette.startTab = 'wheel';
     } else if (s.saved) {
       PaletteLab.loadSaved(ui.palette, s.saved);
       ui.palette.startTab = 'saved';
@@ -199,28 +165,38 @@
   window.addEventListener('message', ev => {
     const msg = ev.data;
     if (!msg) return;
-    if (msg.type === 'themes') {
-      themesState = {
+    if (msg.type === 'library') {
+      libraryState = {
         themes: Array.isArray(msg.themes) ? msg.themes : [],
-        active: msg.active || null,
-        bases: msg.bases && typeof msg.bases === 'object' ? msg.bases : {},
+        groups: Array.isArray(msg.groups) ? msg.groups : [],
+        hasFolder: msg.hasFolder === true,
       };
-      renderActive();
-      renderPalette();
-    } else if (msg.type === 'catalog') {
-      catalogState = { catalog: msg.catalog, path: msg.path, reason: msg.reason };
-      catalogError = null;
-      renderPalette();
-    } else if (msg.type === 'catalogError') {
-      catalogError = msg.message;
-      renderPalette();
-    } else if (msg.type === 'library') {
-      libraryState = { themes: Array.isArray(msg.themes) ? msg.themes : [], hasFolder: msg.hasFolder === true };
       renderPalette();
     } else if (msg.type === 'start') {
       applyStart(msg.start);
     } else if (msg.type === 'identity') {
       applyIdentity(msg.identity);
+    } else if (msg.type === 'modernUI') {
+      modernUI = msg.modernUI && typeof msg.modernUI === 'object' ? msg.modernUI : null;
+      renderPalette();
+    } else if (msg.type === 'frameSeed') {
+      // Make project theme, from a folder's old color: that color as the frame, the folder's name.
+      if (msg.frame && typeof msg.frame === 'object' && typeof msg.name === 'string') {
+        PaletteLab.seedFrame(ui.palette, { frame: msg.frame, name: msg.name });
+        saveState();
+        renderPalette();
+      }
+    } else if (msg.type === 'previewDetached') {
+      detached = msg.detached === true;
+      renderPalette();
+    } else if (msg.type === 'pickPart') {
+      // A part clicked in the Theme Preview window: open its colors in Edit colors.
+      PaletteLab.setPicked(ui.palette, msg.part);
+      saveState();
+      renderPalette();
+      // In one column the Edit panel sits under the steps: bring it into view.
+      const edit = document.querySelector('.gb-s4');
+      if (edit && typeof edit.scrollIntoView === 'function') edit.scrollIntoView({ block: 'nearest' });
     }
   });
 

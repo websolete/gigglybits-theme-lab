@@ -45,7 +45,7 @@ const fs = require('fs');
 const root = path.resolve(__dirname, '..');
 const assets = [
   'dist/codicons/codicon.css', 'dist/codicons/codicon.ttf',
-  'media/shared.js', 'media/themeBuilder.js', 'media/gallery.js', 'media/palette.js', 'media/inspector.js', 'media/themeLab.js', 'media/themeList.js',
+  'media/shared.js', 'media/themeBuilder.js', 'media/gallery.js', 'media/palette.js', 'media/inspector.js', 'media/themeLab.js',
   'media/inspector.css', 'media/gallery.css', 'media/palette.css', 'media/themeLab.css',
 ];
 const absent = assets.filter(a => !fs.existsSync(path.join(root, a)));

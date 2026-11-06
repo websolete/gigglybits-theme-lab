@@ -400,9 +400,61 @@
     return { base, overlay, colors: { ...base, ...overlay } };
   }
 
+  /**
+   * VS Code's default for surface.border: foreground at 15% made opaque over surface.background.
+   * makeOpaque mixes each channel as bg - a * (bg - fg) and truncates it, as VS Code's RGBA does.
+   * Over a translucent background VS Code leaves the color translucent, and so does this.
+   */
+  function fadeOver(fgHex, alpha, bgHex) {
+    const fg = parseColor(fgHex);
+    const bg = parseColor(bgHex);
+    if (!fg || !bg) return undefined;
+    const a = fg.a * alpha;
+    if (bg.a < 1) return toHex({ r: fg.r, g: fg.g, b: fg.b, a });
+    const mix = ch => (bg[ch] - a * (bg[ch] - fg[ch])) | 0;
+    return toHex({ r: mix('r'), g: mix('g'), b: mix('b'), a: 1 });
+  }
+
+  /**
+   * VS Code's dark defaults for the modern UI color keys, in dependency order: each rule names
+   * the keys it reads, which may be earlier rules' results, and how it combines them.
+   */
+  const MODERN_UI_RULES = [
+    ['modernUI.shellBackground', ['titleBar.activeBackground'], ([c]) => c],
+    ['surface.background', ['sideBar.background'], ([c]) => c],
+    ['surface.border', ['foreground', 'surface.background'], ([fg, bg]) => fadeOver(fg, 0.15, bg)],
+    ['modernPanel.border', ['surface.border'], ([c]) => c],
+    ['modernTab.activeBackground', ['list.inactiveSelectionBackground'], ([c]) => c],
+    ['modernTab.activeForeground', ['list.inactiveSelectionForeground', 'foreground'], ([a, b]) => a || b, true],
+    ['modernEditorTab.activeBackground', ['modernTab.activeBackground'], ([c]) => c],
+    ['modernEditorTab.activeForeground', ['modernTab.activeForeground'], ([c]) => c],
+    ['modernActivityBarItem.activeBackground', ['modernTab.activeBackground'], ([c]) => c],
+    ['modernActivityBarItem.activeForeground', ['modernTab.activeForeground'], ([c]) => c],
+  ];
+
+  /**
+   * The modern UI keys `colors` leaves unset, each worked out from `colors` with VS Code's
+   * default rule. A key `colors` already holds is left out, as is one whose source is missing.
+   * `colors` maps color key to hex and is not changed.
+   */
+  function modernUIDefaults(colors) {
+    const all = { ...colors };
+    const out = {};
+    for (const [key, sources, combine, anyOf] of MODERN_UI_RULES) {
+      if (key in colors) continue;
+      const values = sources.map(s => all[s]);
+      if (anyOf ? !values.some(Boolean) : !values.every(Boolean)) continue;
+      const value = combine(values);
+      if (!value) continue;
+      all[key] = value;
+      out[key] = value;
+    }
+    return out;
+  }
+
   return {
     VAR_PREFIX, h, tabs, varFor, parseColor, toHex, over, luminance, contrastRatio, contrastGrade, resolveTokenStyle,
     hexToOklch, oklchToHex, HARMONY_RULES, harmony, paletteId, parseHexList,
-    textOn, liftTo, CHROME_SURFACES, CHROME_REGIONS, chromeColors,
+    textOn, liftTo, CHROME_SURFACES, CHROME_REGIONS, chromeColors, modernUIDefaults,
   };
 });

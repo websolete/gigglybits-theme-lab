@@ -30,6 +30,8 @@
   font-size: 13px;
   line-height: 1.4;
 }
+/* A preview shrunk to the card's width (gallery.js fitToWidth) needs no sideways scrollbar. */
+.gb-preview-fit { overflow-x: hidden; }
 .gb-subhead {
   margin: 10px 0 4px;
   font-size: 0.8em;
@@ -160,6 +162,22 @@
 .wb-term { padding: 6px 10px 10px; font-family: var(--vscode-editor-font-family); font-size: 12px; }
 .wb-status { grid-area: status; display: flex; align-items: center; height: 22px; font-size: 12px; }
 .wb-remote { padding: 0 9px; }
+
+/* Header casing: labels are written in mixed case, and VS Code shows them in capitals under
+   the classic UI or with workbench.experimental.modernUIUppercaseViewHeaders on. */
+.gb-upper .wb-side-title, .gb-upper .wb-section, .gb-upper .gb-ptab { text-transform: uppercase; }
+
+/* Modern UI: the side bars, editor and panel float as rounded cards on the shell background,
+   using VS Code's sizes (cornerRadius.large 8px, cornerRadius.medium 6px, spacing.size40 4px). */
+.wb-modern { gap: 4px; }
+.wb-modern > .wb-side, .wb-modern > .wb-aux, .wb-modern > .wb-editor, .wb-modern > .wb-panel {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.wb-modern .wb-act { border-left: none; margin: 2px 6px; height: 40px; border-radius: 6px; }
+.wb-modern .gb-ptab-active { padding: 2px 8px; border-bottom: none; border-radius: 6px; }
+.wb-modern .gb-tab-active { border-top: none; border-radius: 6px 6px 0 0; }
+.wb-pill .gb-tab-active { border-radius: 6px; margin: 4px; height: 27px; border-bottom: none; }
 
 /* ----------------------------------------------------------------- trees */
 

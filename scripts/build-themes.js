@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// Writes one GigglyBits Dark theme per palette marked include in palettes/catalog.json,
-// removes theme files no included palette produces, and keeps package.json
+// Writes the themes the extension ships: GigglyBits Dark (Lab), the theme Try in VS Code
+// applies candidates to, and the slots GigglyBits Theme 1 to 12 that saved themes bind to.
+// All 13 are built from BASE below, so each looks finished before scoped settings color it.
+// Removes any GigglyBits Dark (<name>) theme an older build wrote, and keeps package.json
 // contributes.themes in step.
 //
 //   node scripts/build-themes.js            build into the repository
@@ -8,7 +10,17 @@
 //   --root <dir>                            work on <dir> instead of the repository (tests)
 const fs = require('fs');
 const path = require('path');
-const { buildTheme, themeFileName, themeLabel, LAB_THEME_FILE, LAB_THEME_LABEL, SLOT_COUNT, slotFile, slotLabel } = require('./theme-builder');
+const { buildTheme, LAB_THEME_FILE, LAB_THEME_LABEL, SLOT_COUNT, slotFile, slotLabel } = require('./theme-builder');
+
+/** The base palette: Candy, the palette the Lab theme and the slots have always been built from. */
+const BASE = {
+  source: 'generated',
+  rule: 'triad',
+  baseHue: 210,
+  lightness: 0.75,
+  chroma: 0.13,
+  colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'],
+};
 
 const GENERATED = /^gigglybits-dark-.+-color-theme\.json$/;
 const SLOT = /^gigglybits-theme-\d+-color-theme\.json$/;
@@ -29,49 +41,33 @@ const readOrNull = file => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') 
 
 /** Every file the build would write (path relative to root -> content) and every file it would delete. */
 function plan(root) {
-  const catalog = JSON.parse(fs.readFileSync(path.join(root, 'palettes', 'catalog.json'), 'utf8'));
-  const included = catalog.palettes.filter(p => p.status === 'include');
   const writes = new Map();
-  for (const entry of included) {
-    writes.set('themes/' + themeFileName(entry), json(buildTheme(entry)));
-  }
-  // The Palette Lab applies candidates to this theme through scoped settings. Its file is
-  // the first included palette, so it still looks finished before anything is applied.
-  if (included.length) {
-    writes.set('themes/' + LAB_THEME_FILE, json({ ...buildTheme(included[0]), name: LAB_THEME_LABEL }));
-    // The theme slots saved library themes bind to (src/themeLibrary.ts). Like the Lab
-    // theme, each looks like the first included palette until a saved theme's scoped
-    // settings color it.
-    for (const n of SLOTS) {
-      writes.set('themes/' + slotFile(n), json({ ...buildTheme(included[0]), name: slotLabel(n) }));
-    }
+  const base = buildTheme(BASE);
+  writes.set('themes/' + LAB_THEME_FILE, json({ ...base, name: LAB_THEME_LABEL }));
+  for (const n of SLOTS) {
+    writes.set('themes/' + slotFile(n), json({ ...base, name: slotLabel(n) }));
   }
   const themesDir = path.join(root, 'themes');
   const deletes = fs.existsSync(themesDir)
     ? fs.readdirSync(themesDir)
-      .filter(f => (GENERATED.test(f) || SLOT.test(f) || f === LAB_THEME_FILE) && !writes.has('themes/' + f))
+      .filter(f => (GENERATED.test(f) || SLOT.test(f)) && !writes.has('themes/' + f))
       .map(f => 'themes/' + f)
     : [];
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   pkg.contributes = pkg.contributes || {};
-  pkg.contributes.themes = included.map(entry => ({
-    label: themeLabel(entry),
-    uiTheme: 'vs-dark',
-    path: './themes/' + themeFileName(entry),
-  }));
-  if (included.length) {
-    pkg.contributes.themes.push({ label: LAB_THEME_LABEL, uiTheme: 'vs-dark', path: './themes/' + LAB_THEME_FILE });
-    for (const n of SLOTS) {
-      pkg.contributes.themes.push({ label: slotLabel(n), uiTheme: 'vs-dark', path: './themes/' + slotFile(n) });
-    }
-  }
+  pkg.contributes.themes = [
+    { label: LAB_THEME_LABEL, uiTheme: 'vs-dark', path: './themes/' + LAB_THEME_FILE },
+    ...SLOTS.map(n => ({ label: slotLabel(n), uiTheme: 'vs-dark', path: './themes/' + slotFile(n) })),
+  ];
   writes.set('package.json', json(pkg));
-  return { included, writes, deletes };
+  return { writes, deletes };
 }
+
+const SUMMARY = `Lab theme and ${SLOT_COUNT} slots`;
 
 function main() {
   const { check, root } = parseArgs(process.argv.slice(2));
-  const { included, writes, deletes } = plan(root);
+  const { writes, deletes } = plan(root);
   const changed = [...writes].filter(([rel, content]) => readOrNull(path.join(root, rel)) !== content).map(([rel]) => rel);
   const stale = [...changed, ...deletes];
 
@@ -80,14 +76,14 @@ function main() {
       console.error(`Themes out of date: ${stale.join(', ')}. Run npm run themes.`);
       process.exit(1);
     }
-    console.log(`Themes up to date: ${included.length} variants`);
+    console.log(`Themes up to date: ${SUMMARY}`);
     return;
   }
 
   fs.mkdirSync(path.join(root, 'themes'), { recursive: true });
   for (const rel of changed) {fs.writeFileSync(path.join(root, rel), writes.get(rel), 'utf8');}
   for (const rel of deletes) {fs.rmSync(path.join(root, rel));}
-  console.log(`Themes built: ${included.length} variants` + (stale.length ? `; updated ${stale.join(', ')}` : '; nothing changed'));
+  console.log(`Themes built: ${SUMMARY}` + (stale.length ? `; updated ${stale.join(', ')}` : '; nothing changed'));
 }
 
 main();

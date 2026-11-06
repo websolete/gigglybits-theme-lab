@@ -9,8 +9,11 @@
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { parse, ParseError } from 'jsonc-parser';
-import { FRAME_KEYS, LabSettings, labSettings, SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
+import {
+  ChromeChoice, FRAME_KEYS, GROUP_FAMILIES, GroupFamily, LabSettings, labSettings, SLOT_COUNT, slotLabel, StyleGroup as BuilderGroup, TextLevel,
+} from '../scripts/theme-builder';
 import { parseTryRecord, TryFrame } from './labStart';
+import { withoutIdentity } from './identity';
 
 /** Everything the Lab holds about a design, so Load brings it back exactly. */
 export interface Design {
@@ -26,7 +29,18 @@ export interface Design {
   surfaces: string;
   frame: TryFrame;
   edits: { swatches: Record<string, string>; keys: Record<string, string> };
+  /** The Roles step's settings, present only when changed from their defaults. */
+  syntax?: number[];
+  depth?: number;
+  text?: TextLevel;
 }
+
+/** The Roles step's settings of a design, for the chrome choice the builder reads. */
+const roleChrome = (d: Design): Pick<ChromeChoice, 'syntax' | 'depth' | 'text'> => ({
+  ...(d.syntax ? { syntax: d.syntax } : {}),
+  ...(d.depth !== undefined ? { depth: d.depth } : {}),
+  ...(d.text ? { text: d.text } : {}),
+});
 
 export interface SavedTheme {
   id: string;
@@ -34,7 +48,10 @@ export interface SavedTheme {
   /** The bound slot, 1 to SLOT_COUNT, or null when the theme has none. */
   slot: number | null;
   design: Design;
-  /** Shared style groups this theme names; always [] until the style groups work lands. */
+  /**
+   * Style groups this theme names for itself; always [], because per-theme groups are
+   * deferred. The groups that are on apply to every saved theme (gigglybits.groups).
+   */
   groups: string[];
   savedAt: string;
 }
@@ -66,6 +83,9 @@ export function parseDesign(value: unknown): Design | undefined {
     surfaces: record.surfaces,
     frame: record.frame,
     edits: record.edits ?? { swatches: {}, keys: {} },
+    ...(record.syntax ? { syntax: record.syntax } : {}),
+    ...(record.depth !== undefined ? { depth: record.depth } : {}),
+    ...(record.text ? { text: record.text } : {}),
   };
   if (record.mode === 'generated') {
     Object.assign(design, { rule: record.rule, hue: record.hue, lightness: record.lightness, chroma: record.chroma });
@@ -176,10 +196,90 @@ export function deleteTheme(library: SavedTheme[], id: string): { library: Saved
   return { library: library.filter(t => t.id !== id), freedSlot: theme?.slot ?? null };
 }
 
-/** The settings a theme's slot carries: the same colors and token rules the Lab builds. */
-export function slotSettings(theme: SavedTheme): LabSettings {
+/** The settings a theme's slot carries: the same colors and token rules the Lab builds, with groups applied. */
+export function slotSettings(theme: SavedTheme, groups: readonly BuilderGroup[] = []): LabSettings {
   const d = theme.design;
-  return labSettings({ name: theme.name, colors: d.colors }, { index: d.chromeIndex, surfaces: d.surfaces, frame: d.frame }, d.edits);
+  return labSettings({ name: theme.name, colors: d.colors }, { index: d.chromeIndex, surfaces: d.surfaces, frame: d.frame, ...roleChrome(d) }, d.edits, groups);
+}
+
+// ------------------------------------------------------------------ style groups
+//
+// A style group maps a widget family's colors to Editor roles of the theme builder. Groups live
+// in the user-only setting gigglybits.groups; one that is on applies to every saved theme's slot,
+// drawn from that theme's own swatches. At most one group per family is on.
+
+/** A saved style group: the builder's { family, roles } with its name and whether it is on. */
+export interface StyleGroup extends BuilderGroup {
+  id: string;
+  name: string;
+  on: boolean;
+  savedAt: string;
+}
+
+const isFamily = (v: unknown): v is GroupFamily => typeof v === 'string' && Object.prototype.hasOwnProperty.call(GROUP_FAMILIES, v);
+
+/** The valid groups in value, in order; anything else is dropped. */
+export function parseGroups(value: unknown): StyleGroup[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const groups: StyleGroup[] = [];
+  for (const item of value) {
+    if (!isObject(item)) { continue; }
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (typeof item.id !== 'string' || !item.id || !name || !isFamily(item.family) || typeof item.on !== 'boolean') { continue; }
+    const roles = item.roles;
+    if (!isObject(roles) || !Object.values(roles).every(v => typeof v === 'string')) { continue; }
+    groups.push({
+      id: item.id,
+      name,
+      family: item.family,
+      roles: { ...(roles as Record<string, string>) },
+      on: item.on,
+      savedAt: typeof item.savedAt === 'string' ? item.savedAt : '',
+    });
+  }
+  return groups;
+}
+
+/**
+ * Saves a group. One of the same family with the same name (trimmed, case-insensitive) keeps
+ * its id and on and takes the new roles; any other name is added as a new group that is off.
+ */
+export function saveGroup(
+  groups: StyleGroup[],
+  input: { name: string; family: GroupFamily; roles: Record<string, string>; now: string },
+): { groups: StyleGroup[]; group: StyleGroup } {
+  const roles = { ...input.roles };
+  const match = groups.find(g => g.family === input.family && sameName(g.name, input.name));
+  if (match) {
+    const group: StyleGroup = { ...match, roles, savedAt: input.now };
+    return { groups: groups.map(g => (g === match ? group : g)), group };
+  }
+  const group: StyleGroup = { id: randomUUID(), name: input.name.trim(), family: input.family, roles, on: false, savedAt: input.now };
+  return { groups: [...groups, group], group };
+}
+
+/** groups with id switched on or off; switching one on switches off every other group of its family. */
+export function setGroupOn(groups: StyleGroup[], id: string, on: boolean): StyleGroup[] {
+  const target = groups.find(g => g.id === id);
+  if (!target) {
+    return groups;
+  }
+  return groups.map(g => {
+    if (g.id === id) { return { ...g, on }; }
+    return on && g.family === target.family && g.on ? { ...g, on: false } : g;
+  });
+}
+
+/** groups without id. */
+export function deleteGroup(groups: StyleGroup[], id: string): StyleGroup[] {
+  return groups.filter(g => g.id !== id);
+}
+
+/** The groups that are on. */
+export function activeGroups(groups: readonly StyleGroup[]): StyleGroup[] {
+  return groups.filter(g => g.on);
 }
 
 type Settings = Record<string, unknown>;
@@ -205,17 +305,32 @@ export interface SlotSettingValues {
   tokens: unknown;
 }
 
-/** values with theme's slot block written into both settings: its colors, and its token rules as textMateRules. */
-export function writeSlot(values: SlotSettingValues, theme: SavedTheme): { colors: Settings; tokens: Settings } {
+/**
+ * values with theme's slot block written into both settings: its colors, and its token rules as
+ * textMateRules, with the active groups applied.
+ */
+export function writeSlot(values: SlotSettingValues, theme: SavedTheme, groups: readonly BuilderGroup[] = []): { colors: Settings; tokens: Settings } {
   if (theme.slot === null) {
     throw new Error(`${theme.name} has no slot.`);
   }
   const label = slotLabel(theme.slot);
-  const settings = everywhereSettings(theme);
+  const settings = everywhereSettings(theme, groups);
   return {
     colors: withScope(values.colors, label, settings.colors),
     tokens: withScope(values.tokens, label, { textMateRules: settings.tokenColors }),
   };
+}
+
+/** values with every bound theme's slot block rewritten through writeSlot, with the groups of `groups` that are on. */
+export function writeAllSlots(values: SlotSettingValues, library: SavedTheme[], groups: readonly StyleGroup[]): { colors: Settings; tokens: Settings } {
+  const active = activeGroups(groups);
+  let next = { colors: { ...(isObject(values.colors) ? values.colors : {}) }, tokens: { ...(isObject(values.tokens) ? values.tokens : {}) } };
+  for (const theme of library) {
+    if (theme.slot !== null) {
+      next = writeSlot(next, theme, active);
+    }
+  }
+  return next;
 }
 
 // ------------------------------------------------------------------ frames belong to projects
@@ -237,13 +352,17 @@ function editorEdits(edits: Design['edits']): Design['edits'] {
   };
 }
 
-/** What a theme's slot carries in user settings, for Use everywhere: its Editor colors, with a Dark frame following its accent. */
-export function everywhereSettings(theme: SavedTheme): LabSettings {
+/**
+ * What a theme's slot carries in user settings, for Use everywhere: its Editor colors, with a
+ * Dark frame following its accent, and the active groups applied.
+ */
+export function everywhereSettings(theme: SavedTheme, groups: readonly BuilderGroup[] = []): LabSettings {
   const d = theme.design;
   return labSettings(
     { name: theme.name, colors: d.colors },
-    { index: d.chromeIndex, surfaces: d.surfaces, frame: { index: d.chromeIndex, style: 'dark' } },
-    editorEdits(d.edits));
+    { index: d.chromeIndex, surfaces: d.surfaces, frame: { index: d.chromeIndex, style: 'dark' }, ...roleChrome(d) },
+    editorEdits(d.edits),
+    groups);
 }
 
 /** The frame Use in this project gives the folder: the FRAME_KEYS of the theme's full colors. */
@@ -255,6 +374,14 @@ export function projectFrame(theme: SavedTheme): Record<string, string> {
 /** A folder's workbench.colorCustomizations with only `slot`'s frame block among the slot blocks; every other key kept. */
 export function withProjectFrame(current: unknown, slot: number, frame: Record<string, string>): Settings {
   return { ...withoutProjectFrames(current), [`[${slotLabel(slot)}]`]: frame };
+}
+
+/**
+ * What Use in this project writes to a folder's workbench.colorCustomizations: any old folder
+ * color removed (top level and '[GigglyBits*]'), then only `slot`'s frame block among the slot blocks.
+ */
+export function projectColors(current: unknown, slot: number, frame: Record<string, string>): Settings {
+  return withProjectFrame(withoutIdentity(current), slot, frame);
 }
 
 /** A folder's workbench.colorCustomizations without any slot's frame block. */

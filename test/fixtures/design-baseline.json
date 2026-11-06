@@ -1,0 +1,12 @@
+{
+  "mode": "generated",
+  "rule": "shades",
+  "hue": 308,
+  "lightness": 0.68,
+  "chroma": 0.168,
+  "colors": ["#8446b2", "#9c5fcc", "#b578e7", "#cd93fe", "#dcb9fd"],
+  "chromeIndex": 1,
+  "surfaces": "tinted",
+  "frame": { "index": 2, "style": "filled" },
+  "edits": { "swatches": { "raised": "#33283d" }, "keys": {} }
+}

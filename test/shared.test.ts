@@ -85,8 +85,7 @@ describe('chromeColors', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const TB = require('../scripts/theme-builder.js');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const catalog = require('../palettes/catalog.json');
-  const included = catalog.palettes.filter((p: { status: string }) => p.status === 'include');
+  const included = require('./fixtures/palettes.json').palettes;
 
   it('Neutral surfaces with color 1 match what the theme builder ships, for every included palette', () => {
     expect(included.length).toBeGreaterThan(0);
@@ -146,5 +145,36 @@ describe('chromeColors', () => {
     expect(withFill.overlay['titleBar.activeBackground']).toBe('#fed0f9');
     expect(withFill.base).toEqual(GB.chromeColors({ color: '#336699' }).base);
     expect(GB.chromeColors({ color: '#336699', regions: ['titleBar'] }).overlay['titleBar.activeBackground']).toBe('#336699');
+  });
+});
+
+describe('modernUIDefaults', () => {
+  const COLORS = {
+    'titleBar.activeBackground': '#101820',
+    'sideBar.background': '#1a2b3c',
+    'foreground': '#ccddee',
+    'list.inactiveSelectionBackground': '#37373d',
+  };
+
+  it('works out the modern keys from a theme\'s colors with VS Code\'s dark rules', () => {
+    const result = GB.modernUIDefaults(COLORS);
+    expect(result['modernUI.shellBackground']).toBe(COLORS['titleBar.activeBackground']);
+    expect(result['modernEditorTab.activeBackground']).toBe(COLORS['list.inactiveSelectionBackground']);
+    expect(result['modernActivityBarItem.activeBackground']).toBe(COLORS['list.inactiveSelectionBackground']);
+    // No list.inactiveSelectionForeground, so the active modern tab's text falls back to foreground.
+    expect(result['modernTab.activeForeground']).toBe(COLORS.foreground);
+    // makeOpaque: each channel is bg - 0.15 * (bg - fg), truncated to an integer.
+    const bg = GB.parseColor(COLORS['sideBar.background']);
+    const fg = GB.parseColor(COLORS.foreground);
+    const ch = (c: 'r' | 'g' | 'b') => Math.trunc(bg[c] - 0.15 * (bg[c] - fg[c]));
+    expect(GB.parseColor(result['surface.border'])).toEqual({ r: ch('r'), g: ch('g'), b: ch('b'), a: 1 });
+    expect(result['surface.border']).not.toBe(COLORS.foreground);
+    expect(result['modernPanel.border']).toBe(result['surface.border']);
+  });
+
+  it('leaves out a modern key the colors already hold', () => {
+    const result = GB.modernUIDefaults({ ...COLORS, 'modernUI.shellBackground': '#ff0000' });
+    expect(Object.keys(result)).not.toContain('modernUI.shellBackground');
+    expect('modernUI.shellBackground' in result).toBe(false);
   });
 });

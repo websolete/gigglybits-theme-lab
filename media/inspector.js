@@ -421,12 +421,39 @@
         h('tr', null, h('td', { class: 'mono' }, u.key), h('td', { class: 'mono' }, u.value), h('td', null, sourceBadge(u.source, u.origin)), h('td', { class: 'muted' }, u.origin || ''))))));
   }
 
+  /** VS Code's modern UI settings from the latest 'modernUI' message; null draws the classic workbench. */
+  let modernUI = null;
+
+  /**
+   * The modern UI keys the live theme leaves unset, worked out from the live values with VS Code's
+   * default rules (GB.modernUIDefaults), as model entries marked as VS Code defaults. Only the
+   * gallery draws with them; the summary, the color list and Export keep the live colors alone.
+   */
+  function modernDefaults() {
+    const live = {};
+    for (const e of model.byKey.values()) live[e.key] = e.value;
+    const added = [];
+    for (const [key, value] of Object.entries(window.GB.modernUIDefaults(live))) {
+      const rgba = parseColor(value);
+      if (rgba) added.push({ key, prop: varFor(key), value, rgba, hex: toHex(rgba), source: 'default', origin: 'VS Code default rule for the modern UI' });
+    }
+    return added;
+  }
+
   function galleryContext() {
-    return { model, snapshot, ui, tokens: model.tokens, copy, sourceBadge, contrastBadge, trackOpen };
+    const added = modernDefaults();
+    const byKey = new Map(model.byKey);
+    for (const e of added) byKey.set(e.key, e);
+    return { model: { ...model, byKey }, snapshot, ui, tokens: model.tokens, modernUI: modernUI || undefined, copy, sourceBadge, contrastBadge, trackOpen, added };
   }
 
   function gallerySection() {
-    const g = Gallery.render(galleryContext());
+    const gctx = galleryContext();
+    const g = Gallery.render(gctx);
+    // The live page defines no variable for a key the theme leaves unset, so the worked-out
+    // modern UI defaults are defined on the gallery's own node, below <html>, which the theme
+    // watcher observes.
+    for (const e of gctx.added) g.node.style.setProperty(e.prop, e.value);
     const count = g.shown === g.total ? String(g.total) : `${g.shown} of ${g.total}`;
     return section('gallery', true, 'Element gallery', count,
       h('p', { class: 'muted' }, 'VS Code widgets drawn with the colors in effect. Hover a part to light up its keys, or a key to outline what it paints. Open Definitions for values, sources and contributors.'),
@@ -514,6 +541,9 @@
     if (msg.type === 'snapshot') {
       snapshot = msg.snapshot;
       scheduleRender();
+    } else if (msg.type === 'modernUI') {
+      modernUI = msg.modernUI && typeof msg.modernUI === 'object' ? msg.modernUI : null;
+      renderResults();
     }
   });
 

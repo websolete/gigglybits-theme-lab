@@ -1,7 +1,7 @@
 // What a freshly opened Theme Lab starts from, decided without VS Code so jest tests it
 // directly. src/themeLabPanel.ts sends the result as the 'start' message on 'ready'.
 import { cleanEdits, LAB_THEME_LABEL, SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
-import { ThemeBase } from './themeList';
+import type { TextLevel } from '../scripts/theme-builder';
 import type { Design, SavedTheme } from './themeLibrary';
 
 /** What Try in VS Code records about the tried candidate, stored in globalState. */
@@ -14,12 +14,34 @@ export interface TryRecord {
   pasted?: string[];
   chromeIndex: number;
   surfaces: string;
+  /** Recorded by a Try from when a Lab could start from a shipped theme; kept when read back. */
   baseId?: string;
   baseName?: string;
   /** The Lab's color edits, present when any were made. */
   edits?: { swatches: Record<string, string>; keys: Record<string, string> };
   /** The Frame choices: a palette index or a '#rrggbb' color, and a style. */
   frame?: TryFrame;
+  /** The Roles step's settings, present only when changed from their defaults. */
+  syntax?: number[];
+  depth?: number;
+  text?: TextLevel;
+}
+
+const TEXT_IDS: readonly TextLevel[] = ['soft', 'standard', 'high'];
+
+/**
+ * The Roles step's settings in value, each kept only when valid: syntax as five non-negative
+ * integers, depth as a finite number, text as a level id. The builder cleans the values further.
+ */
+export function parseRoleSettings(value: Record<string, unknown>): Pick<TryRecord, 'syntax' | 'depth' | 'text'> {
+  const out: Pick<TryRecord, 'syntax' | 'depth' | 'text'> = {};
+  const syntax = value.syntax;
+  if (Array.isArray(syntax) && syntax.length === 5 && syntax.every(i => Number.isInteger(i) && (i as number) >= 0)) {
+    out.syntax = (syntax as number[]).slice();
+  }
+  if (isFiniteNumber(value.depth)) { out.depth = value.depth; }
+  if (typeof value.text === 'string' && (TEXT_IDS as readonly string[]).includes(value.text)) { out.text = value.text as TextLevel; }
+  return out;
 }
 
 export interface TryFrame {
@@ -84,12 +106,12 @@ export function parseTryRecord(value: unknown): TryRecord | undefined {
   if (Object.keys(edits.swatches).length || Object.keys(edits.keys).length) { record.edits = edits; }
   const frame = parseFrame(v.frame);
   if (frame) { record.frame = frame; }
+  Object.assign(record, parseRoleSettings(v));
   return record;
 }
 
-/** The 'start' message's payload: a shipped base, the last Try, a saved theme, or a note on why none. */
+/** The 'start' message's payload: the last Try, a saved theme, or a note on why none. */
 export interface StartConfig {
-  base?: ThemeBase;
   lastTry?: TryRecord;
   /** The saved theme bound to the active slot. */
   saved?: { name: string; design: Design };
@@ -105,17 +127,14 @@ function slotNumber(label: string): number | undefined {
 }
 
 /**
- * What a fresh Theme Lab starts from under the active theme `active`: that theme's base when
- * it is a listed GigglyBits theme, the last Try under the Lab theme, the saved theme bound to
- * the active slot, otherwise a note. An unknown active theme (undefined) starts from the
- * defaults with no note. `library` is the saved themes (src/themeLibrary.ts parseLibrary).
+ * What a fresh Theme Lab starts from under the active theme `active`: the last Try under the
+ * Lab theme, the saved theme bound to the active slot, otherwise a note. An unknown active
+ * theme (undefined) starts from the defaults with no note. `library` is the saved themes
+ * (src/themeLibrary.ts parseLibrary).
  */
-export function startConfig(active: string | undefined, bases: Record<string, ThemeBase>, lastTry: unknown, library: SavedTheme[] = []): StartConfig {
+export function startConfig(active: string | undefined, lastTry: unknown, library: SavedTheme[] = []): StartConfig {
   if (active === undefined) {
     return {};
-  }
-  if (Object.prototype.hasOwnProperty.call(bases, active)) {
-    return { base: bases[active] };
   }
   if (active === LAB_THEME_LABEL) {
     const record = parseTryRecord(lastTry);

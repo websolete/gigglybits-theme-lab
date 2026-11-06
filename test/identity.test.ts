@@ -1,42 +1,13 @@
-// src/identity.ts: the folder hue, suggestions, the theme-following fill, the overlay, the
-// settings edits and the offer decision.
+// src/identity.ts: the old per-folder color's overlay, finding a folder's old color, removing
+// it, and the one-time project-theme offer.
 import {
   IDENTITY_KEYS, IDENTITY_REGIONS, IDENTITY_SCOPES, LEGACY_SCOPE,
-  harmonizedFill, identityOverlay, nextHue, overlayIncomplete, shouldOffer, suggestionHues, withIdentity, withoutIdentity,
-  workspaceHue,
+  drawnOldColor, identityOverlay, oldFolderColor, shouldOfferMigration, withIdentity, withoutIdentity,
 } from '../src/identity';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const GB = require('../media/shared.js');
 
 const contrast = (a: string, b: string) => GB.contrastRatio(GB.parseColor(a), GB.parseColor(b));
-
-describe('workspace hue and suggestions', () => {
-  it('hashes the workspace name to a stable hue', () => {
-    expect(workspaceHue('gigglybits-vscode-theme')).toBe(321);
-  });
-
-  it('steps by the golden angle and chains eight suggestions', () => {
-    expect(nextHue(321)).toBe(99);
-    const hues = suggestionHues(321);
-    expect(hues).toHaveLength(8);
-    expect(hues[0]).toBe(321);
-    for (let i = 1; i < hues.length; i++) { expect(hues[i]).toBe(nextHue(hues[i - 1])); }
-  });
-});
-
-describe('harmonizedFill', () => {
-  it('takes lightness from the accent, clamped to 0.45-0.75, and keeps the hue', () => {
-    expect(GB.hexToOklch('#b2b6fd').l).toBeGreaterThan(0.75);
-    expect(GB.hexToOklch('#34288a').l).toBeLessThan(0.45);
-    expect(Math.abs(GB.hexToOklch(harmonizedFill(200, '#b2b6fd')).l - 0.75)).toBeLessThanOrEqual(0.01);
-    expect(Math.abs(GB.hexToOklch(harmonizedFill(200, '#34288a')).l - 0.45)).toBeLessThanOrEqual(0.01);
-    expect(Math.abs(GB.hexToOklch(harmonizedFill(200, '#b2b6fd')).h - 200)).toBeLessThanOrEqual(1);
-  });
-
-  it('gives a gray accent enough chroma to read as a color', () => {
-    expect(GB.hexToOklch(harmonizedFill(200, '#808080')).c).toBeGreaterThanOrEqual(0.07);
-  });
-});
 
 describe('identityOverlay', () => {
   it.each([['light', '#e0f0a0'], ['dark', '#2a1650']])('puts black or white text with 4.5:1 contrast on a %s fill', (_label, fill) => {
@@ -85,46 +56,49 @@ describe('withIdentity and withoutIdentity', () => {
   });
 });
 
-describe('overlayIncomplete', () => {
-  const overlay = identityOverlay('#fed0f9', IDENTITY_REGIONS);
-
-  it('is true for an overlay at the top level only, with no "[GigglyBits*]" copy', () => {
-    expect(overlayIncomplete({ ...overlay }, IDENTITY_REGIONS)).toBe(true);
+describe('oldFolderColor', () => {
+  it('returns a pinned color', () => {
+    expect(oldFolderColor({}, '#336699')).toBe('#336699');
   });
 
-  it('is true when one top-level overlay key is missing', () => {
-    const written = withIdentity({}, overlay);
-    delete written['titleBar.activeBackground'];
-    expect(overlayIncomplete(written, IDENTITY_REGIONS)).toBe(true);
+  it("returns the '[GigglyBits*]' block's title bar color for a hue overlay", () => {
+    const written = withIdentity({}, identityOverlay('#8753c6', IDENTITY_REGIONS));
+    expect(oldFolderColor({ ...written, 'titleBar.activeBackground': '#111111' }, undefined, 200)).toBe('#8753c6');
   });
 
-  it('is false for a complete overlay, whatever background shaded it', () => {
-    expect(overlayIncomplete(withIdentity({}, overlay), IDENTITY_REGIONS)).toBe(false);
-    // A light background, so the border line is lifted differently and the values really differ.
-    const otherBackground = identityOverlay('#fed0f9', IDENTITY_REGIONS, '#ffffff');
-    expect(otherBackground).not.toEqual(overlay);
-    expect(overlayIncomplete(withIdentity({}, otherBackground), IDENTITY_REGIONS)).toBe(false);
+  it('ignores top-level bar colors, which Peacock and other extensions write too', () => {
+    expect(oldFolderColor({ 'statusBar.background': '#ceaa3e' })).toBeUndefined();
+    expect(oldFolderColor({ 'titleBar.activeBackground': '#8753c6', 'activityBar.background': '#a279d3' })).toBeUndefined();
+  });
+
+  it("returns undefined with no colors, and for colors only under '[Dark Modern]'", () => {
+    expect(oldFolderColor({})).toBeUndefined();
+    expect(oldFolderColor({ '[Dark Modern]': { 'titleBar.activeBackground': '#336699' } })).toBeUndefined();
   });
 });
 
-describe('shouldOffer', () => {
-  const base = { colorCustomizations: {}, declined: false, offerOnOpen: true };
+describe('drawnOldColor', () => {
+  it("returns the '[GigglyBits*]' block's bar color, which VS Code draws over a GigglyBits frame", () => {
+    expect(drawnOldColor(withIdentity({}, identityOverlay('#fed0f9', IDENTITY_REGIONS)))).toBe('#fed0f9');
+  });
 
-  it('offers a folder with no identity and no colors of its own', () => {
-    expect(shouldOffer(base)).toBe(true);
+  it('returns undefined for a pinned color alone, top-level colors, and a slot block', () => {
+    expect(drawnOldColor({})).toBeUndefined();
+    expect(drawnOldColor({ 'titleBar.activeBackground': '#8753c6' })).toBeUndefined();
+    expect(drawnOldColor({ '[GigglyBits Theme 1]': { 'titleBar.activeBackground': '#cd93fe' } })).toBeUndefined();
+  });
+});
+
+describe('shouldOfferMigration', () => {
+  it('offers a folder with a color not yet offered', () => {
+    expect(shouldOfferMigration({ hasFolder: true, color: '#336699', offered: false })).toBe(true);
   });
 
   it.each([
-    ['statusBar.background already set', { colorCustomizations: { 'statusBar.background': '#8753c6' } }],
-    ['declined', { declined: true }],
-    ['hue set', { hue: 200 }],
-    ['pinned color set', { pinnedColor: '#336699' }],
-    ['offers turned off', { offerOnOpen: false }],
+    ['the offer was shown', { offered: true }],
+    ['there is no color', { color: undefined }],
+    ['there is no folder', { hasFolder: false }],
   ])('does not offer when %s', (_label, change) => {
-    expect(shouldOffer({ ...base, ...change })).toBe(false);
-  });
-
-  it('also skips a folder whose identity key sits inside a theme scope', () => {
-    expect(shouldOffer({ ...base, colorCustomizations: { '[Some Theme]': { 'activityBar.background': '#123456' } } })).toBe(false);
+    expect(shouldOfferMigration({ hasFolder: true, color: '#336699', offered: false, ...change })).toBe(false);
   });
 });

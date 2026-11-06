@@ -1,9 +1,11 @@
 // src/themeLibrary.ts: the saved theme library, its slots, and the settings each slot carries.
 import {
-  bindTheme, clearSlot, deleteTheme, Design, everywhereSettings, freshestSetting, parseLibrary, projectFrame, projectFrameRefresh,
-  SavedTheme, saveTheme, settingsFilesFor, slotSettings, withoutScope, withProjectFrame, withScope, writeSlot,
+  activeGroups, bindTheme, clearSlot, deleteGroup, deleteTheme, Design, everywhereSettings, freshestSetting, parseGroups, parseLibrary,
+  projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveGroup, saveTheme, setGroupOn, settingsFilesFor, slotSettings, StyleGroup,
+  withoutScope, withProjectFrame, withScope, writeAllSlots, writeSlot,
 } from '../src/themeLibrary';
 import * as path from 'path';
+import { identityOverlay, IDENTITY_KEYS, IDENTITY_REGIONS, withIdentity } from '../src/identity';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TB = require('../scripts/theme-builder.js');
 
@@ -167,6 +169,20 @@ describe('Use everywhere applies the Editor colors; the frame belongs to the pro
     expect(withProjectFrame(current, 1, frame)).toEqual({ 'editor.background': '#000000', '[GigglyBits*]': { a: 1 }, '[GigglyBits Theme 1]': frame });
   });
 
+  it("Use in this project's colors remove an old folder color and keep only the project's slot block", () => {
+    const frame = projectFrame(theme(FILLED));
+    const old = withIdentity({
+      'editor.background': '#000000',
+      '[GigglyBits Theme 4]': { 'titleBar.activeBackground': '#111111' },
+      '[Dark Modern]': { 'editor.background': '#222222' },
+    }, identityOverlay('#8753c6', IDENTITY_REGIONS));
+    expect(old['titleBar.activeBackground']).toBe('#8753c6');
+    expect(old).toHaveProperty(['[GigglyBits*]']);
+    const written = projectColors(old, 1, frame);
+    expect(written).toEqual({ 'editor.background': '#000000', '[Dark Modern]': { 'editor.background': '#222222' }, '[GigglyBits Theme 1]': frame });
+    expect(Object.keys(written).filter(k => IDENTITY_KEYS.includes(k))).toEqual([]);
+  });
+
   it('refreshes a changed frame, drops the frame of an empty slot, and leaves a matching frame alone', () => {
     const before = theme({ ...FILLED, frame: { index: 0, style: 'filled' } });
     const after = theme(FILLED);
@@ -212,6 +228,87 @@ describe('saves build on the settings file', () => {
   });
 });
 
+describe('style groups', () => {
+  const group = (over: Partial<StyleGroup>): StyleGroup =>
+    ({ id: 'g', name: 'Calm', family: 'buttons', roles: { 'button.background': 'raised' }, on: false, savedAt: NOW, ...over });
+  const savedGroup = (groups: StyleGroup[], name: string, family: StyleGroup['family'], roles: Record<string, string>) =>
+    saveGroup(groups, { name, family, roles, now: NOW });
+
+  it('parseGroups keeps a valid group and drops one with an unknown family, a numeric role value or no name', () => {
+    const valid = group({});
+    const parsed = parseGroups([
+      valid,
+      { ...valid, id: 'm', family: 'menus' },
+      { ...valid, id: 'n', roles: { 'button.background': 3 } },
+      { ...valid, id: 'x', name: '' },
+    ]);
+    expect(parsed).toEqual([valid]);
+    expect(parseGroups(undefined)).toEqual([]);
+  });
+
+  it('switching on a second tabs group switches the first off and leaves a buttons group on', () => {
+    let groups = savedGroup([], 'Tabs A', 'tabs', { 'tab.activeBackground': 'raised' }).groups;
+    groups = savedGroup(groups, 'Buttons', 'buttons', { 'button.background': 'raised' }).groups;
+    const tabsA = groups[0].id;
+    const buttonsId = groups[1].id;
+    groups = setGroupOn(setGroupOn(groups, tabsA, true), buttonsId, true);
+    const tabsB = savedGroup(groups, 'Tabs B', 'tabs', { 'tab.activeBackground': 'deep' });
+    expect(tabsB.group.on).toBe(false);
+    groups = setGroupOn(tabsB.groups, tabsB.group.id, true);
+    expect(groups.map(g => [g.name, g.on])).toEqual([['Tabs A', false], ['Buttons', true], ['Tabs B', true]]);
+    expect(activeGroups(groups).map(g => g.name)).toEqual(['Buttons', 'Tabs B']);
+    expect(deleteGroup(groups, tabsA).map(g => g.name)).toEqual(['Buttons', 'Tabs B']);
+  });
+
+  it('re-saving a group under the same name and family keeps its id and on', () => {
+    const first = savedGroup([], 'Calm buttons', 'buttons', { 'button.background': 'raised' });
+    const on = setGroupOn(first.groups, first.group.id, true);
+    const again = savedGroup(on, ' calm BUTTONS ', 'buttons', { 'button.background': 'deep' });
+    expect(again.groups).toHaveLength(1);
+    expect(again.group).toMatchObject({ id: first.group.id, on: true, roles: { 'button.background': 'deep' } });
+  });
+
+  describe('writeAllSlots', () => {
+    const plain = (colors: string[]): Design => ({ ...DESIGN, colors, edits: { swatches: {}, keys: {} } });
+    const ALPHA = plain(['#20c3d9', '#dc8fd5', '#ceaa3e']);
+    const BETA = plain(['#cc3300', '#33cc66', '#3366cc']);
+    const library = saved(saved([], 'Alpha', ALPHA), 'Beta', BETA);
+    const swatch = (theme: SavedTheme, name: string) =>
+      TB.swatches({ name: theme.name, colors: theme.design.colors }, { index: theme.design.chromeIndex, surfaces: theme.design.surfaces })[name];
+    const button = (written: { colors: Record<string, unknown> }, theme: SavedTheme) =>
+      (written.colors[`[GigglyBits Theme ${theme.slot}]`] as Record<string, string>)['button.background'];
+    const values = { colors: { '[Other]': { a: 1 } }, tokens: {} };
+
+    const first = savedGroup([], 'Calm buttons', 'buttons', { 'button.background': 'raised' });
+    const groupsOn = setGroupOn(first.groups, first.group.id, true);
+    const written = writeAllSlots(values, library, groupsOn);
+
+    it("carries a group that is on into every bound slot, each in its own theme's raised swatch", () => {
+      const [alpha, beta] = library;
+      expect(button(written, alpha)).toBe(swatch(alpha, 'raised'));
+      expect(button(written, beta)).toBe(swatch(beta, 'raised'));
+      expect(button(written, alpha)).not.toBe(button(written, beta));
+      expect(button(written, alpha)).not.toBe(swatch(alpha, 'accent'));
+      expect(written.colors['[Other]']).toEqual({ a: 1 });
+    });
+
+    it('re-saving the group with another role changes button.background in every bound slot block', () => {
+      const resaved = savedGroup(groupsOn, 'Calm buttons', 'buttons', { 'button.background': 'deep' }).groups;
+      const rewritten = writeAllSlots(written, library, resaved);
+      for (const theme of library) {
+        expect({ theme: theme.name, value: button(rewritten, theme) }).toEqual({ theme: theme.name, value: swatch(theme, 'deep') });
+        expect(button(rewritten, theme)).not.toBe(button(written, theme));
+      }
+    });
+
+    it('a group switched off gives the same blocks as no groups', () => {
+      const off = setGroupOn(groupsOn, first.group.id, false);
+      expect(writeAllSlots(written, library, off)).toEqual(writeAllSlots(written, library, []));
+      for (const theme of library) { expect(button(writeAllSlots(written, library, off), theme)).toBe(swatch(theme, 'accent')); }
+    });
+  });
+});
+
 describe('withScope and withoutScope', () => {
   const current = { 'editor.background': '#000000', '[Other]': { a: 1 }, '[GigglyBits Theme 2]': { old: 1 } };
 
@@ -222,5 +319,30 @@ describe('withScope and withoutScope', () => {
 
   it('removes only the slot block', () => {
     expect(withoutScope(current, 'GigglyBits Theme 2')).toEqual({ 'editor.background': '#000000', '[Other]': { a: 1 } });
+  });
+});
+
+describe('slot settings and the Roles step settings', () => {
+  const theme = (design: Design): SavedTheme => ({ id: 't', name: 'T', slot: 1, design, groups: [], savedAt: '2026-11-06T00:00:00.000Z' });
+
+  it('{#slot-uses} builds a slot with the design\'s depth, as labSettings does', () => {
+    const plain = slotSettings(theme(DESIGN)).colors['sideBar.background'];
+    const deeper = slotSettings(theme({ ...DESIGN, depth: 2 })).colors['sideBar.background'];
+    expect(deeper).not.toBe(plain);
+    const direct = TB.labSettings({ name: 'T', colors: DESIGN.colors }, { index: DESIGN.chromeIndex, surfaces: DESIGN.surfaces, frame: DESIGN.frame, depth: 2 }, DESIGN.edits, []);
+    expect(deeper).toBe(direct.colors['sideBar.background']);
+  });
+
+  it('{#old-design-identical} builds a design saved before the Roles step settings exactly as before', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs');
+    const read = (name: string) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8'));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { parseDesign } = require('../src/themeLibrary');
+    const design = parseDesign(read('design-baseline.json'));
+    const expected = read('design-baseline-settings.json');
+    const actual = slotSettings({ id: 'baseline', name: 'Baseline', slot: 1, design, groups: [], savedAt: '2026-11-06T00:00:00.000Z' });
+    expect(actual.colors).toEqual(expected.colors);
+    expect(actual.tokenColors).toEqual(expected.tokenColors);
   });
 });

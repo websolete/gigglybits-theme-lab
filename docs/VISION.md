@@ -10,11 +10,11 @@ Anyone on the VS Code Marketplace. It is built and lived with by its author firs
 
 ## The four pillars
 
-The theme family, the lab and the inspector carry equal weight. None of them exists only to serve the others. Workspace identity is the fourth pillar.
+The theme family, the lab and the inspector carry equal weight. None of them exists only to serve the others. Project frames, each project's own color, are the fourth pillar.
 
 ### 1. The theme family
 
-- Three to five dark variants at the public launch, each a clearly different mood and each fully polished. The nine variants built so far are candidates, and the launch set comes from narrowing them.
+- Three to five dark variants at the public launch, each a clearly different mood and each fully polished. The nine variants built so far are candidates, and the launch set comes from narrowing them. Since 2026-11-05, by the user's decision, none of them ships: the extension contributes only GigglyBits Dark (Lab) and the slots GigglyBits Theme 1 to 12, and the nine palettes are kept in `test/fixtures/palettes.json`.
 - Light versions of the family follow in a later release. High-contrast variants are not planned.
 - Text reads at 4.5:1 or better. A palette color too dark to read is lightened, keeping its hue, and colors that land too close together are pushed apart.
 - Every color in the parts of VS Code people actually see is set on purpose. Coverage of the long tail of rarely seen keys grows over time and never blocks a release.
@@ -24,9 +24,9 @@ The theme family, the lab and the inspector carry equal weight. None of them exi
 ### 2. The lab and the design library
 
 - The Theme Laboratory is its own editor tab with its own command. It's the main thing a user interacts with to make a theme, and it holds only the authoring interface, with none of the inspector's inventories.
-- Design a theme by picking a palette (color-wheel harmonies computed in OKLCH, or pasted hex values), judging it against contrast and live previews, and trying it in the real window without a reload.
+- Design a theme by picking a palette (color-wheel harmonies computed in OKLCH), judging it against contrast and live previews, and trying it in the real window without a reload. The Lab took pasted hex values until 2026-11-05, when the user removed the Paste tab; a saved theme made from pasted colors still loads.
 - Designs are saved to a personal library in user settings. You can keep several designs, each workspace picks the one it uses, and a design made in one workspace is ready in every other. Settings Sync carries the library to other machines.
-- A shipped family variant can be copied into the library as a starting point, then tweaked and saved as your own design.
+- A shipped family variant can be copied into the library as a starting point, then tweaked and saved as your own design. While no variant ships (since 2026-11-05), the Lab starts from the wheel or a saved theme.
 - Designs live in settings rather than as files or extensions. There is nothing to package, install or manage.
 
 ### 3. The inspector
@@ -36,13 +36,11 @@ The theme family, the lab and the inspector carry equal weight. None of them exi
 - Fix in place: change a color in the inspector and save it as an override or into a library design.
 - Works with any theme, not only GigglyBits.
 
-### 4. Workspace identity
+### 4. Project frames
 
-- Each workspace is offered a stable color the first time its folder opens, so windows are distinct from the start.
-- Identity colors are chosen to sit well with the active GigglyBits variant and keep their text readable.
-- Commands set, change or clear a workspace's color without opening settings.
-- Identity works under any theme, not only GigglyBits.
-- A saved theme includes its Frame colors (title bar, activity bar, status bar, window border), and a project picks a theme, so a project's look comes from the theme it uses. Decided 2026-11-04; the per-folder color folds into this as the theme library arrives.
+- A project's color lives in its saved theme's frame: Use in this project gives the folder that theme and its frame, so windows on different projects are distinct.
+- In a Filled frame the bars and the tab and split lines all take the frame color, with text and lines kept readable.
+- The per-folder color of earlier versions is retired; a folder that still has one is offered, once, a project theme in that color, and Use in this project replaces it.
 
 ## Voice
 
@@ -53,7 +51,7 @@ Variant names stay playful (Candy, Rat Poison, Fashion Army). The README, the do
 1.0 is the first public Marketplace release. It ships when all of these hold:
 
 - The design library works end to end: create a design, save it, use it in another workspace, and find it on a second machine after Settings Sync.
-- Workspace identity has replaced Peacock in daily use, and its author has uninstalled Peacock without missing it.
+- Project frames have replaced Peacock in daily use, and their author has uninstalled Peacock without missing it.
 - The family is narrowed to three to five variants.
 
 Full coverage of every workbench key is not a 1.0 condition.
@@ -73,13 +71,15 @@ Full coverage of every workbench key is not a 1.0 condition.
 
 ## Settled decisions
 
-- **A theme has two color sets: Frame and Editor.** Decided 2026-11-04. Frame is the title bar, command center, activity bar, status bar (its no-folder colors and hovered items included) and the window border; Editor is everything else. Each takes one palette color, or for Frame a custom color, and has its own contrast floors: frame text at least 4.5:1, inactive frame icons at least 3:1, input outlines at least 3:1. The Frame is Filled (solid bars with black or white text) or Dark (the shipped look). A new design starts Filled; the shipped variants stay Dark.
+- **A theme has two color sets: Frame and Editor.** Decided 2026-11-04. Frame is the title bar, command center, activity bar, status bar (its no-folder colors and hovered items included) and the window border; Editor is everything else. Each takes one palette color, or for Frame a custom color, and has its own contrast floors: frame text at least 4.5:1, inactive frame icons at least 3:1, input outlines at least 3:1. The Frame is Filled (solid bars with black or white text) or Dark (the look the variants had before the Frame existed). A new design starts Filled; the Lab theme and the slot files are Dark.
 
-- **The design library lives in the user setting `gigglybits.library`, with 12 slots.** Decided 2026-11-04. A saved theme is a named record of everything the Lab holds (palette, the rule settings that made it, Editor and Frame choices, color edits) plus a groups list, empty for now. The setting is application-scoped, so every window reads it and Settings Sync carries it. Shared style groups (tabs, trees, buttons defined once and named by themes through that groups list) are the next item.
-- **Use everywhere applies a theme's Editor colors; the frame belongs to the project.** Decided 2026-11-04 by the user during the library live check: a frame applied to every window would defeat having differently colored workspaces. The user-level slot settings carry the theme with plain dark bars, and Use in this project writes the theme's frame into the folder's own settings for that slot. Shared style groups, the next item, extend what Use everywhere means: editor text, buttons, tabs and trees defined once across themes.
+- **The design library lives in the user setting `gigglybits.library`, with 12 slots.** Decided 2026-11-04. A saved theme is a named record of everything the Lab holds (palette, the rule settings that made it, Editor and Frame choices, color edits) plus a groups list, empty for now. The setting is application-scoped, so every window reads it and Settings Sync carries it. The groups list stays empty: style groups became a preference applied everywhere (below), and a theme naming groups for itself is deferred.
+- **Use everywhere applies a theme's Editor colors; the frame belongs to the project.** Decided 2026-11-04 by the user during the library live check: a frame applied to every window would defeat having differently colored workspaces. The user-level slot settings carry the theme with plain dark bars, and Use in this project writes the theme's frame into the folder's own settings for that slot. Style groups extend what Use everywhere means: editor text, buttons, tabs and trees defined once across themes.
+- **Style groups are a preference applied everywhere.** Decided 2026-11-04 by the user at framing. A style group maps one widget family's colors (Tabs, Lists and trees, Buttons or Editor text) to Editor roles of the theme builder, and lives in the user setting `gigglybits.groups`. A group that is on applies to every saved theme, drawn from that theme's own swatches, so the style is shared and the colors stay each theme's; at most one group per family is on. Groups carry colors only, since a color theme carries nothing else. A theme's own single-color edits win over a group, and no group sets a frame key. Groups a single theme names for itself, groups on the shipped variants and sharing groups with other people are deferred.
 - **Designs reach the theme picker through fixed slots.** VS Code only lists themes an extension ships as files, so the extension ships a set number of placeholder themes (GigglyBits Theme 1 through 12). Each library design is bound to a slot, and its colors live in user settings under that slot's name, so they sync and never touch a repo. A workspace records only which theme it uses, the one `workbench.colorTheme` line VS Code already writes. Windows showing different designs don't conflict. The native theme picker shows slot names, so GigglyBits has its own picker that lists designs by their real names. The cost is a cap of N designs bound at once. Designs beyond that stay in the library and can be swapped into a slot.
-- **One design format, two homes.** Shipped variants and user designs use the same format. Shipped variants are read-only and come with the extension, and user designs live in the library. Copying a shipped variant into the library is a plain copy. The lab saves to the library, not to a file in the open folder. To ship a new variant, the author moves a library design into the repo's shipped set, where the include, maybe and exclude curation still happens.
-- **The Laboratory and the inspector are separate tabs.** Shipped in 0.0.8. The Theme Lab (**GigglyBits: Open Theme Lab**) holds the Palette Lab, Try in VS Code, the Workbench and Widgets previews, the Frame and Editor choices, the palette catalog and a list of the installed GigglyBits Dark themes to switch between. The Palette Inspector keeps the element gallery and the color breakdowns. The element gallery's inventory (chips, definitions, sources) stays in the inspector. Its drawings are shared: since 2026-11-04 the Theme Lab's Workbench and Widgets previews draw a candidate with the same gallery code, because the old IDE preview proved too small to judge one. The Lab and the build share one theme builder (media/themeBuilder.js), so a preview always shows what Try in VS Code applies.
+- **One design format, two homes.** Shipped variants and user designs use the same format. Shipped variants are read-only and come with the extension, and user designs live in the library. Copying a shipped variant into the library is a plain copy. The lab saves to the library, not to a file in the open folder. The repo's shipped set, and the build that made one theme per palette in it, were removed on 2026-11-05 when the user stopped shipping the nine variants; shipping a variant again means bringing that build back. The palette catalog, with its include, maybe and exclude curation, was retired on 2026-11-05 by the user's decision: saved themes took its place.
+- **The Laboratory and the inspector are separate tabs.** Shipped in 0.0.8. The Theme Lab (**GigglyBits: Open Theme Lab**) holds the Palette Lab, Try in VS Code, the Workbench and Widgets previews, the Frame and Editor choices, and a Start step whose tabs are Wheel and Saved (the Paste tab and the list of installed GigglyBits Dark themes were removed on 2026-11-05). Since 2026-11-05 it is laid out to the design council's contract: two panes on a wide tab and a preview band over the steps on a narrow one, with an Edit dock under the drawing. The Palette Inspector keeps the element gallery and the color breakdowns. The element gallery's inventory (chips, definitions, sources) stays in the inspector. Its drawings are shared: since 2026-11-04 the Theme Lab's Workbench and Widgets previews draw a candidate with the same gallery code, because the old IDE preview proved too small to judge one. The Lab and the build share one theme builder (media/themeBuilder.js), so a preview always shows what Try in VS Code applies.
+- **The per-folder color retires into project frames.** Decided 2026-11-04 by the user at framing: the Set, Next and Clear Workspace Color commands are removed rather than reworded; a folder that still has an old color is offered a project theme in it once; a project's color shows under GigglyBits themes only; and all six tab and split lines (the active tab's two lines, the split editor line, and the side bar, panel and resize borders) take the frame color in a Filled frame.
 - **License: MIT.**
 - **Publisher: a personal publisher**, not EdgeInformation.
 

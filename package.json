@@ -41,21 +41,6 @@
         "category": "GigglyBits"
       },
       {
-        "command": "gigglybits.identity.set",
-        "title": "Set Workspace Color",
-        "category": "GigglyBits"
-      },
-      {
-        "command": "gigglybits.identity.next",
-        "title": "Next Workspace Color",
-        "category": "GigglyBits"
-      },
-      {
-        "command": "gigglybits.identity.clear",
-        "title": "Clear Workspace Color",
-        "category": "GigglyBits"
-      },
-      {
         "command": "gigglybits.chooseTheme",
         "title": "Choose Theme",
         "category": "GigglyBits"
@@ -70,98 +55,30 @@
           "scope": "application",
           "markdownDescription": "Your saved themes, written by **Save theme** in the Theme Lab (**GigglyBits: Open Theme Lab**). Each is bound to one of the slots GigglyBits Theme 1 to 12. Use the Theme Lab or **GigglyBits: Choose Theme** rather than editing this by hand."
         },
+        "gigglybits.groups": {
+          "type": "array",
+          "default": [],
+          "scope": "application",
+          "markdownDescription": "Your style groups, written by the **Style groups** box in the Theme Lab (**GigglyBits: Open Theme Lab**). A group maps the colors of tabs, lists and trees, buttons or editor text to theme roles; one that is on applies to every saved theme in that theme's own colors. Use the Theme Lab rather than editing this by hand."
+        },
         "gigglybits.identity.hue": {
           "type": "number",
           "minimum": 0,
           "maximum": 359,
           "scope": "resource",
-          "markdownDescription": "This workspace's color as an OKLCH hue (0-359). Its brightness and intensity follow the active theme. Set by **GigglyBits: Set Workspace Color**."
+          "markdownDescription": "This workspace's color as an OKLCH hue (0-359), from the retired per-folder color.",
+          "markdownDeprecationMessage": "The per-folder color is retired into project frames: a project's color now lives in its saved theme's frame. Use **Use in this project** in the Theme Lab."
         },
         "gigglybits.identity.pinnedColor": {
           "type": "string",
           "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
           "scope": "resource",
-          "markdownDescription": "A fixed hex color for this workspace, used exactly as entered under every theme. Takes the place of `#gigglybits.identity.hue#`."
-        },
-        "gigglybits.identity.regions": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "titleBar",
-              "activityBar",
-              "statusBar",
-              "borders"
-            ],
-            "enumDescriptions": [
-              "Title bar and window border",
-              "Activity bar",
-              "Status bar",
-              "Tabs and borders"
-            ]
-          },
-          "uniqueItems": true,
-          "default": [
-            "titleBar",
-            "activityBar",
-            "statusBar",
-            "borders"
-          ],
-          "description": "The parts of the window the workspace color fills."
-        },
-        "gigglybits.identity.offerOnOpen": {
-          "type": "boolean",
-          "default": true,
-          "description": "Offer a color the first time a folder with no color of its own is opened."
+          "markdownDescription": "A fixed hex color for this workspace, from the retired per-folder color.",
+          "markdownDeprecationMessage": "The per-folder color is retired into project frames: a project's color now lives in its saved theme's frame. Use **Use in this project** in the Theme Lab."
         }
       }
     },
     "themes": [
-      {
-        "label": "GigglyBits Dark (Candy)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-triad-h210-l0.75-c0.130-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Log Cabin)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-complementary-h68-l0.51-c0.170-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Rat Poison)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-triad-h281-l0.52-c0.150-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Not Feeling Well)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-complementary-h281-l0.80-c0.155-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Southwest)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-split-complementary-h227-l0.53-c0.080-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Snake in the Grass)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-analogous-h164-l0.55-c0.120-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Fashion Army)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-triad-h112-l0.71-c0.115-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Day at the Spa)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-square-h316-l0.72-c0.140-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Dark (Salamander)",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-dark-shades-h30-l0.67-c0.165-color-theme.json"
-      },
       {
         "label": "GigglyBits Dark (Lab)",
         "uiTheme": "vs-dark",

@@ -1,31 +1,25 @@
 // src/labStart.ts: what a fresh Theme Lab starts from, and the stored Try record check.
 import { parseTryRecord, startConfig } from '../src/labStart';
-import { themeBases } from '../src/themeList';
 
-const CONTRIBUTED = [
-  { label: 'GigglyBits Dark (Candy)', path: './themes/gigglybits-dark-triad-h210-l0.75-c0.130-color-theme.json' },
-  { label: 'GigglyBits Dark (Log Cabin)', path: './themes/gigglybits-dark-complementary-h68-l0.51-c0.170-color-theme.json' },
-  { label: 'GigglyBits Dark (Lab)', path: './themes/gigglybits-lab-color-theme.json' },
-];
-const bases = themeBases(CONTRIBUTED);
 const PASTED = { mode: 'pasted' as const, pasted: ['#cc0000', '#990000', '#336699'], chromeIndex: 2, surfaces: 'rich' };
 const GENERATED = { mode: 'generated' as const, rule: 'square', hue: 12, lightness: 0.6, chroma: 0.2, chromeIndex: 1, surfaces: 'neutral' };
 const NO_RECORD = 'No record of the last Try in VS Code, so the Lab starts from the default palette.';
 
 describe('startConfig', () => {
-  it('starts from the shipped base under a listed GigglyBits theme', () => {
-    const start = startConfig('GigglyBits Dark (Log Cabin)', bases, undefined);
-    expect(start.base).toMatchObject({ source: 'generated', rule: 'complementary', baseHue: 68 });
-    expect(start.note).toBeUndefined();
+  it('{#start-no-base} gives a no-palette note and no base under a GigglyBits Dark theme the extension no longer ships', () => {
+    const start = startConfig('GigglyBits Dark (Candy)', undefined);
+    expect(start.note).toContain('has no Theme Lab palette');
+    expect(start).not.toHaveProperty('base');
+    expect(start).toEqual({ note: 'GigglyBits Dark (Candy) has no Theme Lab palette, so the Lab starts from the default palette.' });
   });
 
   it('starts from the last Try under the Lab theme', () => {
-    expect(startConfig('GigglyBits Dark (Lab)', bases, PASTED)).toEqual({ lastTry: PASTED });
+    expect(startConfig('GigglyBits Dark (Lab)', PASTED)).toEqual({ lastTry: PASTED });
   });
 
   it.each([['no record', undefined], ['a malformed record', { mode: 'other' }]])(
     'gives the no-record note under the Lab theme with %s', (_label, record) => {
-      expect(startConfig('GigglyBits Dark (Lab)', bases, record)).toEqual({ note: NO_RECORD });
+      expect(startConfig('GigglyBits Dark (Lab)', record)).toEqual({ note: NO_RECORD });
     });
 
   it('starts from the saved theme bound to the active slot, and gives a note for an empty slot', () => {
@@ -34,15 +28,15 @@ describe('startConfig', () => {
       { id: 'a', name: 'Alpha', slot: 2, design, groups: [], savedAt: '2026-11-04T00:00:00.000Z' },
       { id: 'b', name: 'Beta', slot: null, design, groups: [], savedAt: '2026-11-04T00:00:00.000Z' },
     ];
-    expect(startConfig('GigglyBits Theme 2', bases, undefined, library)).toEqual({ saved: { name: 'Alpha', design } });
-    expect(startConfig('GigglyBits Theme 3', bases, undefined, library))
+    expect(startConfig('GigglyBits Theme 2', undefined, library)).toEqual({ saved: { name: 'Alpha', design } });
+    expect(startConfig('GigglyBits Theme 3', undefined, library))
       .toEqual({ note: 'GigglyBits Theme 3 holds no saved theme, so the Lab starts from the default palette.' });
   });
 
   it('gives a note naming another theme, and nothing for an unknown one, ignoring the Try record', () => {
-    expect(startConfig('Dark Modern', bases, GENERATED))
+    expect(startConfig('Dark Modern', GENERATED))
       .toEqual({ note: 'Dark Modern has no Theme Lab palette, so the Lab starts from the default palette.' });
-    expect(startConfig(undefined, bases, GENERATED)).toEqual({});
+    expect(startConfig(undefined, GENERATED)).toEqual({});
   });
 });
 
@@ -84,5 +78,16 @@ describe('parseTryRecord', () => {
     ['a non-object', 'record'],
   ])('rejects %s', (_label, value) => {
     expect(parseTryRecord(value)).toBeUndefined();
+  });
+});
+
+describe('parseTryRecord and the Roles step settings', () => {
+  it('{#parse-new} keeps valid syntax, depth and text, and drops only an invalid one', () => {
+    const record = parseTryRecord({ ...GENERATED, syntax: [1, 0, 2, 3, 4], depth: 1.5, text: 'high' });
+    expect(record).toMatchObject({ syntax: [1, 0, 2, 3, 4], depth: 1.5, text: 'high' });
+    const bad = parseTryRecord({ ...GENERATED, syntax: 'x', depth: 1.5 });
+    expect(bad).toBeDefined();
+    expect(bad).not.toHaveProperty('syntax');
+    expect(bad).toMatchObject({ rule: 'square', hue: 12, chromeIndex: 1, surfaces: 'neutral', depth: 1.5 });
   });
 });

@@ -1,5 +1,5 @@
 // @ts-check
-// Turns one palettes/catalog.json entry into a complete GigglyBits Dark color theme.
+// Turns one palette entry into a complete GigglyBits Dark color theme.
 // Loads as window.GBBuilder in the Theme Lab webview (after shared.js) and as a CommonJS
 // module in Node, where scripts/theme-builder.js re-exports it for the build script and the
 // extension host. One builder means the Lab previews exactly what Try in VS Code applies.
@@ -9,8 +9,10 @@
 // a baseline only: a few language-neutral root-scope rules and no semantic token rules,
 // so coloring a specialized extension supplies is never fought by the theme.
 //
-// Every key belongs to one swatch (a role, such as "accent" or "raised surface"). The Lab's
-// edits change a role, which moves every key in it and the roles made from it, or one key.
+// Every key starts in one swatch (a role, such as "accent" or "raised surface"). A style group
+// can move a family's keys (tabs, lists and trees, buttons, editor text) to other Editor roles.
+// The Lab's edits change a role, which moves every key in it and the roles made from it, or
+// one key, and a key edit wins over a group.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -74,9 +76,39 @@
     return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
   }
 
-  /** Five '#rrggbb' colors for ROLE_NAMES: readable on the background and apart from each other. */
-  function roleColors(entry) {
-    const sources = ROLE_NAMES.map((_, i) => entry.colors[i % entry.colors.length].toLowerCase());
+  /**
+   * The text levels the Roles step's Text contrast picks: lightness of bright, text, muted and
+   * faint. Standard is the levels themes have always had; no level makes faint fainter.
+   */
+  const TEXT_LEVELS = {
+    soft: [0.9, 0.81, 0.63, 0.5],
+    standard: [0.95, 0.87, 0.68, 0.5],
+    high: [0.98, 0.93, 0.76, 0.58],
+  };
+
+  /**
+   * The Roles step's three settings in a chrome choice, cleaned: syntax, five palette indexes
+   * for ROLE_NAMES (null for the default, colors 1 to 5 in order); depth, the multiplier on the
+   * surface offsets, clamped to 0.5 to 2 and rounded to 0.1 (1 when not a finite number); text,
+   * a TEXT_LEVELS id ('standard' otherwise). Every value missing or invalid builds as today.
+   */
+  function cleanChrome(chrome) {
+    const c = chrome && typeof chrome === 'object' ? chrome : {};
+    const syntax = Array.isArray(c.syntax) && c.syntax.length === ROLE_NAMES.length
+      && c.syntax.every(i => Number.isInteger(i) && i >= 0) ? c.syntax.slice() : null;
+    const depth = typeof c.depth === 'number' && Number.isFinite(c.depth)
+      ? Math.round(Math.min(2, Math.max(0.5, c.depth)) * 10) / 10 : 1;
+    const text = Object.prototype.hasOwnProperty.call(TEXT_LEVELS, c.text) ? c.text : 'standard';
+    return { syntax, depth, text };
+  }
+
+  /**
+   * Five '#rrggbb' colors for ROLE_NAMES: readable on the background and apart from each other.
+   * `syntax` picks the palette color for each role (cleanChrome's syntax); every index wraps
+   * around the palette, as the default colors 1 to 5 do on a shorter palette.
+   */
+  function roleColors(entry, syntax = null) {
+    const sources = ROLE_NAMES.map((_, i) => entry.colors[(syntax ? syntax[i] : i) % entry.colors.length].toLowerCase());
     const roles = sources.map(src => {
       if (contrastOnBg(src) >= MIN_CONTRAST) {
         const lch = GB.hexToOklch(src);
@@ -105,20 +137,27 @@
   }
 
   /**
-   * The Lab's edits, cleaned: { swatches: { name: hex }, keys: { key: hex } }. Anything that
-   * is not a '#rrggbb' or '#rrggbbaa' string is dropped, so a bad value never reaches a theme.
+   * A key edit with this value leaves the key to VS Code's own default. VS Code reads 'default'
+   * in workbench.colorCustomizations the same way: it ignores the theme's value for the key.
+   */
+  const DEFAULT_COLOR = 'default';
+
+  /**
+   * The Lab's edits, cleaned: { swatches: { name: hex }, keys: { key: hex | 'default' } }.
+   * Anything that is not a '#rrggbb' or '#rrggbbaa' string is dropped, except 'default' as a key
+   * edit (DEFAULT_COLOR), so a bad value never reaches a theme.
    */
   function cleanEdits(edits) {
-    const pick = obj => {
+    const pick = (obj, allowDefault) => {
       const out = {};
       if (obj && typeof obj === 'object') {
         for (const [k, v] of Object.entries(obj)) {
-          if (typeof v === 'string' && HEX.test(v)) {out[k] = v.toLowerCase();}
+          if (typeof v === 'string' && (HEX.test(v) || (allowDefault && v === DEFAULT_COLOR))) {out[k] = v.toLowerCase();}
         }
       }
       return out;
     };
-    return { swatches: pick(edits && edits.swatches), keys: pick(edits && edits.keys) };
+    return { swatches: pick(edits && edits.swatches, false), keys: pick(edits && edits.keys, true) };
   }
 
   /**
@@ -160,7 +199,8 @@
     };
     const opaque = hex => hex.slice(0, 7);
 
-    const [kw, fn, str, type, num] = roleColors(entry);
+    const roles = cleanChrome(chrome);
+    const [kw, fn, str, type, num] = roleColors(entry, roles.syntax);
     put('kw', kw); put('fn', fn); put('str', str); put('type', type); put('num', num);
 
     const index = Math.min(Math.max(0, Number(chrome.index) || 0), entry.colors.length - 1);
@@ -177,14 +217,16 @@
     const surfaceChroma = (GB.CHROME_SURFACES[chrome.surfaces] || GB.CHROME_SURFACES.neutral).chroma;
     const surface = l => GB.oklchToHex({ l, c: surfaceChroma, h: hue });
 
-    // Surfaces, stepped from the editor background and tinted toward the accent's hue.
-    put('deep', surface(bgL - 0.025));
-    put('line', surface(bgL + 0.025));
-    put('raised', surface(bgL + 0.045));
-    put('hover', surface(bgL + 0.07));
-    put('select', GB.oklchToHex({ l: bgL + 0.09, c: Math.max(0.04, surfaceChroma), h: hue }));
-    put('divider', surface(bgL + 0.04));
-    const border = opaque(put('border', surface(bgL + 0.11)));
+    // Surfaces, stepped from the editor background and tinted toward the accent's hue. The
+    // Roles step's Depth multiplies each step (1 is the steps themes have always had).
+    const step = offset => bgL + offset * roles.depth;
+    put('deep', surface(step(-0.025)));
+    put('line', surface(step(0.025)));
+    put('raised', surface(step(0.045)));
+    put('hover', surface(step(0.07)));
+    put('select', GB.oklchToHex({ l: step(0.09), c: Math.max(0.04, surfaceChroma), h: hue }));
+    put('divider', surface(step(0.04)));
+    const border = opaque(put('border', surface(step(0.11))));
     // Input outlines: the border, lifted until it reads 3:1 on the editor and on the side bar.
     {
       const o = GB.hexToOklch(border);
@@ -201,11 +243,12 @@
     put('none', '#00000000');
     put('shadow', '#0000005c');
 
-    // Text.
-    put('bright', neutral(0.95));
-    const text = opaque(put('text', neutral(0.87)));
-    put('muted', neutral(0.68));
-    put('faint', neutral(0.5));
+    // Text, at the Roles step's Text contrast levels.
+    const [brightL, textL, mutedL, faintL] = TEXT_LEVELS[roles.text];
+    put('bright', neutral(brightL));
+    const text = opaque(put('text', neutral(textL)));
+    put('muted', neutral(mutedL));
+    put('faint', neutral(faintL));
     put('textWash', text + '1a');
     put('textWash2', text + '2e');
     put('scroll', text + '26');
@@ -288,6 +331,11 @@
       put('frameRemote', remote);
       put('frameRemoteText', textOn(remote));
       put('frameWindow', fill);
+      // The tab and split lines take the frame color, lifted to 3:1 on the editor.
+      const line = GB.liftTo(fill, THEME_BACKGROUND, 3);
+      put('frameLineAccent', line);
+      put('frameLineBg', line);
+      put('frameLineDivider', line);
     } else {
       // Dark bars, as the shipped themes have them, with accents from the frame color.
       const frameAccent = GB.liftTo(frame.color, THEME_BACKGROUND, MIN_CONTRAST);
@@ -306,6 +354,10 @@
       put('frameRemote', frameAccent);
       put('frameRemoteText', textOn(frameAccent));
       put('frameWindow', '#00000000');
+      // The tab and split lines keep the editor's accent, background and divider.
+      put('frameLineAccent', sw.accent);
+      put('frameLineBg', sw.bg);
+      put('frameLineDivider', sw.divider);
     }
     return sw;
   }
@@ -383,10 +435,49 @@
     frameRemote: ['Remote item', 'The remote indicator at the left of the status bar.'],
     frameRemoteText: ['Remote item text', 'The remote indicator icon and text.'],
     frameWindow: ['Window border', 'The line around the whole window.'],
+    frameLineAccent: ['Frame line, active', 'The active tab\'s top line and a hovered resize edge.'],
+    frameLineBg: ['Frame line, under tab', 'The line under the active tab.'],
+    frameLineDivider: ['Frame line, split', 'Lines between split editors and along the side bar and panel.'],
   };
   Object.assign(SWATCHES, FRAME_SWATCHES);
   // Each entry is [label, description, group]: 'frame' for the Frame swatches, 'editor' otherwise.
   for (const [name, def] of Object.entries(SWATCHES)) def[2] = name in FRAME_SWATCHES ? 'frame' : 'editor';
+
+  const ANSI_NAMES = ['Black', 'Red', 'Green', 'Yellow', 'Blue', 'Magenta', 'Cyan', 'White'];
+  /**
+   * The Roles step's families, in order: each swatch belongs to exactly one, and `how` says in
+   * one sentence how swatches() makes the family from the palette.
+   */
+  const ROLE_FAMILIES = [
+    {
+      id: 'syntax', name: 'Syntax', roles: ['kw', 'fn', 'str', 'type', 'num', 'findMatch', 'findHighlight'],
+      how: 'Palette colors in the order Colors sets, each lifted to 4.5:1 on the editor background and kept apart from the others. Find matches are see-through Functions.',
+    },
+    {
+      id: 'accent', name: 'Accent', roles: ['accent', 'accentHover', 'accentText', 'accentTextFaint', 'accentHalf', 'accentSoft', 'accentSel', 'accentWash', 'accentFaint'],
+      how: 'The Editor accent from step 3, lifted to 4.5:1. The rest are its hover, the text drawn on it and see-through steps of it.',
+    },
+    {
+      id: 'surfaces', name: 'Surfaces', roles: ['bg', 'deep', 'line', 'raised', 'hover', 'select', 'divider', 'border', 'inputBorder', 'shadow', 'none'],
+      how: 'Steps lighter and darker than the editor background, as far apart as Depth sets, tinted toward the accent\'s hue at step 3\'s surface strength. Input outlines are lifted to 3:1.',
+    },
+    {
+      id: 'text', name: 'Text', roles: ['bright', 'text', 'muted', 'faint', 'textWash', 'textWash2', 'scroll', 'scrollHover', 'scrollActive'],
+      how: 'Grays at four lightness levels that Contrast sets, barely tinted toward the accent; the washes and scrollbars are see-through Text.',
+    },
+    {
+      id: 'status', name: 'Status', roles: ['error', 'warning', 'success', 'info', 'conflict', 'errorText', 'warningText', 'errorDeep', 'warningDeep', 'infoDeep', 'successWash', 'successFaint', 'errorWash', 'errorFaint'],
+      how: 'Fixed hues, so red means error in every theme, at the accent\'s lightness and lifted to 4.5:1. Info is the accent.',
+    },
+    {
+      id: 'terminal', name: 'Terminal', roles: ANSI_NAMES.flatMap(n => ['ansi' + n, 'ansiBright' + n]),
+      how: 'Fixed hues at fixed lightness, so program output means what the program meant.',
+    },
+    {
+      id: 'frame', name: 'Frame', roles: Object.keys(FRAME_SWATCHES),
+      how: 'From the Frame color and style in step 3.',
+    },
+  ];
 
   /**
    * Every gallery key, grouped by the swatch it takes. A key the gallery starts drawing
@@ -394,7 +485,7 @@
    */
   const KEY_GROUPS = {
     bg: [
-      'editor.background', 'breadcrumb.background', 'tab.activeBackground', 'tab.activeBorder',
+      'editor.background', 'breadcrumb.background', 'tab.activeBackground',
       'tab.unfocusedActiveBackground', 'tab.unfocusedActiveBorder', 'terminal.background', 'terminalCursor.background',
     ],
     deep: [
@@ -424,10 +515,10 @@
       'quickInputList.focusBackground', 'peekViewResult.selectionBackground', 'banner.background',
     ],
     divider: [
-      'sideBar.border', 'sideBarSectionHeader.border', 'panel.border', 'panelSection.border',
+      'sideBarSectionHeader.border', 'panelSection.border',
       'panelSectionHeader.border', 'statusBar.debuggingBorder',
       'tab.border', 'editorGroupHeader.tabsBorder', 'diffEditor.border', 'notifications.border',
-      'editorRuler.foreground', 'terminal.border', 'editorGroup.border',
+      'editorRuler.foreground', 'terminal.border',
     ],
     border: [
       'widget.border', 'editorWidget.border', 'editorHoverWidget.border', 'editorSuggestWidget.border', 'menu.border',
@@ -490,10 +581,10 @@
     accent: [
       'focusBorder', 'button.background', 'extensionButton.background', 'badge.background',
       'panelTitleBadge.background', 'progressBar.background', 'activityBar.activeFocusBorder',
-      'panelTitle.activeBorder', 'tab.activeBorderTop', 'tab.selectedBorderTop', 'tab.activeModifiedBorder', 'textLink.foreground',
+      'panelTitle.activeBorder', 'tab.selectedBorderTop', 'tab.activeModifiedBorder', 'textLink.foreground',
       'notificationLink.foreground', 'list.highlightForeground', 'list.focusHighlightForeground', 'list.focusOutline',
       'list.focusAndSelectionOutline', 'editorSuggestWidget.highlightForeground', 'editorSuggestWidget.focusHighlightForeground',
-      'pickerGroup.foreground', 'inputOption.activeBorder', 'radio.activeBorder', 'sash.hoverBorder', 'peekView.border',
+      'pickerGroup.foreground', 'inputOption.activeBorder', 'radio.activeBorder', 'peekView.border',
       'settings.modifiedItemIndicator', 'statusBarItem.focusBorder', 'editorCursor.foreground',
       'terminalCursor.foreground', 'banner.iconForeground', 'editorLightBulbAutoFix.foreground', 'editorBracketHighlight.foreground1',
       'inlineChatInput.focusBorder',
@@ -579,6 +670,9 @@
     frameRemote: ['statusBarItem.remoteBackground'],
     frameRemoteText: ['statusBarItem.remoteForeground'],
     frameWindow: ['window.activeBorder'],
+    frameLineAccent: ['tab.activeBorderTop', 'sash.hoverBorder'],
+    frameLineBg: ['tab.activeBorder'],
+    frameLineDivider: ['editorGroup.border', 'sideBar.border', 'panel.border'],
   };
 
   /** The keys the frame settings decide: every key a Frame swatch takes. */
@@ -590,8 +684,54 @@
     for (const key of keys) {SWATCH_OF[key] = swatch;}
   }
 
-  /** Workbench colors, sorted by key. edits.keys replaces single keys after the roles are applied. */
-  function buildColors(entry, chrome = {}, edits = undefined) {
+  /** The token rule names tokenColors gives its rules, which an Editor text group can map. */
+  const TOKEN_RULES = ['Keyword', 'Function', 'String', 'Type', 'Number', 'Comment'];
+
+  /**
+   * The widget families a style group can restyle: label, the color keys in it, and the token
+   * rules in it. Every FRAME_KEYS key is left out, so a group never reaches the frame.
+   */
+  const GROUP_FAMILIES = (() => {
+    const frame = new Set(FRAME_KEYS);
+    const keysFrom = (...prefixes) => Object.keys(SWATCH_OF).filter(k => !frame.has(k) && prefixes.some(p => k.startsWith(p))).sort();
+    return {
+      tabs: { label: 'Tabs', keys: keysFrom('tab.'), tokens: [] },
+      lists: { label: 'Lists and trees', keys: keysFrom('list.', 'tree.'), tokens: [] },
+      buttons: { label: 'Buttons', keys: keysFrom('button.'), tokens: [] },
+      editorText: { label: 'Editor text', keys: ['editor.foreground'], tokens: TOKEN_RULES.slice() },
+    };
+  })();
+
+  const isEditorRole = name => typeof name === 'string' && Object.prototype.hasOwnProperty.call(SWATCHES, name) && SWATCHES[name][2] === 'editor';
+
+  /**
+   * What the groups set, as { keys: { key: value }, tokens: { rule name: value } } from the
+   * swatches sw. An entry counts only when it names a key or token rule of its group's family
+   * and an Editor swatch; every other entry, and anything that is not a group, is ignored.
+   */
+  function groupValues(sw, groups) {
+    const keys = {};
+    const tokens = {};
+    for (const g of Array.isArray(groups) ? groups : []) {
+      if (!g || typeof g !== 'object' || !Object.prototype.hasOwnProperty.call(GROUP_FAMILIES, g.family)) {continue;}
+      if (!g.roles || typeof g.roles !== 'object') {continue;}
+      const family = GROUP_FAMILIES[g.family];
+      for (const [name, swatch] of Object.entries(g.roles)) {
+        if (!isEditorRole(swatch) || FRAME_KEYS.includes(name)) {continue;}
+        if (family.keys.includes(name)) {keys[name] = sw[swatch];}
+        else if (family.tokens.includes(name)) {tokens[name] = sw[swatch];}
+      }
+    }
+    return { keys, tokens };
+  }
+
+  /**
+   * Workbench colors, sorted by key. groups ({ family, roles } each) move their family's keys
+   * to other Editor swatches after the roles are applied; edits.keys replaces single keys last.
+   * A key edited to 'default' (DEFAULT_COLOR) keeps that value: the settings VS Code reads honor
+   * it, and the Lab's preview leaves the key out (media/palette.js themeOf).
+   */
+  function buildColors(entry, chrome = {}, edits = undefined, groups = []) {
     const sw = swatches(entry, chrome, edits);
     const colors = {};
     for (const [swatch, keys] of Object.entries(KEY_GROUPS)) {
@@ -601,13 +741,16 @@
         colors[key] = sw[swatch];
       }
     }
+    Object.assign(colors, groupValues(sw, groups).keys);
     Object.assign(colors, cleanEdits(edits).keys);
     return Object.fromEntries(Object.keys(colors).sort().map(k => [k, colors[k]]));
   }
 
-  function tokenColors(entry, chrome = {}, edits = undefined) {
+  /** The baseline token rules; an Editor text group sets a rule's foreground. */
+  function tokenColors(entry, chrome = {}, edits = undefined, groups = []) {
     const sw = swatches(entry, chrome, edits);
-    return [
+    const grouped = groupValues(sw, groups).tokens;
+    const rules = [
       { name: 'Keyword', scope: ['keyword', 'storage.type', 'storage.modifier'], settings: { foreground: sw.kw } },
       { name: 'Function', scope: ['entity.name.function', 'support.function'], settings: { foreground: sw.fn } },
       { name: 'String', scope: ['string'], settings: { foreground: sw.str } },
@@ -615,16 +758,20 @@
       { name: 'Number', scope: ['constant.numeric', 'constant.language'], settings: { foreground: sw.num } },
       { name: 'Comment', scope: ['comment'], settings: { foreground: sw.muted, fontStyle: 'italic' } },
     ];
+    for (const rule of rules) {
+      if (rule.name in grouped) {rule.settings.foreground = grouped[rule.name];}
+    }
+    return rules;
   }
 
-  function buildTheme(entry, chrome = {}, edits = undefined) {
+  function buildTheme(entry, chrome = {}, edits = undefined, groups = []) {
     return {
       $schema: 'vscode://schemas/color-theme',
       name: themeLabel(entry),
       type: 'dark',
       semanticHighlighting: true,
-      colors: buildColors(entry, chrome, edits),
-      tokenColors: tokenColors(entry, chrome, edits),
+      colors: buildColors(entry, chrome, edits, groups),
+      tokenColors: tokenColors(entry, chrome, edits, groups),
     };
   }
 
@@ -643,17 +790,18 @@
 
   /**
    * Everything the Lab writes to try a candidate live: the theme colors and token rules,
-   * scoped to the Lab theme in user settings. Workspace identity is not part of it.
+   * scoped to the Lab theme in user settings, with the style groups given. Workspace
+   * identity is not part of it.
    */
-  function labSettings(entry, chrome = {}, edits = undefined) {
-    const theme = buildTheme(entry, chrome, edits);
+  function labSettings(entry, chrome = {}, edits = undefined, groups = []) {
+    const theme = buildTheme(entry, chrome, edits, groups);
     return { colors: theme.colors, tokenColors: theme.tokenColors };
   }
 
   return {
     THEME_BACKGROUND, UNSET_KEYS, GENERIC_SCOPES, ROLE_NAMES, LAB_THEME_LABEL, LAB_THEME_FILE,
     SLOT_COUNT, slotLabel, slotFile,
-    KEY_GROUPS, SWATCHES, SWATCH_OF, FRAME_KEYS,
-    roleColors, themeLabel, themeFileName, swatches, cleanEdits, buildColors, tokenColors, buildTheme, labSettings,
+    KEY_GROUPS, SWATCHES, SWATCH_OF, FRAME_KEYS, GROUP_FAMILIES, ROLE_FAMILIES, TEXT_LEVELS, cleanChrome,
+    DEFAULT_COLOR, roleColors, themeLabel, themeFileName, swatches, cleanEdits, buildColors, tokenColors, buildTheme, labSettings,
   };
 });

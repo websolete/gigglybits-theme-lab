@@ -1,25 +1,24 @@
 // The VS Code side of the theme library: reading and writing gigglybits.library, writing each
 // bound theme's colors into user settings scoped to its slot, the delete confirmation, the
-// slot quick pick, Use in this project / Use everywhere, and GigglyBits: Choose Theme.
+// slot quick pick, Use in this project / Use everywhere, GigglyBits: Choose Theme, and the style
+// groups in gigglybits.groups, whose every change rewrites every bound slot.
 // Every decision is made in src/themeLibrary.ts, which jest tests without the extension host.
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { slotLabel } from '../scripts/theme-builder';
+import { GroupFamily, slotLabel } from '../scripts/theme-builder';
 import {
-  bindTheme, clearSlot, deleteTheme, Design, freshestSetting, LibraryResult, parseLibrary, projectFrame, projectFrameRefresh,
-  SavedTheme, saveTheme, settingsFilesFor, withProjectFrame, writeSlot,
+  activeGroups, bindTheme, clearSlot, deleteGroup, deleteTheme, Design, freshestSetting, LibraryResult, parseGroups, parseLibrary,
+  projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveGroup, saveTheme, setGroupOn, settingsFilesFor, StyleGroup,
+  writeAllSlots, writeSlot,
 } from './themeLibrary';
+import { oldFolderColor } from './identity';
 
 const LIBRARY = 'gigglybits.library';
+const GROUPS = 'gigglybits.groups';
 const NO_FOLDER = 'Open a folder to use a theme in this project.';
 
 /** Where Use puts a saved theme: this folder's workbench.colorTheme, or the user one. */
 export type UseTarget = 'project' | 'everywhere';
-
-/** The part of the identity controller the library needs: whether this folder has its own color. */
-export interface FolderColor {
-  current(): Promise<{ fill: string; regions: string[] } | undefined>;
-}
 
 export class ThemeLibraryController {
   /** The settings files every write builds on (settingsFilesFor); undefined without a globalStorage path. */
@@ -30,7 +29,7 @@ export class ThemeLibraryController {
    * `globalStoragePath` is context.globalStorageUri.fsPath, which locates the settings files.
    * Without it, writes build on this window's configuration alone.
    */
-  constructor(private readonly folderColor: FolderColor, globalStoragePath?: string) {
+  constructor(globalStoragePath?: string) {
     this.files = globalStoragePath ? settingsFilesFor(globalStoragePath) : undefined;
   }
 
@@ -65,8 +64,41 @@ export class ThemeLibraryController {
     return parseLibrary(this.config().inspect(LIBRARY)?.globalValue);
   }
 
+  /** The style groups, from the user-level gigglybits.groups. */
+  groups(): StyleGroup[] {
+    return parseGroups(this.config().inspect(GROUPS)?.globalValue);
+  }
+
   hasFolder(): boolean {
     return !!vscode.workspace.workspaceFolders?.length;
+  }
+
+  /** Saves a style group under name (saveGroup), then rewrites every bound slot. */
+  async saveGroup(name: string, family: GroupFamily, roles: Record<string, string>): Promise<void> {
+    const result = saveGroup(await this.freshGroups(), { name, family, roles, now: new Date().toISOString() });
+    await this.writeGroups(result.groups);
+    vscode.window.setStatusBarMessage(`Saved style group "${result.group.name}"`, 3000);
+  }
+
+  /** Switches the group id on or off (one on per family), then rewrites every bound slot. */
+  async setGroupOn(id: string, on: boolean): Promise<void> {
+    const groups = await this.freshGroups();
+    if (!groups.some(g => g.id === id)) { return; }
+    await this.writeGroups(setGroupOn(groups, id, on));
+  }
+
+  /** Deletes the group id after a modal confirmation, then rewrites every bound slot. */
+  async deleteGroup(id: string): Promise<void> {
+    const group = (await this.freshGroups()).find(g => g.id === id);
+    if (!group) { return; }
+    const choice = await vscode.window.showWarningMessage(
+      `Delete the style group "${group.name}"?`,
+      { modal: true, detail: group.on ? 'It is on, so every saved theme goes back to its own style for these colors.' : undefined },
+      'Delete',
+    );
+    if (choice !== 'Delete') { return; }
+    // Read again: the modal may have stayed open while another window saved.
+    await this.writeGroups(deleteGroup(await this.freshGroups(), id));
   }
 
   /** Saves design under name, binding a new theme to a slot and writing its slot's colors. */
@@ -101,17 +133,27 @@ export class ThemeLibraryController {
     // Rewritten on every use, so a slot always carries the colors of the theme it holds.
     await this.writeSlotSettings(bound);
     const slot = bound.slot as number;
+    let oldColor: string | undefined;
     if (where === 'project') {
       // The frame belongs to the project: the folder's own block for the slot beats the user one.
+      // A color left from the retired per-folder feature would paint over it, so it goes too.
       const current = this.config().inspect('workbench.colorCustomizations')?.workspaceValue;
+      oldColor = oldFolderColor(current, this.identitySetting<string>('pinnedColor'), this.identitySetting<number>('hue'));
       await this.config().update('workbench.colorCustomizations',
-        withProjectFrame(current, slot, projectFrame(bound)), vscode.ConfigurationTarget.Workspace);
+        projectColors(current, slot, projectFrame(bound)), vscode.ConfigurationTarget.Workspace);
     }
     const target = where === 'project' ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
     await this.config().update('workbench.colorTheme', slotLabel(slot), target);
-    if (where === 'project') {
-      await this.offerToRemoveFolderColor(bound.name);
+    if (oldColor) {
+      await this.config().update('gigglybits.identity.hue', undefined, vscode.ConfigurationTarget.Workspace);
+      await this.config().update('gigglybits.identity.pinnedColor', undefined, vscode.ConfigurationTarget.Workspace);
+      vscode.window.setStatusBarMessage(`This folder's old color (${oldColor}) was replaced by ${bound.name}'s frame.`, 5000);
     }
+  }
+
+  /** A workspace value of the retired gigglybits.identity settings, or undefined. */
+  private identitySetting<T>(name: 'hue' | 'pinnedColor'): T | undefined {
+    return this.config().inspect<T>(`gigglybits.identity.${name}`)?.workspaceValue;
   }
 
   /** Deletes the saved theme id after a modal confirmation, removing its slot's colors. */
@@ -176,25 +218,6 @@ export class ThemeLibraryController {
     return 'needsSlot' in second ? undefined : second;
   }
 
-  /** When this folder has its own color, which covers the theme's frame, offers to remove it. */
-  private async offerToRemoveFolderColor(themeName: string): Promise<void> {
-    let color: { fill: string } | undefined;
-    try {
-      color = await this.folderColor.current();
-    } catch {
-      color = undefined;
-    }
-    if (!color) { return; }
-    const choice = await vscode.window.showInformationMessage(
-      `This folder has its own color (${color.fill}), which covers ${themeName}'s frame. Remove the folder color?`,
-      { modal: true },
-      'Remove', 'Keep',
-    );
-    if (choice === 'Remove') {
-      await vscode.commands.executeCommand('gigglybits.identity.clear');
-    }
-  }
-
   private config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration();
   }
@@ -229,6 +252,17 @@ export class ThemeLibraryController {
     return parseLibrary(await this.fresh(LIBRARY, 'library'));
   }
 
+  /** The style groups as the settings file holds them now; application scope, like the library. */
+  private async freshGroups(): Promise<StyleGroup[]> {
+    return parseGroups(await this.fresh(GROUPS, 'library'));
+  }
+
+  /** Writes the groups, then every bound slot through writeAllSlots on fresh slot values. */
+  private async writeGroups(groups: StyleGroup[]): Promise<void> {
+    await this.config().update(GROUPS, groups, vscode.ConfigurationTarget.Global);
+    await this.writeSlotValues(writeAllSlots(await this.slotValues(), await this.freshLibrary(), groups));
+  }
+
   private async slotValues(): Promise<{ colors: unknown; tokens: unknown }> {
     return {
       colors: await this.fresh('workbench.colorCustomizations', 'colors'),
@@ -247,8 +281,9 @@ export class ThemeLibraryController {
     await this.config().update('editor.tokenColorCustomizations', next.tokens, Global);
   }
 
+  /** Writes theme's slot block with the groups that are on. */
   private async writeSlotSettings(theme: SavedTheme): Promise<void> {
-    await this.writeSlotValues(writeSlot(await this.slotValues(), theme));
+    await this.writeSlotValues(writeSlot(await this.slotValues(), theme, activeGroups(await this.freshGroups())));
   }
 
   private async runSafely(action: () => Promise<void>): Promise<void> {
@@ -263,4 +298,9 @@ export class ThemeLibraryController {
   saveSafely(name: string, design: Design): Promise<void> { return this.runSafely(() => this.save(name, design)); }
   useSafely(id: string, where: UseTarget): Promise<void> { return this.runSafely(() => this.use(id, where)); }
   deleteSafely(id: string): Promise<void> { return this.runSafely(() => this.delete(id)); }
+  saveGroupSafely(name: string, family: GroupFamily, roles: Record<string, string>): Promise<void> {
+    return this.runSafely(() => this.saveGroup(name, family, roles));
+  }
+  setGroupOnSafely(id: string, on: boolean): Promise<void> { return this.runSafely(() => this.setGroupOn(id, on)); }
+  deleteGroupSafely(id: string): Promise<void> { return this.runSafely(() => this.deleteGroup(id)); }
 }

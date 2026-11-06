@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { captureThemeSnapshot, ThemeSnapshot } from './themeSource';
+import { affectsModernUI, modernUISettings } from './modernUI';
 
 type FromWebview =
   | { type: 'ready' }
@@ -82,6 +83,9 @@ export class PaletteInspectorPanel {
         if (WATCHED_SETTINGS.some(s => e.affectsConfiguration(s))) {
           this.scheduleRefresh();
         }
+        if (affectsModernUI(e)) {
+          void this.postModernUI();
+        }
       }),
     );
   }
@@ -89,6 +93,9 @@ export class PaletteInspectorPanel {
   private async onMessage(msg: FromWebview): Promise<void> {
     switch (msg.type) {
       case 'ready':
+        await this.postModernUI();
+        await this.refresh();
+        break;
       case 'refresh':
         await this.refresh();
         break;
@@ -103,6 +110,11 @@ export class PaletteInspectorPanel {
         await vscode.commands.executeCommand('gigglybits.openThemeLab');
         break;
     }
+  }
+
+  /** VS Code's modern UI settings, which the Workbench overview draws with (src/modernUI.ts). */
+  private async postModernUI(): Promise<void> {
+    await this.panel.webview.postMessage({ type: 'modernUI', modernUI: modernUISettings() });
   }
 
   private scheduleRefresh(): void {

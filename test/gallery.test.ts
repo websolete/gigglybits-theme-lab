@@ -116,10 +116,95 @@ describe('element gallery', () => {
     }
   });
 
+  it('fits only the Workbench overview to its card, rather than scrolling it sideways', () => {
+    const observed: Element[] = [];
+    (window as any).ResizeObserver = class { constructor(private fn: () => void) {} observe(el: Element) { observed.push(el); } disconnect() {} };
+    try {
+      const { node } = gallery.render(ctx());
+      const fitted = [...node.querySelectorAll('.gb-card')].filter(c => c.querySelector('.gb-preview-fit')).map(c => c.querySelector('h3')!.textContent);
+      expect(fitted).toEqual(['Workbench overview']);
+      expect(observed).toHaveLength(1);
+    } finally {
+      delete (window as any).ResizeObserver;
+    }
+  });
+
   it('lists extension-contributed colors grouped by extension', () => {
     const c = gallery.renderContributions(ctx());
     expect(c).toMatchObject({ count: 1, extensions: 1 });
     expect(c.nodes[0].textContent).toContain('fixture.highlight');
     expect(c.nodes[0].textContent).toContain('A fixture color.');
+  });
+});
+
+describe('Workbench drawing and VS Code\'s modern UI settings', () => {
+  type Modern = Partial<{ modern: boolean; uppercase: boolean; tabStyle: string }>;
+  /** The Workbench preview's root (.wb), drawn with the given modern UI settings, or none. */
+  const workbench = (modernUI?: Modern): HTMLElement => {
+    const parts = (gallery as any).renderParts(modernUI ? { ...ctx(), modernUI } : ctx(), ['workbench']);
+    return parts[0].preview;
+  };
+  /** The Panel card's preview root. */
+  const panelCard = (modernUI?: Modern): HTMLElement =>
+    (gallery as any).renderParts(modernUI ? { ...ctx(), modernUI } : ctx(), ['panel'])[0].preview;
+  const keysOf = (el: Element | null) => (el!.getAttribute('data-keys') || '').split(' ');
+  const activeTab = (wb: HTMLElement) => wb.querySelector('[data-region="tabs"] .gb-tab')!;
+  const activeAct = (wb: HTMLElement) => wb.querySelector('[data-region="activityBar"] .wb-act')!;
+  const MODERN = { modern: true, uppercase: false, tabStyle: 'connected' };
+
+  it('draws the classic workbench with no modern settings', () => {
+    const wb = workbench();
+    expect(wb.classList.contains('wb')).toBe(true);
+    expect(wb.classList.contains('wb-modern')).toBe(false);
+    expect(wb.classList.contains('gb-upper')).toBe(true);
+    expect(keysOf(activeTab(wb))).toContain('tab.activeBackground');
+    expect(keysOf(activeTab(wb)).some(k => k.startsWith('modern'))).toBe(false);
+  });
+
+  it('draws floating cards and the modern active parts with the modern UI on', () => {
+    const wb = workbench(MODERN);
+    expect(wb.classList.contains('wb-modern')).toBe(true);
+    expect(keysOf(wb)).toContain('modernUI.shellBackground');
+    expect(keysOf(wb.querySelector('[data-region="sideBar"]'))).toContain('surface.border');
+    expect(keysOf(wb.querySelector('[data-region="panel"]'))).toContain('modernPanel.border');
+    expect(keysOf(activeTab(wb))).toContain('modernEditorTab.activeBackground');
+    expect(keysOf(activeTab(wb))).not.toContain('tab.activeBackground');
+    expect(keysOf(activeAct(wb))).toContain('modernActivityBarItem.activeBackground');
+    expect(wb.classList.contains('gb-upper')).toBe(false);
+  });
+
+  it('writes headers and panel tabs in mixed case, shown in capitals under the classic UI or the uppercase setting', () => {
+    for (const modernUI of [undefined, MODERN]) {
+      const wb = workbench(modernUI);
+      expect(wb.querySelector('[data-region="sideBar"] .wb-side-title')!.textContent).toBe('Explorer');
+      expect([...wb.querySelectorAll('[data-region="panel"] .gb-ptab')].map(t => t.textContent)).toEqual(['Terminal', 'Problems', 'Output']);
+      expect([...panelCard(modernUI).querySelectorAll('.gb-ptab')].map(t => t.textContent!.trim())).toEqual(['Problems 3', 'Output', 'Terminal']);
+    }
+    expect(workbench({ modern: true, uppercase: true }).classList.contains('gb-upper')).toBe(true);
+    expect(workbench({ modern: false }).classList.contains('gb-upper')).toBe(true);
+    expect(panelCard({ modern: true, uppercase: true }).classList.contains('gb-upper')).toBe(true);
+  });
+
+  it('paints the whole editor area in the editor background, so a short editor group leaves no gap', () => {
+    for (const modernUI of [undefined, MODERN]) {
+      expect(keysOf(workbench(modernUI).querySelector('.wb-editor'))).toContain('editor.background');
+    }
+  });
+
+  it('marks pill tabs only under the modern UI with the pill style', () => {
+    expect(workbench({ modern: true, tabStyle: 'pill' }).classList.contains('wb-pill')).toBe(true);
+    expect(workbench({ modern: true, tabStyle: 'connected' }).classList.contains('wb-pill')).toBe(false);
+    expect(workbench({ modern: false, tabStyle: 'pill' }).classList.contains('wb-pill')).toBe(false);
+  });
+
+  it('has the casing and card rules in gallery.css', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'media', 'gallery.css'), 'utf8');
+    const rules = [...css.matchAll(/([^{}]*)\{([^}]*)\}/g)];
+    const upper = rules.find(r => r[1].includes('.gb-upper') && /text-transform:\s*uppercase/.test(r[2]));
+    expect(upper).toBeDefined();
+    for (const sel of ['.gb-upper .wb-side-title', '.gb-upper .wb-section', '.gb-upper .gb-ptab']) {
+      expect(upper![1]).toContain(sel);
+    }
+    expect(css).toMatch(/\.wb-modern > \.wb-side[^{]*\{[^}]*border-radius:\s*8px/);
   });
 });

@@ -18,7 +18,24 @@ export interface ChromeChoice {
    * color, or a palette color index, and a style. Missing, it follows `index` in style 'dark'.
    */
   frame?: { index?: number; color?: string; style?: 'dark' | 'filled' };
+  /** Palette indexes for Keywords, Functions, Strings, Types and Numbers; each wraps around the palette. */
+  syntax?: number[];
+  /** Multiplier on the surface steps, 0.5 to 2; 1 is the steps themes have always had. */
+  depth?: number;
+  /** Text contrast; 'standard' is the levels themes have always had. */
+  text?: TextLevel;
 }
+
+export type TextLevel = 'soft' | 'standard' | 'high';
+
+/** Lightness of bright, text, muted and faint for each text contrast level. */
+export const TEXT_LEVELS: Readonly<Record<TextLevel, readonly [number, number, number, number]>>;
+
+/** The Roles step's settings in a chrome choice, cleaned; syntax is null for the default order. */
+export function cleanChrome(chrome?: unknown): { syntax: number[] | null; depth: number; text: TextLevel };
+
+/** The Roles step's families, in order; each swatch belongs to exactly one. */
+export const ROLE_FAMILIES: readonly { id: string; name: string; how: string; roles: readonly string[] }[];
 
 /** The keys the frame settings decide; every other key follows the editor settings. */
 export const FRAME_KEYS: readonly string[];
@@ -40,6 +57,21 @@ export interface ColorEdits {
   keys?: Record<string, string>;
 }
 
+/** A widget family a style group can restyle. */
+export type GroupFamily = 'tabs' | 'lists' | 'buttons' | 'editorText';
+
+/** Each family's label, the color keys in it, and the token rule names in it (editorText only). */
+export const GROUP_FAMILIES: Readonly<Record<GroupFamily, { label: string; keys: readonly string[]; tokens: readonly string[] }>>;
+
+/**
+ * A style group as the builder applies it: roles maps a key or token rule name of the family
+ * to an Editor swatch name, such as 'accent' or 'raised'. Entries outside the family are ignored.
+ */
+export interface StyleGroup {
+  family: GroupFamily;
+  roles: Record<string, string>;
+}
+
 export const LAB_THEME_LABEL: string;
 export const LAB_THEME_FILE: string;
 /** How many theme slots the build ships for saved library themes. */
@@ -48,6 +80,9 @@ export const SLOT_COUNT: number;
 export function slotLabel(n: number): string;
 /** 'gigglybits-theme-<n>-color-theme.json', the theme file of slot n. */
 export function slotFile(n: number): string;
-export function labSettings(entry: BuilderEntry, chrome?: ChromeChoice, edits?: ColorEdits): LabSettings;
-/** edits with every value that is not a hex color dropped. */
+/** The theme's colors and token rules with the style groups applied; a key edit wins over a group. */
+export function labSettings(entry: BuilderEntry, chrome?: ChromeChoice, edits?: ColorEdits, groups?: readonly StyleGroup[]): LabSettings;
+/** A key edit value that leaves the key to VS Code's default ('default', as colorCustomizations reads it). */
+export const DEFAULT_COLOR: 'default';
+/** edits with every value that is not a hex color dropped; a key edit may also be DEFAULT_COLOR. */
 export function cleanEdits(edits: unknown): { swatches: Record<string, string>; keys: Record<string, string> };

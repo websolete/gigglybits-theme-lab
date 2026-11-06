@@ -170,19 +170,32 @@
       blurb: 'The main surfaces in context, with a split editor and a chat view in the secondary side bar. Hover any part to see the keys that draw it.',
       wide: true,
       render: () => {
+        // VS Code's modern UI floats the side bars, editor and panel as cards on the shell
+        // background and colors the active tab, activity item and panel tab with its own keys.
+        const m = modernOf(ctx);
+        const modern = Boolean(m && m.modern);
+        const activeTab = modern
+          ? { bg: 'modernEditorTab.activeBackground', fg: 'modernEditorTab.activeForeground', bdB: 'tab.activeBorder', bdR: 'tab.border' }
+          : { bg: 'tab.activeBackground', fg: 'tab.activeForeground', bdT: 'tab.activeBorderTop', bdB: 'tab.activeBorder', bdR: 'tab.border' };
+        const activeAct = modern
+          ? { fg: 'modernActivityBarItem.activeForeground', bg: 'modernActivityBarItem.activeBackground' }
+          : { fg: 'activityBar.foreground', bg: 'activityBar.activeBackground', bdL2: 'activityBar.activeBorder' };
+        const activePtab = modern
+          ? { fg: 'modernTab.activeForeground', bg: 'modernTab.activeBackground' }
+          : { fg: 'panelTitle.activeForeground', bdB: 'panelTitle.activeBorder' };
         const title = region(P('div', 'wb-title', { bg: 'titleBar.activeBackground', fg: 'titleBar.activeForeground', bdB: 'titleBar.border' },
           S('wb-menu', 'File   Edit   Selection   View'),
           P('div', 'wb-cc', { bg: 'commandCenter.background', fg: 'commandCenter.foreground', bd: 'commandCenter.border' }, I('search'), ' gigglybits-vscode-theme'),
           S('wb-spacer')), 'titleBar');
         const activity = region(P('div', 'wb-activity', { bg: 'activityBar.background', bdR: 'activityBar.border' },
-          P('div', 'wb-act', { fg: 'activityBar.foreground', bg: 'activityBar.activeBackground', bdL2: 'activityBar.activeBorder' }, I('files')),
+          P('div', 'wb-act', activeAct, I('files')),
           P('div', 'wb-act', { fg: 'activityBar.inactiveForeground' }, I('search')),
           P('div', 'wb-act', { fg: 'activityBar.inactiveForeground' }, I('source-control'),
             P('span', 'wb-act-badge', { bg: 'activityBarBadge.background', fg: 'activityBarBadge.foreground' }, '3')),
           P('div', 'wb-act', { fg: 'activityBar.inactiveForeground' }, I('extensions'))), 'activityBar');
-        const side = region(P('div', 'wb-side', { bg: 'sideBar.background', fg: 'sideBar.foreground', bdR: 'sideBar.border' },
-          P('div', 'wb-side-title', { fg: 'sideBarTitle.foreground' }, 'EXPLORER'),
-          P('div', 'wb-section', { bg: 'sideBarSectionHeader.background', fg: 'sideBarSectionHeader.foreground', bdT: 'sideBarSectionHeader.border' }, I('chevron-down'), ' GIGGLYBITS'),
+        const side = region(P('div', 'wb-side', { bg: 'sideBar.background', fg: 'sideBar.foreground', ...(modern ? { bd: 'surface.border' } : { bdR: 'sideBar.border' }) },
+          P('div', 'wb-side-title', { fg: 'sideBarTitle.foreground' }, 'Explorer'),
+          P('div', 'wb-section', { bg: 'sideBarSectionHeader.background', fg: 'sideBarSectionHeader.foreground', bdT: 'sideBarSectionHeader.border' }, I('chevron-down'), ' gigglybits'),
           treeRow(0, 'folder-opened', 'src', null, { twistie: 'chevron-down' }),
           treeRow(1, 'file-code', 'extension.ts', { bg: 'list.activeSelectionBackground', fg: 'list.activeSelectionForeground' }),
           treeRow(1, 'file-code', 'paletteInspectorPanel.ts', { fg: 'gitDecoration.modifiedResourceForeground' }, { trail: 'M' }),
@@ -190,7 +203,7 @@
           treeRow(0, 'folder', 'media', null, { twistie: 'chevron-right' }),
           treeRow(0, 'file', 'package.json', { fg: 'gitDecoration.untrackedResourceForeground' }, { trail: 'U' })), 'sideBar');
         const tabs = region(P('div', 'wb-tabs', { bg: 'editorGroupHeader.tabsBackground', bdB: 'editorGroupHeader.tabsBorder' },
-          P('div', 'gb-tab', { bg: 'tab.activeBackground', fg: 'tab.activeForeground', bdT: 'tab.activeBorderTop', bdB: 'tab.activeBorder', bdR: 'tab.border' }, I('file-code'), ' extension.ts ', I('close')),
+          P('div', 'gb-tab gb-tab-active', activeTab, I('file-code'), ' extension.ts ', I('close')),
           P('div', 'gb-tab', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground', bdR: 'tab.border' }, I('file-code'), ' themeSource.ts ', I('circle-filled'))), 'tabs');
         // The second editor group of a split: unfocused tabs, and the line between the groups.
         const group2 = region(P('div', 'wb-group2', { bdL: 'editorGroup.border' },
@@ -201,8 +214,8 @@
             line(2, ['  ', T('"name"', 'support.type.property-name.json'), ': ', T('"gigglybits"', 'string.quoted.double.json'), ',']),
             line(3, ['  ', T('"private"', 'support.type.property-name.json'), ': ', T('true', 'constant.language.json')]),
             line(4, [B('}', 1)]))), 'editorGroup');
-        const aux = region(P('div', 'wb-aux', { bg: 'sideBar.background', fg: 'sideBar.foreground', bdL: 'sideBar.border' },
-          P('div', 'wb-side-title', { fg: 'sideBarTitle.foreground' }, 'CHAT'),
+        const aux = region(P('div', 'wb-aux', { bg: 'sideBar.background', fg: 'sideBar.foreground', ...(modern ? { bd: 'surface.border' } : { bdL: 'sideBar.border' }) },
+          P('div', 'wb-side-title', { fg: 'sideBarTitle.foreground' }, 'Chat'),
           D('wb-chat', chatRequest(), chatResponse(),
             chatInput('errorForeground'),
             P('div', 'gb-chat-caption', { fg: 'descriptionForeground' }, 'Focused input, Claude Code auto mode'))), 'chat');
@@ -214,11 +227,11 @@
           line(3, [T('export', 'keyword.control.export.ts'), ' ', T('function', 'storage.type.function.ts'), ' ', T('activate', 'entity.name.function.ts'), B('(', 1), T('context', 'variable.parameter.ts'), B(')', 1), ' ', B('{', 1)]),
           line(4, [guide(true), T('context', 'variable.other.object.ts'), '.', T('subscriptions', 'variable.other.property.ts'), '.', T('push', 'entity.name.function.ts'), B('(', 2), T('register', 'entity.name.function.ts'), B('(', 3), B(')', 3), B(')', 2), ';', cursor()], { active: true, spec: { bg: 'editor.lineHighlightBackground', bd: 'editor.lineHighlightBorder' } }),
           line(5, [B('}', 1)]));
-        const panel = region(P('div', 'wb-panel', { bg: 'panel.background', bdT: 'panel.border' },
+        const panel = region(P('div', 'wb-panel', { bg: 'panel.background', ...(modern ? { bd: 'modernPanel.border' } : { bdT: 'panel.border' }) },
           D('wb-panel-tabs',
-            P('span', 'gb-ptab', { fg: 'panelTitle.activeForeground', bdB: 'panelTitle.activeBorder' }, 'TERMINAL'),
-            P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'PROBLEMS'),
-            P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'OUTPUT')),
+            P('span', 'gb-ptab gb-ptab-active', activePtab, 'Terminal'),
+            P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'Problems'),
+            P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'Output')),
           P('div', 'wb-term', { bg: 'terminal.background', fg: 'terminal.foreground' },
             D(null, '$ npm test'),
             D(null, P('span', 'gb-term-badge', { bg: 'terminal.ansiGreen', fg: 'terminal.ansiBlack' }, ' PASS '), ' test/themeSource.test.ts'))), 'panel');
@@ -230,8 +243,13 @@
           S('gb-sitem', 'Ln 4, Col 52'),
           S('gb-sitem', 'TypeScript'),
           S('gb-sitem', I('bell'))), 'statusBar');
-        return P('div', 'wb', { bd: 'window.activeBorder' }, title, activity, side,
-          D('wb-editor', D('wb-group1', tabs, crumbs, code), group2), panel, aux, status);
+        // The editor area is painted as a whole, so the space below a group's last line is the
+        // editor's background, as in VS Code, rather than whatever sits behind the drawing.
+        const editorArea = P('div', 'wb-editor', { bg: 'editor.background', ...(modern ? { bd: 'surface.border' } : null) },
+          D('wb-group1', tabs, crumbs, code), group2);
+        const cls = ['wb', modern && 'wb-modern', modern && m.tabStyle === 'pill' && 'wb-pill'].filter(Boolean).join(' ');
+        return P('div', cls, { bd: 'window.activeBorder', ...(modern ? { bg: 'modernUI.shellBackground' } : null) }, title, activity, side,
+          editorArea, panel, aux, status);
       },
     },
 
@@ -367,7 +385,7 @@
       blurb: 'Explorer, search results, outline and every other tree view share these keys.',
       render: () => P('div', 'gb-surface gb-surface-flush', { bg: 'sideBar.background', fg: 'sideBar.foreground' },
         labeled(
-          ['section header', P('div', 'wb-section', { bg: 'sideBarSectionHeader.background', fg: 'sideBarSectionHeader.foreground', bdT: 'sideBarSectionHeader.border' }, I('chevron-down'), ' OUTLINE')],
+          ['section header', P('div', 'wb-section', { bg: 'sideBarSectionHeader.background', fg: 'sideBarSectionHeader.foreground', bdT: 'sideBarSectionHeader.border' }, I('chevron-down'), ' Outline')],
           ['normal', treeRow(1, 'symbol-class', 'PaletteInspectorPanel', null, { guides: true, iconSpec: { fg: 'symbolIcon.classForeground' } })],
           ['hover', treeRow(2, 'symbol-method', 'show', { bg: 'list.hoverBackground', fg: 'list.hoverForeground' }, { guides: true, iconSpec: { fg: 'symbolIcon.methodForeground' } })],
           ['focused', treeRow(2, 'symbol-method', 'revive', { bg: 'list.focusBackground', fg: 'list.focusForeground', ol: 'list.focusOutline' }, { guides: true, iconSpec: { fg: 'symbolIcon.methodForeground' } })],
@@ -640,10 +658,10 @@
       title: 'Panel',
       render: () => P('div', 'gb-panel', { bg: 'panel.background', fg: 'foreground', bdT: 'panel.border' },
         D('wb-panel-tabs',
-          P('span', 'gb-ptab', { fg: 'panelTitle.activeForeground', bdB: 'panelTitle.activeBorder' }, 'PROBLEMS ',
+          P('span', 'gb-ptab', { fg: 'panelTitle.activeForeground', bdB: 'panelTitle.activeBorder' }, 'Problems ',
             P('span', 'gb-badge', { bg: 'panelTitleBadge.background', fg: 'panelTitleBadge.foreground' }, '3')),
-          P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'OUTPUT'),
-          P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'TERMINAL'),
+          P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'Output'),
+          P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'Terminal'),
           S('wb-spacer'),
           P('div', 'gb-input gb-panel-filter', { ...inputSpec, bd: 'panelInput.border' }, P('span', null, { fg: 'input.placeholderForeground' }, 'Filter'))),
         P('div', 'gb-panel-section', { bg: 'panelSectionHeader.background', fg: 'panelSectionHeader.foreground', bdT: 'panelSectionHeader.border' }, I('chevron-down'), ' TEST RESULTS'),
@@ -857,9 +875,39 @@
     cardEl.addEventListener('focusout', clear);
   }
 
+  /** Cards whose drawing is shrunk to the card's width rather than scrolled sideways. */
+  const FIT_TO_WIDTH = new Set(['workbench']);
+
+  /**
+   * Shrinks `preview` to fit `box`'s width, as the Theme Lab fits its Workbench drawing, so a
+   * whole window shows at once. Never enlarges, and never below 45%.
+   */
+  function fitToWidth(box, preview) {
+    if (typeof ResizeObserver === 'undefined') return;
+    box.classList.add('gb-preview-fit');
+    // Zooming changes the box's height, which notifies the observer again; only a change of
+    // width refits, and the refit runs on the next frame, outside the observer's callback.
+    let width = -1;
+    let frame = 0;
+    const fit = () => {
+      frame = 0;
+      preview.style.zoom = '';
+      const have = box.clientWidth;
+      const need = preview.scrollWidth;
+      if (have > 0 && need > have) preview.style.zoom = String(Math.max(0.45, have / need));
+    };
+    new ResizeObserver(entries => {
+      const w = Math.round(entries[entries.length - 1].contentRect.width);
+      if (w === width) return;
+      width = w;
+      if (!frame) frame = requestAnimationFrame(fit);
+    }).observe(box);
+  }
+
   function card(def, preview, info) {
     const unset = info.keys.filter(k => !ctx.model.byKey.has(k)).length;
     const previewBox = h('div', { class: 'gb-preview', role: 'img', 'aria-label': `${def.title} preview. The definitions table lists the same keys.` }, preview);
+    if (FIT_TO_WIDTH.has(def.id)) fitToWidth(previewBox, preview);
     const el = h('section', { class: `gb-card${def.wide ? ' wide' : ''}` },
       h('header', { class: 'gb-card-head' },
         h('h3', null, def.title),
@@ -883,6 +931,19 @@
 
   // ------------------------------------------------------------------- public
 
+  /** The context's modern UI settings, { modern, uppercase, tabStyle }, or null when absent. */
+  const modernOf = context => (context && context.modernUI && typeof context.modernUI === 'object' ? context.modernUI : null);
+
+  /**
+   * Headers and panel tabs are written in mixed case; VS Code draws them in capitals under the
+   * classic UI (no settings, or modern off) and when the uppercase setting is on.
+   */
+  function markCasing(preview) {
+    const m = modernOf(ctx);
+    if (!m || !m.modern || m.uppercase) preview.classList.add('gb-upper');
+    return preview;
+  }
+
   /** Renders the gallery grid. Returns the node and how many cards passed the filters. */
   function render(context) {
     ctx = context;
@@ -894,6 +955,7 @@
       } catch (err) {
         preview = h('p', { class: 'warn' }, `Could not draw ${def.title}: ${err && err.message}`);
       }
+      markCasing(preview);
       const info = analyze(preview);
       if (visible(def, info)) cards.push(card(def, preview, info));
     }
@@ -903,8 +965,10 @@
 
   /**
    * The previews alone, without the inspector's chips and definitions, for the Theme Lab.
-   * context needs only { model: { byKey }, tokens }; ids picks cards in catalog order (all
-   * when omitted). Each result carries the card's id, title, blurb and analyze() info.
+   * context needs only { model: { byKey }, tokens }, plus modernUI ({ modern, uppercase,
+   * tabStyle }) to draw the modern workbench; without it the drawing is the classic one. ids
+   * picks cards in catalog order (all when omitted). Each result carries the card's id, title,
+   * blurb and analyze() info.
    */
   function renderParts(context, ids) {
     ctx = context;
@@ -917,6 +981,7 @@
       } catch (err) {
         preview = h('p', { class: 'warn' }, `Could not draw ${def.title}: ${err && err.message}`);
       }
+      markCasing(preview);
       out.push({ id: def.id, title: def.title, blurb: def.blurb || '', wide: Boolean(def.wide), preview, info: analyze(preview) });
     }
     ctx = null;

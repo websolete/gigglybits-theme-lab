@@ -8,12 +8,12 @@ A GigglyBits theme is built from one palette, usually five colors from a harmony
 
 A theme has two color sets, each decided by its own settings and checked by its own contrast floors.
 
-- **Frame**: the title bar, command center, activity bar and its badge, status bar (its no-folder colors and hovered items included), the remote item and the window border. It takes one palette color, or a custom color, and a style. **Filled** paints the bars in the frame color with black or white text; **Dark** keeps the shipped look, dark bars with accents in the frame color, and a transparent window border.
-- **Editor**: every other key. It takes an accent color (a palette index) and a surface tint (Neutral, Tinted or Rich).
+- **Frame**: the title bar, command center, activity bar and its badge, status bar (its no-folder colors and hovered items included), the remote item and the window border, and, since 2026-11-05, the six tab and split lines (`tab.activeBorderTop`, `tab.activeBorder`, `editorGroup.border`, `sideBar.border`, `panel.border`, `sash.hoverBorder`): in a Filled frame they take the frame color lifted to 3:1 on the editor, and in a Dark frame they keep the editor's accent, background and divider. It takes one palette color, or a custom color, and a style. **Filled** paints the bars in the frame color with black or white text; **Dark** keeps the look the GigglyBits themes had before the Frame existed, dark bars with accents in the frame color, and a transparent window border.
+- **Editor**: every other key. It takes an accent color (a palette index) and a surface tint (Neutral, Tinted or Rich), and, since 2026-11-06, three settings the Lab's Roles step (step 4) sets: **syntax colors**, the palette color each of Keywords, Functions, Strings, Types and Numbers takes, as five indexes read modulo the palette's length (default 1 to 5 in order); **surface depth**, a multiplier from 0.5 to 2 in steps of 0.1 on how far each surface steps in lightness from the editor background (default 1); and **text contrast**, the four gray text lightnesses, Soft, Standard (default) or High. At their defaults the build is the one before they existed. None of them changes a Frame key.
 
 Changing the Frame never changes an Editor key. In a Filled frame, changing the Editor never changes a Frame key; in a Dark frame the bars reuse the editor's dark surfaces on purpose, so they follow the surface tint.
 
-New designs in the Theme Lab start Filled in palette color 1. The shipped variants, and a design started from one, stay Dark, so they look as they always have.
+New designs in the Theme Lab start Filled in palette color 1. The Lab theme and the 12 slot files, built with no frame, are Dark, and so is an older Try with no frame when it is restored.
 
 Rejected: a separate harmony rule for the Frame (the shared palette was enough for the user's happy path; recorded as deferred), and keeping the per-folder color as the only way to color the bars (it cannot travel with a saved theme).
 
@@ -37,14 +37,15 @@ Filled text is black or white, picked against the exact background it sits on, s
 
 ## Key interfaces
 
-- `buildColors(entry, { index, surfaces, frame: { index? | color?, style } }, edits)`, `buildTheme`, `labSettings` in `media/themeBuilder.js`.
+- `buildColors(entry, { index, surfaces, frame: { index? | color?, style }, syntax?, depth?, text? }, edits, groups)`, `buildTheme(entry, chrome, edits, groups)` and `labSettings(entry, chrome, edits, groups)` in `media/themeBuilder.js`. `groups` is the style groups, `{ family, roles }` each (default `[]`), applied after the roles and before key edits; no group family holds a `FRAME_KEYS` key, so groups never change the Frame (`docs/specs/theme-library.spec.md`).
 - `FRAME_KEYS`, `SWATCHES[name][2]` (the group), `SWATCH_OF[key]`.
+- `cleanChrome(chrome)` returns the three Roles settings cleaned (`syntax` as five non-negative integers or null, `depth` clamped to 0.5 to 2 and rounded to 0.1, `text` a `TEXT_LEVELS` id); `TEXT_LEVELS` holds each level's four lightnesses, and `ROLE_FAMILIES` the seven families the Roles step shows.
 - The Lab's `ui.palette.frame` state and the Try in VS Code message's `chrome.frame` and `settings.frame`; `TryRecord.frame` in `src/labStart.ts`.
 
 ## Verification
 
-- `test/themeBuilder.test.ts`: a default build equals `test/fixtures/frame-baseline/` (the shipped variants before the Frame existed) apart from `window.activeBorder` and the five input-outline keys; Frame and Editor independence and every contrast floor over every included palette, every palette color as the frame color, and both styles.
-- `test/paletteLab.test.ts`, `test/themeLab.test.ts`: the Frame and Editor boxes drive the preview, Try posts the frame, a restored Try brings it back, and the Lab shows no "chrome" or "workspace identity" wording.
+- `test/themeBuilder.test.ts`: a default build equals `test/fixtures/frame-baseline/` (the themes built from `test/fixtures/palettes.json` before the Frame existed) apart from `window.activeBorder` and the five input-outline keys; Frame and Editor independence and every contrast floor over every included palette, every palette color as the frame color, and both styles.
+- `test/paletteLab.test.ts`, `test/themeLab.test.ts`: the Frame and Editor rows of step 3 drive the preview, Try posts the frame, a restored Try brings it back, step 3's heading reads the choice (`Frame 1 Filled · Accent 1 Neutral`), a narrow pick in the title, activity or status bar moves the Frame row into the Edit dock, and the Lab shows no "chrome" or "workspace identity" wording.
 - Live, 2026-11-04: a Filled frame applied by Try in VS Code colored a real window's bars readably, and the Search view's input outline was visible.
 
 ## Related

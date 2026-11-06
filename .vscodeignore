@@ -11,7 +11,6 @@ src/**
 test/**
 scripts/**
 docs/**
-palettes/**
 out/**
 coverage/**
 node_modules/**

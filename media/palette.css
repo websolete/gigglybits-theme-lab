@@ -1,20 +1,233 @@
-/* Palette Lab layout. Candidate colors are set per element from palette.js; the live
-   editor text and comment colors come from the theme variables below. */
+/* Palette Lab layout (CONTRACT-v4 section 4). Candidate colors are set per element from
+   palette.js; the live editor text and comment colors come from the theme variables below.
 
-/* The Palette Lab stacks Start from, the palette and the previews in one column. */
-.gb-palette { display: flex; flex-direction: column; gap: var(--gb-space-5); }
+   The Lab root (.gb-palette, palette.js render) is the container every breakpoint queries.
+   From 75rem it is two panes, the task column and the stage, each the height of the tab and
+   scrolling on its own; narrower, the stage is a band stuck to the top and the step 6 bar is
+   stuck to the bottom. palette.js builds the regions in the order of the width. */
+.gb-palette {
+  container: lab / inline-size; min-width: 0;
+  /* Section cards: a raised card, an inset for groups inside one, and their hairline. */
+  --gb-card: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-editor-background));
+  --gb-inset: color-mix(in srgb, var(--vscode-foreground) 7%, var(--vscode-editor-background));
+  --gb-card-line: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  --gb-card-r: 6px;
+  /* An open section's highlight: its border, its heading band and the line under the heading. */
+  --gb-hl: var(--vscode-focusBorder);
+  --gb-hl-band: color-mix(in srgb, var(--vscode-focusBorder) 22%, var(--gb-card));
+  --gb-hl-line: color-mix(in srgb, var(--vscode-focusBorder) 45%, transparent);
+}
 .gb-palette h4 { margin: var(--gb-space-3) 0 var(--gb-space-1); }
-/* Box headings come from .gb-box in inspector.css. */
-.gb-pl-main { display: flex; flex-direction: column; gap: var(--gb-space-4); min-width: 0; }
-.gb-pl-summary { display: flex; flex-direction: column; gap: var(--gb-space-3); }
-.gb-pl-summary > h3 { margin-bottom: 0; }
-.gb-pl-previews-box .gb-tabpanel { padding-top: var(--gb-space-4); }
+.gb-lab-grid { display: flex; flex-direction: column; min-width: 0; }
+.gb-tasks, .gb-stage { min-width: 0; }
+.gb-tasks { gap: var(--gb-space-2); padding-top: var(--gb-space-2); }
 
-/* Labelled rows (fieldRow in palette.js): a label column, then the control column, so the
-   labels in one box line up. The summary and chrome rows carry longer labels. */
+/* Steps: each a bounded card. Its numbered heading, carrying the step's state, is a band across
+   the card's top (--gb-py is the card's vertical padding, which the band spans), and a hairline
+   divides it from the open body. A folded step is its band alone. */
+.gb-step {
+  --gb-py: 10px;
+  display: flex; flex-direction: column; min-width: 0; padding: var(--gb-py) 12px;
+  border: 1px solid var(--gb-card-line); border-radius: var(--gb-card-r); background: var(--gb-card);
+}
+.gb-step > .gb-step-h {
+  margin: calc(-1 * var(--gb-py)) -12px 0; padding: var(--gb-py) 12px;
+  border-radius: calc(var(--gb-card-r) - 1px) calc(var(--gb-card-r) - 1px) 0 0;
+}
+.gb-step:has(> .gb-step-body[hidden]) { padding-bottom: 0; }
+.gb-step > .gb-step-body:not([hidden]) { margin: 0 -12px; padding: 10px 12px 0; border-top: 1px solid var(--gb-card-line); }
+.gb-step-h { display: flex; align-items: center; gap: var(--gb-space-2); margin: 0; min-width: 0; min-height: 24px; font-size: var(--gb-heading-size); font-weight: 600; }
+/* An open step stands out while the steps are folded (narrow, the Edit panel open or at one
+   line): the step opened from its heading, and the Edit panel itself while it is open. */
+.gb-palette:not([data-wide]):is([data-docked], [data-dock-min]) .gb-tasks > .gb-step:is(.gb-s1, .gb-s2, .gb-s3, .gb-roles):has(> .gb-step-body:not([hidden])),
+.gb-palette[data-docked] .gb-s4 { border-color: var(--gb-hl); }
+.gb-palette:not([data-wide]):is([data-docked], [data-dock-min]) .gb-tasks > .gb-step:is(.gb-s1, .gb-s2, .gb-s3, .gb-roles):has(> .gb-step-body:not([hidden])) > .gb-step-h,
+.gb-palette[data-docked] .gb-s4 .gb-dock-head { background: var(--gb-hl-band); }
+.gb-palette:not([data-wide]):is([data-docked], [data-dock-min]) .gb-tasks > .gb-step:is(.gb-s1, .gb-s2, .gb-s3, .gb-roles) > .gb-step-body:not([hidden]),
+.gb-palette[data-docked] .gb-s4 .gb-dock-head { border-color: var(--gb-hl-line); }
+.gb-step-n {
+  flex: none; display: inline-grid; place-items: center; inline-size: 20px; block-size: 20px;
+  border: 1px solid var(--gb-border); border-radius: 50%; background: var(--gb-inset); font-size: var(--gb-text-sm); font-weight: 600;
+}
+.gb-step-t { flex: none; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.9em; }
+.gb-step-state {
+  margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: normal; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground);
+}
+.gb-step-body { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+.gb-step-body[hidden] { display: none; }
+/* Narrow with the dock open: a folded step is its heading line, a button that opens it. */
+.gb-step-btn {
+  display: flex; align-items: center; gap: var(--gb-space-2); inline-size: 100%; min-width: 0; min-height: 24px;
+  padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.gb-step-btn:hover { background: var(--vscode-list-hoverBackground); }
+.gb-step-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.gb-palette:not([data-wide])[data-docked] .gb-tasks > .gb-step:not(.gb-s4):not(.gb-bar),
+.gb-palette:not([data-wide])[data-dock-min] .gb-tasks > .gb-step:not(.gb-s4):not(.gb-bar) { --gb-py: var(--gb-space-1); }
+.gb-pl-summary { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+
+/* Step 3: two labelled rows, the palette choices then the select; they wrap past five colors. */
+.gb-fe { display: flex; flex-direction: column; gap: var(--gb-space-2); }
+.gb-fe-row { display: grid; grid-template-columns: 3.6rem minmax(0, 1fr) auto; align-items: start; gap: var(--gb-space-1) var(--gb-space-2); }
+.gb-fe-l { line-height: 26px; color: var(--vscode-descriptionForeground); cursor: help; }
+.gb-fe-row .gb-ch-picks { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.gb-fe-row .gb-fr-note { grid-column: 1 / -1; margin: 0; font-size: var(--gb-text-sm); }
+
+/* Step 4, Roles: a row per family, each an inset box with its name, counts and how it is made,
+   its setting, and its roles as chips (swatch, name, key count); a chip opens one editor under
+   its family. A folded family is its head line with a strip of its colors and Show. */
+.gb-rfs { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+.gb-rf-intro { margin: 0; }
+.gb-rf {
+  display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 10px;
+  border: 1px solid var(--gb-card-line); border-radius: 4px; background: var(--gb-inset);
+}
+.gb-rf-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--gb-space-2); min-width: 0; }
+.gb-palette .gb-rf-name { margin: 0; font-size: 1em; font-weight: 600; }
+.gb-rf-count, .gb-rf-edited, .gb-rf-how { font-size: var(--gb-text-sm); }
+.gb-rf-edited { color: var(--vscode-editorWarning-foreground); }
+.gb-rf-strip { display: inline-flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
+.gb-rf-strip-c { inline-size: 14px; block-size: 14px; border: 1px solid var(--gb-card-line); border-radius: 2px; box-sizing: border-box; }
+.gb-rf-toggle { margin-left: auto; }
+.gb-rf-how { margin: 0; }
+.gb-rf-set { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--gb-space-2); min-width: 0; }
+.gb-rf-l { color: var(--vscode-descriptionForeground); font-weight: 600; }
+.gb-rf-pick { display: inline-flex; align-items: center; gap: 4px; }
+.gb-rf-depth { inline-size: 9rem; }
+.gb-rf-depth-v { min-inline-size: 5ch; color: var(--vscode-descriptionForeground); }
+button.gb-rf-link { padding: 0; border: 0; background: none; color: var(--vscode-textLink-foreground); font: inherit; cursor: pointer; }
+button.gb-rf-link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+.gb-rf-link:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.gb-rf-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+button.gb-role-chip {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 5px 2px 3px;
+  border: 1px solid var(--gb-card-line); border-radius: 3px; background: var(--gb-card);
+  color: var(--vscode-foreground); font: inherit; font-size: var(--gb-text-sm); cursor: pointer;
+}
+button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
+.gb-role-chip[aria-expanded="true"] { border-color: var(--vscode-focusBorder); }
+.gb-role-chip:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.gb-role-edited { box-shadow: inset 2px 0 0 var(--vscode-editorWarning-foreground); }
+.gb-role-dot { flex: none; inline-size: 16px; block-size: 16px; border: 1px solid var(--gb-border); border-radius: 2px; box-sizing: border-box; }
+.gb-role-n { padding-left: 5px; border-left: 1px solid var(--gb-card-line); color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.gb-role-ed {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 6px var(--gb-space-2);
+  padding: 8px; border: 1px solid var(--vscode-focusBorder); border-radius: 4px; background: var(--gb-card);
+}
+.gb-role-big { grid-row: span 2; inline-size: 40px; block-size: 40px; border: 1px solid var(--gb-border); border-radius: 4px; box-sizing: border-box; }
+.gb-role-ed-text { min-width: 0; font-size: var(--gb-text-sm); }
+.gb-role-ed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); }
+
+/* Step 5 line: the heading and the hint, or the Edit dock. */
+.gb-s4-line { display: flex; align-items: center; gap: var(--gb-space-2); min-width: 0; }
+.gb-s4-line > .gb-step-h { flex: none; }
+.gb-s4-text { flex: 1 1 auto; min-width: 0; }
+
+/* Step 6, Try and save: a card stuck to the bottom. The heading band carries the last result;
+   the body is Name with Try in VS Code (the one filled button) and Save theme, then the palette
+   summary: one pill per color with its weakest grade, and the readability sentence. The card
+   color is opaque, so the steps scroll under it unseen. */
+.gb-bar { position: sticky; bottom: 0; z-index: 5; }
+.gb-bar > .gb-step-body { gap: var(--gb-space-2); }
+.gb-bar-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-1) var(--gb-space-2); min-width: 0; }
+.gb-bar-name { display: flex; align-items: center; gap: var(--gb-space-2); flex: 1 1 10rem; min-width: 0; }
+.gb-bar-l { flex: none; inline-size: 3.6rem; color: var(--vscode-descriptionForeground); }
+.gb-bar-name > input { flex: 1 1 auto; min-width: 0; min-height: 26px; box-sizing: border-box; }
+.gb-bar .gb-pl-apply { min-height: 28px; font-weight: 600; white-space: nowrap; }
+.gb-bar .gb-pl-save-theme { min-height: 28px; white-space: nowrap; }
+.gb-bar2 {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--gb-space-1) var(--gb-space-2);
+  min-width: 0; font-size: var(--gb-text-sm);
+}
+.gb-bar-chips { display: flex; flex-wrap: wrap; gap: var(--gb-space-1); min-width: 0; }
+.gb-bar-pill {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 2px; cursor: help;
+  border: 1px solid var(--gb-card-line); border-radius: 999px; background: var(--gb-inset);
+}
+.gb-bar-pill .badge { font-size: 0.9em; }
+.gb-bar-chip { inline-size: 16px; block-size: 16px; border-radius: 50%; border: 1px solid var(--gb-border); box-sizing: border-box; }
+.gb-bar-read { grid-column: 2; margin: 0; color: var(--vscode-descriptionForeground); }
+.gb-bar-low { white-space: nowrap; cursor: help; }
+.gb-bar-low .badge { font-size: 1em; }
+.gb-bar-result.gb-bar-overwrites { color: var(--vscode-editorWarning-foreground); }
+
+/* The stage: the tab row (tabs, then Open in a window), the preview, then steps 4 and 5. */
+.gb-tabrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2) var(--gb-space-3); min-width: 0; border-bottom: 1px solid var(--gb-border); }
+.gb-tabrow .gb-tablist { border-bottom: 0; }
+.gb-grow { flex: 1 1 auto; }
+.gb-preview { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.gb-preview > .gb-tabpanel { padding-top: var(--gb-space-2); min-height: 0; min-width: 0; }
+.gb-preview > .gb-tabpanel[hidden] { display: none; }
+/* The Workbench drawing fills the preview row: each wrapper down to the frame is a flex column
+   that takes the row's height, and the frame's height is the row's, not the drawing's, so
+   fitToWidth in palette.js can fit the drawing to it. The badges stay under the frame. */
+.gb-preview > .gb-tabpanel:not([hidden]) { display: flex; flex-direction: column; flex: 1 1 auto; }
+.gb-preview .gb-pl-chrome, .gb-preview .gb-pl-chrome > .gb-pl-stage, .gb-preview .gb-pl-chrome .gb-pl-stage-main {
+  display: flex; flex-direction: column; align-items: stretch; flex: 1 1 auto; min-height: 0; min-width: 0;
+}
+.gb-preview .gb-pl-chrome .gb-pl-fit { flex: 1 1 0; min-height: 0; }
+.gb-preview .gb-pl-chrome .gb-ch-readout { flex: none; }
+.gb-preview .gb-pl-widgets-wrap { flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+
+@container lab (min-width: 75rem) {
+  .gb-lab-grid {
+    display: grid; grid-template-columns: 28rem minmax(0, 1fr); grid-template-areas: "tasks stage";
+    column-gap: var(--gb-space-5); block-size: 100vh;
+  }
+  .gb-tasks {
+    grid-area: tasks; display: flex; flex-direction: column; min-height: 0;
+    overflow: auto; overscroll-behavior: contain; padding-right: var(--gb-space-1);
+  }
+  .gb-stage > .gb-s4 { margin: var(--gb-space-2) 0; }
+  .gb-stage > .gb-roles { margin-top: var(--gb-space-2); }
+  .gb-tasks > .gb-bar { margin-top: auto; }
+  /* The second pane: the Preview card, step 4 (Roles), then step 5, which fills the rest while its
+     dock is open and Roles is folded to its heading (in the Style groups mode, the group's card
+     view fills it). With the dock closed or at one line, the pane scrolls through Roles. */
+  .gb-stage {
+    grid-area: stage; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0; overflow: hidden; padding-top: var(--gb-space-2);
+  }
+  .gb-palette:not([data-docked]) .gb-stage > .gb-s4 { align-self: start; }
+  .gb-palette[data-docked] .gb-stage:has(> .gb-roles) { grid-template-rows: auto auto minmax(0, 1fr); }
+  .gb-palette:not([data-docked]) .gb-stage:has(> .gb-roles) {
+    grid-template-rows: auto auto auto; align-content: start; overflow: auto; overscroll-behavior: contain;
+  }
+  .gb-palette[data-docked] .gb-s4, .gb-palette[data-docked] .gb-s4-edit { display: flex; flex-direction: column; min-height: 0; }
+  .gb-palette[data-docked] .gb-s4-edit { flex: 1 1 auto; }
+}
+
+@container lab (max-width: 74.99rem) {
+  .gb-stage {
+    position: sticky; top: 0; z-index: 10; block-size: 45vh; max-block-size: 45vh; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: var(--gb-space-2); overflow: hidden;
+    padding-bottom: var(--gb-space-2); background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--gb-border);
+  }
+  .gb-preview { flex: 1 1 auto; }
+  .gb-tasks { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--gb-space-2); row-gap: var(--gb-space-2); }
+  .gb-tasks > * { grid-column: 1 / -1; }
+  /* Tighter steps, so the band, steps 1 to 3, the step 5 line and the bar fit a 900px tab. */
+  .gb-tasks > .gb-step { --gb-py: var(--gb-space-2); }
+  .gb-tasks > .gb-step > .gb-step-body:not([hidden]) { padding-top: var(--gb-space-2); }
+  .gb-s3 > .gb-step-body, .gb-fe { gap: var(--gb-space-1); }
+  .gb-bar2 { margin-top: 2px; }
+  /* With the dock open, the folded step headings, the dock and the bar share the height under
+     the band, so the dock's body scrolls inside it instead of pushing the page. */
+  .gb-palette[data-docked] .gb-dock-body { max-block-size: max(8rem, calc(100vh - var(--band-h, 45vh) - var(--bar-h, 4rem) - 11rem)); }
+  /* The margins keep a focused control clear of the band and the bar when the page scrolls to
+     it. A control inside a box that scrolls on its own (the dock, the palette table, the lists)
+     is scrolled into view inside that box, where these margins would not fit. */
+  :focus-visible:not(:is(.gb-dock-body, .gb-pl-table-wrap, .gb-pl-library) *) {
+    scroll-margin-top: calc(var(--band-h, 0px) + var(--gb-space-3));
+    scroll-margin-bottom: calc(var(--bar-h, 0px) + var(--gb-space-3));
+  }
+}
+
+/* Labelled rows (fieldRow in palette.js): a label column, then the control column. */
 .gb-pl-controls { display: flex; flex-direction: column; gap: var(--gb-space-2); }
 .gb-pl-field { display: grid; grid-template-columns: var(--gb-pl-label, 6.5em) minmax(0, 1fr); gap: var(--gb-space-3); align-items: center; }
-.gb-pl-summary, .gb-pl-chrome { --gb-pl-label: 8.5em; }
 .gb-pl-field-name { color: var(--vscode-descriptionForeground); }
 .gb-sr {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -26,66 +239,91 @@
 .gb-pl-picker { width: 2.5em; height: 1.8em; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
 .gb-pl-value { flex: none; width: 5ch; font-family: var(--vscode-editor-font-family); }
 
-.gb-pl-paste-row { display: flex; flex-direction: column; gap: var(--gb-space-2); align-items: flex-start; }
-.gb-pl-paste { align-self: stretch; min-height: 2.5em; font-family: var(--vscode-editor-font-family); }
-.gb-pl-invalid { color: var(--vscode-editorWarning-foreground); margin: var(--gb-space-1) 0; }
-.gb-pl-error { color: var(--vscode-errorForeground); margin: var(--gb-space-1) 0; }
-
-.gb-pl-swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: var(--gb-space-2); }
-.gb-pl-swatch {
-  display: flex; flex-direction: column; align-items: stretch; gap: 2px;
-  min-width: 0; padding: var(--gb-space-1); text-align: left;
+/* Step 2: the palette table. A 24px chip and the hex over L C H, then four ratio columns in
+   tabular numerals, each cell a swatch holding a sample and a badge. The body scrolls past five rows (about 34px each) under a sticky header. */
+.gb-pl-table-wrap { max-block-size: calc(3.6rem + 5 * 34px); overflow: auto; overscroll-behavior: contain; min-height: 0; }
+.gb-pl-contrast { inline-size: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.gb-pl-contrast th, .gb-pl-contrast td { padding: 2px 4px; text-align: right; font-weight: normal; vertical-align: middle; }
+.gb-pl-contrast th[scope="row"], .gb-pl-contrast thead th:first-child { text-align: left; padding-left: 0; }
+.gb-pl-contrast thead th:first-child { inline-size: 36%; }
+.gb-pl-contrast thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--vscode-editor-background);
+  font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--gb-border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.gb-pl-fill { height: 40px; border-radius: 2px; }
-.gb-pl-hex { font-family: var(--vscode-editor-font-family); }
-.gb-pl-oklch { font-size: 0.85em; }
+.gb-pl-color-cell { display: flex; align-items: center; gap: var(--gb-space-2); min-width: 0; }
+.gb-pl-swatch {
+  flex: none; inline-size: 24px; block-size: 24px; min-width: 24px; padding: 0;
+  border: 1px solid var(--gb-border); border-radius: var(--gb-radius); box-sizing: border-box; cursor: copy;
+}
+.gb-pl-color-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.gb-pl-hex { font-family: var(--vscode-editor-font-family); white-space: nowrap; }
+.gb-pl-oklch { font-size: 0.8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A ratio cell is one swatch: the column's background (set inline), one border, the sample on
+   the left and the badge on the right. The ratio columns' padding is the gap between swatches,
+   so each sample pairs with its own badge and heading. In a narrow card (the 28rem side
+   column of the wide Lab) the sample sits over its badge, and the scroll window grows to keep
+   five rows. The border marks the swatch's edge on a background close to the card's own. */
+.gb-s2 .gb-step-body { container: gbpal / inline-size; }
+.gb-pl-contrast td.gb-pl-ratio { padding: 2px 4px; }
+.gb-pl-contrast thead th:not(:first-child) { text-align: center; }
+.gb-pl-ratio-cell {
+  display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 1px 6px;
+  border: 1px solid rgba(128, 128, 128, 0.45); border-radius: var(--gb-radius);
+}
+.gb-pl-ratio .badge { font-size: 0.9em; white-space: nowrap; }
+@container gbpal (max-width: 46rem) {
+  .gb-pl-ratio-cell { flex-direction: column; align-items: center; gap: 1px; padding: 2px 4px; }
+  .gb-pl-table-wrap { max-block-size: calc(3.6rem + 5 * 52px); }
+}
+.gb-pl-grade { font-size: 0.85em; }
+/* The sample: "Aa" in the row's color (set inline), small as normal text, then large and bold
+   as the Large grade means. */
+.gb-pl-sample { display: inline-flex; align-items: baseline; gap: 5px; line-height: 1.2; }
+.gb-pl-sample-normal { font-size: 12px; }
+.gb-pl-sample-large { font-size: 18px; font-weight: 700; }
+/* The weakest cell: its swatch outlined, never color alone; its text also says "weakest". */
+.gb-pl-weakest .gb-pl-ratio-cell { outline: 2px solid var(--vscode-foreground); outline-offset: 1px; }
 
-.gb-pl-lowest { margin: 0; }
-.gb-pl-legend { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); margin: var(--gb-space-3) 0 0; }
-.gb-pl-contrast { border-collapse: collapse; }
-.gb-pl-contrast th, .gb-pl-contrast td { padding: 2px 10px 2px 0; text-align: left; font-weight: normal; }
-.gb-pl-contrast thead th { color: var(--vscode-descriptionForeground); }
+/* Step 2's intro line, and the grade legend: one row per grade, its badge then what it means. */
+.gb-pl-intro { margin: 0; font-size: var(--gb-text-sm); }
+.gb-pl-legend {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 3px var(--gb-space-3);
+  margin: 0; padding: 6px var(--gb-space-2); border-radius: var(--gb-card-r); background: var(--gb-inset); font-size: 0.8em;
+}
+.gb-pl-legend-row { display: grid; grid-template-columns: 3.4em minmax(0, 1fr); align-items: baseline; gap: var(--gb-space-2); }
+.gb-pl-legend .badge { font-size: 1em; justify-self: start; }
+.gb-pl-adjusted { margin: 0; font-size: 0.8em; }
+/* Column headings: the background's name over its hex. */
+.gb-pl-contrast thead th:not(:first-child) { white-space: normal; vertical-align: bottom; line-height: 1.2; cursor: help; }
+.gb-pl-bg-name, .gb-pl-bg-hex { display: block; }
+.gb-pl-bg-name { color: var(--vscode-foreground); }
+.gb-pl-bg-hex { font-size: 0.9em; font-family: var(--vscode-editor-font-family); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gb-pl-dot {
   display: inline-block; width: 12px; height: 12px; border-radius: 50%;
   vertical-align: middle; border: 1px solid rgba(128, 128, 128, 0.5);
 }
 
-/* Workbench tab: the Frame and Editor boxes, side by side when they fit. */
-.gb-ch { display: flex; flex-direction: column; gap: var(--gb-space-3); }
-.gb-ch > p.muted { margin: 0; }
-.gb-ch-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--gb-space-3); align-items: start; }
-.gb-ch-choices { display: flex; flex-direction: column; gap: var(--gb-space-2); }
-.gb-ch-choices > p.muted { margin: 0; }
+/* Frame and Editor choices. */
 .gb-ch-picks { flex-wrap: wrap; align-items: center; }
-.gb-fr-pick { min-height: 24px; padding: var(--gb-space-1) var(--gb-space-2); }
-.gb-fr-custom-color { width: 2.5em; height: 1.8em; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
-.gb-ch-actions { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); }
-.gb-ch-actions button[disabled] { opacity: 0.5; cursor: default; }
-.gb-ch-actions button.secondary[disabled]:hover { background: var(--vscode-button-secondaryBackground); }
+.gb-fr-pick { min-height: 24px; padding: 1px 5px; }
+.gb-fr-custom-color { width: 26px; height: 24px; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
 .gb-ch-controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
 .gb-ch-controls label { display: inline-flex; gap: 4px; align-items: center; }
-.gb-ch-label { color: var(--vscode-descriptionForeground); }
 .gb-ch-picks { display: inline-flex; gap: 4px; }
-.gb-ch-pick { min-height: 24px; padding: var(--gb-space-1) var(--gb-space-2); }
+.gb-ch-pick { min-height: 24px; padding: 1px 5px; }
 .gb-ch-picked { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
 
 /* Workbench and Widgets stages: the candidate drawn by gallery.js inside .gb-pl-scope, which
-   redefines the --vscode-* variables, beside the edit panel. The Previews box is the
-   container, so the panel sits beside the drawing only when the box itself is wide. */
-.gb-pl-previews-box { container-type: inline-size; }
+   redefines the --vscode-* variables. */
 .gb-pl-stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gb-space-4); align-items: start; }
-/* Beside the drawing only on a very wide tab, so the drawing keeps most of the width. */
-@container (min-width: 75rem) {
-  .gb-pl-stage { grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); }
-  .gb-pl-edit { position: sticky; top: 0; max-block-size: 100vh; overflow: auto; }
-}
-.gb-pl-stage-main { display: flex; flex-direction: column; gap: var(--gb-space-3); min-width: 0; }
+.gb-pl-stage-main { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
 .gb-pl-fit { min-width: 0; overflow: hidden; border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35)); border-radius: 4px; }
 .gb-pl-scope { line-height: 1.4; font-size: 13px; }
 .gb-pl-scope [data-keys] { cursor: pointer; }
 /* The pick outlines use the Lab's own focus color, captured outside .gb-pl-scope: inside it
    --vscode-focusBorder is the candidate's, which can vanish against the candidate's colors. */
-.gb-pl-stage { --gb-pl-pick: var(--vscode-focusBorder); --gb-pl-pick-hover: var(--vscode-editorWarning-foreground); }
+.gb-palette, .gb-tp { --gb-pl-pick: var(--vscode-focusBorder); --gb-pl-pick-hover: var(--vscode-editorWarning-foreground); }
 .gb-pl-scope .gb-pl-hover { outline: 1px dashed var(--gb-pl-pick-hover); outline-offset: -1px; }
 .gb-pl-scope .gb-pl-picked { outline: 2px dashed var(--gb-pl-pick) !important; outline-offset: 1px; }
 
@@ -95,38 +333,168 @@
 .gb-pl-widget-head h4 { margin: 0; flex: 1; }
 .gb-pl-widget-blurb { margin: 0; font-size: 0.9em; }
 .gb-pl-widget-preview { overflow-x: auto; border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35)); border-radius: 4px; }
-.gb-pl-widget-picker summary { cursor: pointer; }
-.gb-pl-widget-picker details[open] > summary { margin-bottom: var(--gb-space-2); }
 .gb-pl-widgets { display: flex; flex-direction: column; gap: var(--gb-space-3); }
-.gb-pl-widgets > p.muted { margin: 0; }
 
-/* Edit panel */
-.gb-pl-edit { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
-.gb-pl-edit h4 { margin: 0; }
-.gb-pl-edit p { margin: 0; }
-.gb-pl-edit-what { font-weight: 600; overflow-wrap: anywhere; }
-.gb-pl-around-head { margin: var(--gb-space-2) 0 0; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-descriptionForeground); }
-.gb-pl-key { display: flex; flex-direction: column; gap: var(--gb-space-1); padding-top: var(--gb-space-2); border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25)); }
-.gb-pl-key-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); }
-.gb-pl-key-head code { overflow-wrap: anywhere; }
-.gb-pl-key-role { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); }
+/* The Edit dock (palette.js editDock): the heading line, the Edits list, then a body that
+   scrolls on its own: boxed groups (step 3's row, This part, Around it) of one line per key,
+   each opening the one color editor; with no pick, a line pointing to the preview and Roles. */
+.gb-s4-edit:empty { display: none; }
+.gb-dock { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.gb-dock p { margin: 0; }
+.gb-dock-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); flex: none;
+  margin: calc(-1 * var(--gb-py, 10px)) -12px 0; padding: var(--gb-py, 10px) 12px var(--gb-space-2);
+  border-bottom: 1px solid var(--gb-card-line); border-radius: calc(var(--gb-card-r) - 1px) calc(var(--gb-card-r) - 1px) 0 0;
+}
+.gb-dock[data-min] .gb-dock-head { margin: 0; padding: 0; border-bottom: 0; }
+.gb-dock-head > .gb-step-h { flex: 1 1 auto; }
+.gb-dock-head button.secondary { min-height: 24px; padding: 2px var(--gb-space-2); }
+.gb-dock-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; font-size: 0.95em; }
+.gb-dock-reopen {
+  display: flex; align-items: center; gap: var(--gb-space-2); inline-size: 100%;
+  border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer;
+}
+.gb-dock-reopen:hover { background: var(--vscode-list-hoverBackground); }
+.gb-dock-reopen > .gb-step-h { flex: 1 1 auto; }
+.gb-dock-edits {
+  flex: none; max-block-size: 10rem; overflow: auto; margin-top: var(--gb-space-2); padding: var(--gb-space-1) var(--gb-space-2);
+  border: 1px solid var(--gb-card-line); border-radius: var(--gb-card-r); background: var(--gb-inset); font-size: var(--gb-text-sm);
+}
+.gb-dock-edits[hidden] { display: none; }
+.gb-dock-edits ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--gb-space-1); }
+.gb-dock-edits li { display: flex; align-items: center; gap: var(--gb-space-2); }
+.gb-dock-edit-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-dock-body {
+  flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 10px; padding-top: 10px;
+}
+/* A boxed group: a small-caps title with a key count, the column headings, then the rows. */
+.gb-dock-group { flex: none; border: 1px solid var(--gb-card-line); border-radius: var(--gb-card-r); overflow: hidden; }
+.gb-dock-group-h {
+  display: flex; align-items: baseline; gap: var(--gb-space-2); padding: 6px 10px;
+  background: var(--gb-inset); font-size: 0.8em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--vscode-descriptionForeground);
+}
+.gb-dock-group-h { border-bottom: 1px solid var(--gb-card-line); }
+.gb-dock-group-hint { margin-left: auto; font-weight: normal; text-transform: none; letter-spacing: 0; }
+.gb-dock-lead-row { padding: var(--gb-space-2) 10px; }
+.gb-dock-cols, .gb-pl-key-head {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) 6.5rem 4rem minmax(0, 11rem);
+  align-items: center; column-gap: 10px;
+}
+.gb-dock-cols { padding: 3px 10px; font-size: 0.78em; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--gb-card-line); }
+.gb-pl-key + .gb-pl-key { border-top: 1px solid color-mix(in srgb, var(--vscode-foreground) 6%, transparent); }
+.gb-pl-key.gb-open { box-shadow: inset 3px 0 0 var(--vscode-focusBorder); }
+.gb-pl-key.gb-open > .gb-pl-key-head { background: var(--vscode-list-inactiveSelectionBackground); font-weight: 600; }
+.gb-pl-key-head {
+  inline-size: 100%; min-height: 26px;
+  padding: 2px 10px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer;
+}
+.gb-pl-key-head:hover { background: var(--vscode-list-hoverBackground); }
+.gb-pl-key-head:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.gb-pl-key-head > code, .gb-pl-key-rolename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-pl-key-hex { font-family: var(--vscode-editor-font-family); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-pl-key-head > .badge { justify-self: start; }
+.gb-pl-key-strip[hidden] { display: none; }
 .gb-pl-key-note { font-size: 0.9em; }
 .gb-pl-dot-none { border-style: dashed; }
-.gb-pl-color { width: 2.5em; height: 1.8em; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
+.gb-pl-color { inline-size: 32px; block-size: 24px; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
 .gb-pl-reset { padding: 0 var(--gb-space-2); min-height: 24px; }
-.gb-pl-disclose > summary { cursor: pointer; color: var(--vscode-descriptionForeground); }
-.gb-pl-disclose[open] > summary { margin-bottom: var(--gb-space-1); }
-.gb-pl-edits ul { list-style: none; margin: 0 0 var(--gb-space-2); padding: 0; display: flex; flex-direction: column; gap: var(--gb-space-1); }
-.gb-pl-edits li { display: flex; align-items: center; gap: var(--gb-space-1); }
-.gb-pl-roles { display: flex; flex-direction: column; gap: var(--gb-space-2); }
-.gb-pl-role { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--gb-space-2); align-items: center; }
-.gb-ch-readout { display: flex; flex-wrap: wrap; gap: var(--gb-space-1) var(--gb-space-4); }
 
-.gb-pl-decide { display: flex; flex-direction: column; gap: var(--gb-space-2); max-width: 46rem; }
-.gb-pl-decide .gb-pl-field:has(.gb-pl-note) { align-items: start; }
-.gb-pl-name, .gb-pl-note { width: 100%; box-sizing: border-box; }
+/* The color editor under the open key row (palette.js keyEditor): a large chip over a
+   checkerboard, so opacity shows; Change, Color and Opacity rows; notes; then the actions. */
+.gb-ke {
+  display: grid; gap: var(--gb-space-2); margin: 0 10px 10px 13px; padding: 10px 12px;
+  border: 1px solid var(--gb-card-line); border-top: 0; border-radius: 0 0 var(--gb-card-r) var(--gb-card-r);
+  background: var(--gb-card);
+}
+.gb-ke-top { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.gb-ke-chip {
+  inline-size: 44px; block-size: 32px; box-sizing: border-box; border: 1px solid var(--gb-card-line); border-radius: 4px;
+  background-image: linear-gradient(var(--gb-ke-c, transparent), var(--gb-ke-c, transparent)), repeating-conic-gradient(#808080 0 25%, #c0c0c0 0 50%);
+  background-size: auto, 10px 10px;
+}
+.gb-ke-chip.gb-ke-unset { display: grid; place-items: center; background: none; border-style: dashed; font-size: 0.75em; color: var(--vscode-descriptionForeground); }
+.gb-ke-name { display: flex; flex-direction: column; min-width: 0; }
+.gb-ke-name > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-ke-sub { font-size: 0.85em; }
+.gb-ke-row { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: center; gap: 10px; }
+.gb-ke-l { font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+.gb-ke-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); min-width: 0; }
+.gb-ke-segs { display: inline-flex; flex-wrap: wrap; max-inline-size: 100%; border: 1px solid var(--gb-card-line); border-radius: 4px; overflow: hidden; }
+.gb-ke-seg {
+  min-height: 24px; padding: 2px 10px; border: 0; border-radius: 0; background: transparent;
+  color: var(--vscode-foreground); font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gb-ke-seg + .gb-ke-seg { border-left: 1px solid var(--gb-card-line); }
+.gb-ke-seg:hover:not([disabled]):not([aria-pressed="true"]) { background: var(--vscode-list-hoverBackground); }
+.gb-ke-seg[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.gb-ke-seg[disabled] { opacity: 0.45; cursor: default; }
+.gb-ke-seg:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.gb-ke-color { inline-size: 32px; block-size: 24px; padding: 0; border: 1px solid var(--vscode-input-border, var(--gb-card-line)); background: none; cursor: pointer; }
+.gb-ke-hex { inline-size: 8.5rem; min-height: 24px; box-sizing: border-box; font-family: var(--vscode-editor-font-family); }
+.gb-ke-hex[aria-invalid="true"] { outline: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)); }
+.gb-ke-alpha { flex: 1 1 8rem; min-width: 6rem; max-inline-size: 16rem; }
+.gb-ke-pct { inline-size: 4ch; text-align: right; font-size: 0.9em; font-variant-numeric: tabular-nums; }
+.gb-ke-notes:empty { display: none; }
+.gb-ke-note { font-size: 0.85em; }
+.gb-ke-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: var(--gb-space-2); border-top: 1px solid var(--gb-card-line); }
+.gb-ke-actions button { min-height: 24px; padding: 2px 10px; }
+.gb-ke-reset { margin-left: auto; }
+/* inspector.css styles every button alike, so a disabled one is dimmed here. */
+.gb-ke-actions button[disabled] { opacity: 0.5; cursor: default; }
+
+.gb-roles-go { flex: none; min-height: 24px; padding: 2px var(--gb-space-2); }
+.gb-s4-line[hidden] { display: none; }
+
+/* The Preview card: whether the preview window is open, Open Preview, then the widget families
+   the window draws, a disclosure that opens as a wrapping row of checkboxes. */
+.gb-away { gap: var(--gb-space-2); }
+.gb-away-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2) var(--gb-space-3); }
+.gb-away-text { flex: 1 1 14rem; min-width: 0; }
+.gb-away-open { min-height: 26px; padding: 2px var(--gb-space-3); white-space: nowrap; }
+
+/* The Theme Preview window (palette.js renderPreview): one scrolling page of bounded sections,
+   the Workbench then the Widgets, each a card with a heading; every widget family is a card of
+   its own inside the Widgets section. */
+.gb-tp {
+  --gb-card: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-editor-background));
+  --gb-inset: color-mix(in srgb, var(--vscode-foreground) 7%, var(--vscode-editor-background));
+  --gb-card-line: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  --gb-card-r: 6px;
+  display: flex; flex-direction: column; gap: var(--gb-space-3); padding: var(--gb-space-2) 0 var(--gb-space-4);
+}
+.gb-tp-hint { margin: 0; font-size: var(--gb-text-sm); }
+.gb-tp-section { border: 1px solid var(--gb-card-line); border-radius: var(--gb-card-r); background: var(--gb-card); min-width: 0; }
+.gb-tp-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--gb-space-3);
+  padding: var(--gb-space-2) var(--gb-space-3); border-bottom: 1px solid var(--gb-card-line);
+}
+.gb-tp-h { margin: 0; font-size: var(--gb-heading-size); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.gb-tp-aside { font-size: var(--gb-text-sm); }
+.gb-tp-body { padding: var(--gb-space-3); min-width: 0; }
+.gb-tp .gb-pl-stage-main { gap: var(--gb-space-2); }
+.gb-tp .gb-pl-widget-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); gap: var(--gb-space-3); align-items: start;
+}
+.gb-tp .gb-pl-widget {
+  gap: var(--gb-space-2); padding: var(--gb-space-2) var(--gb-space-3) var(--gb-space-3);
+  border: 1px solid var(--gb-card-line); border-radius: var(--gb-card-r); background: var(--gb-inset);
+}
+.gb-tp .gb-pl-widget-head { padding-bottom: var(--gb-space-1); border-bottom: 1px solid var(--gb-card-line); }
+.gb-tp .gb-pl-widget-head h4 { font-size: 0.95em; }
+
+/* Widgets in the Style groups mode's card view. */
+.gb-preview .gb-pl-widget-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(26rem, 1fr)); gap: var(--gb-space-4); align-items: start; }
+.gb-pl-widget-list:focus { outline: none; }
+.gb-pl-fit:focus { outline: none; }
+.gb-pl-fit:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+.gb-ch-readout { display: flex; flex-wrap: wrap; gap: 2px var(--gb-space-3); font-size: var(--gb-text-sm); }
+.gb-ch-readout-l { color: var(--vscode-descriptionForeground); cursor: help; }
+.gb-ch-check { cursor: help; }
+
+.gb-pl-name { width: 100%; box-sizing: border-box; }
 .gb-pl-buttons { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); align-items: center; }
-.gb-pl-buttons .muted { flex-basis: 100%; }
 /* inspector.css styles every button alike, so a disabled decision button would look and
    hover like an enabled one. Dim it and keep its resting background on hover. */
 .gb-pl-buttons button[disabled] { opacity: 0.5; cursor: default; }
@@ -135,14 +503,61 @@
 
 .gb-pl-row { display: flex; flex-wrap: wrap; gap: var(--gb-space-2); align-items: center; padding: var(--gb-space-1) 0; }
 .gb-pl-mini { display: inline-flex; gap: 2px; }
-.gb-pl-row-note { flex: 1; }
 
-/* Start from > Saved: your saved themes, with their slot and Load, Use and Delete. */
-.gb-pl-lib-row { border-bottom: 1px solid var(--vscode-panel-border, transparent); }
+.gb-pl-lib-row button { min-height: 24px; padding: 2px var(--gb-space-2); }
+
+/* Start from > Saved: one line per theme, its colors, name and slot, Load and a chevron that
+   opens Use in this project, Use everywhere and Delete under it. */
+.gb-pl-lib-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center; gap: var(--gb-space-2); padding: 2px 0;
+  border-bottom: 1px solid var(--gb-border);
+}
 .gb-pl-lib-row:last-child { border-bottom: none; }
-.gb-pl-row-slot { min-width: 5em; }
-.gb-pl-lib-actions { display: flex; flex-wrap: wrap; gap: var(--gb-space-1); margin-left: auto; }
+.gb-pl-lib-row:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.gb-pl-lib-row .gb-pl-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-pl-row-slot { white-space: nowrap; font-size: var(--gb-text-sm); }
+.gb-pl-lib-more { min-width: 24px; padding: 2px 4px; }
+.gb-pl-lib-more[aria-expanded="true"] .codicon { transform: rotate(180deg); }
+.gb-pl-lib-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--gb-space-2); padding: 0 0 var(--gb-space-1) var(--gb-space-5); }
+.gb-pl-lib-actions[hidden] { display: none; }
 .gb-pl-lib-empty { margin: 0; }
 
-/* The palette catalog's decisions and decided list, shown only with this repository open. */
-.gb-pl-catalog { margin-top: var(--gb-space-3); }
+/* Step 1's saved list: capped, so steps 2 and 3 stay in view. */
+.gb-s1 .gb-pl-library { max-block-size: 14rem; overflow: auto; overscroll-behavior: contain; }
+
+/* Style groups mode (palette.js styleGroupsMode): Back to design, the saved groups one line
+   each, then the New group disclosure; the stage draws the draft family's card alone. */
+.gb-sg-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); margin: var(--gb-space-2) 0 0; font-size: var(--gb-text-sm); }
+.gb-sg-top { flex-direction: row; align-items: center; gap: var(--gb-space-3); }
+.gb-sg-title { margin: 0; font-size: var(--gb-heading-size); }
+.gb-sg { display: flex; flex-direction: column; gap: var(--gb-space-3); padding-bottom: var(--gb-space-3); }
+.gb-sg-h { margin: 0 0 var(--gb-space-1); font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-descriptionForeground); }
+.gb-sg-list { display: flex; flex-direction: column; }
+.gb-sg-saved { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 var(--gb-space-2); padding: 2px 0; border-bottom: 1px solid var(--gb-border); }
+.gb-sg-toggle {
+  display: flex; align-items: center; gap: var(--gb-space-2); min-width: 0; min-height: 24px;
+  border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer;
+}
+.gb-sg-toggle:hover { background: var(--vscode-list-hoverBackground); }
+.gb-sg-toggle .gb-pl-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-sg-actions { grid-column: 1 / -1; display: flex; gap: var(--gb-space-2); padding: 0 0 var(--gb-space-1) var(--gb-space-5); }
+.gb-sg-actions[hidden] { display: none; }
+.gb-sg-new > summary { cursor: pointer; font-weight: 600; min-height: 24px; }
+.gb-sg-new[open] > summary { margin-bottom: var(--gb-space-2); }
+.gb-sg-about { margin: 0 0 var(--gb-space-2); font-size: var(--gb-text-sm); }
+.gb-bar-theme { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-sg-stage { overflow: auto; padding-top: var(--gb-space-2); }
+.gb-sg-stage-name { padding: var(--gb-space-1) 0; color: var(--vscode-descriptionForeground); }
+.gb-sg-rows {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); gap: var(--gb-space-1) var(--gb-space-3);
+  max-height: 22rem; overflow-y: auto;
+}
+.gb-sg-row { display: flex; gap: var(--gb-space-2); align-items: center; justify-content: space-between; min-width: 0; }
+.gb-sg-row code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-sg-role { flex: none; max-width: 12rem; }
+.gb-sg-name { width: 100%; max-width: 24rem; box-sizing: border-box; }
+.gb-sg-saved { border-bottom: 1px solid var(--vscode-panel-border, transparent); }
+.gb-sg-saved:last-child { border-bottom: none; }
+.gb-sg-on { display: inline-flex; gap: var(--gb-space-1); align-items: center; }
+.gb-sg-empty { margin: 0; }
