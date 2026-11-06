@@ -4,6 +4,7 @@ All notable changes to GigglyBits Theme Lab are documented in this file.
 
 ## Unreleased
 
+- **The Theme Lab has its own color picker** in place of the system color dialog, at the base color, the custom frame color, a role's color and a key's color in Edit. It works in OKLCH, the space the Lab builds themes in: a hue ring around a lightness-by-chroma panel that shades the colors your screen cannot show, hex, lightness, chroma and hue fields, and five **lightness blocks** that step your color darker and lighter by 0.02, 0.05 or 0.10. The Theme Preview follows while you drag, Enter or a click outside keeps the color, and Esc puts the design back as it was. The custom frame color now previews while you drag it too.
 - **The per-folder color is retired into project frames.** The Set, Next and Clear Workspace Color commands are removed, along with the `gigglybits.identity.regions` and `gigglybits.identity.offerOnOpen` settings; `gigglybits.identity.hue` and `gigglybits.identity.pinnedColor` remain only as deprecated settings. A project's color now lives in its saved theme's frame.
 - A folder that still has its old color offers you, once, a project theme in that color: **Make project theme** opens the Theme Lab with that color as a Filled frame and the folder's name, **Remove the color** removes it, and **Not now** leaves it.
 - **Use in this project** replaces a folder's old color with the theme's frame, without asking, and the status bar says so.

@@ -12,7 +12,8 @@ const GB = require('../media/shared.js');
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const SCRIPTS = ['themeBuilder.js', 'gallery.js', 'palette.js', 'themeLab.js'].map(f =>
+// The page's order after shared.js (src/themeLabPanel.ts): colorPicker.js comes before palette.js.
+const SCRIPTS = ['themeBuilder.js', 'gallery.js', 'colorPicker.js', 'palette.js', 'themeLab.js'].map(f =>
   fs.readFileSync(path.join(__dirname, '..', 'media', f), 'utf8'));
 
 let postMessage: jest.Mock;

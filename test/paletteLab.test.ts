@@ -94,13 +94,38 @@ const CHAT_INPUT = '.gb-pl-chrome [data-region="chat"] .gb-chat-input';
 /** Whether `b` comes after `a` in document order, outside it. */
 const follows = (a: Element, b: Element) => !a.contains(b) && Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
+/**
+ * Opens the color picker (media/colorPicker.js) behind `trigger`, types `hex` in its hex field,
+ * then keeps the color with Enter, leaves the picker open ('open') or cancels with Escape.
+ * Returns the picker.
+ */
+function pickColor(trigger: HTMLElement, hex: string, then: 'keep' | 'open' | 'cancel' = 'keep') {
+  expect(trigger.classList.contains('gb-cp-trigger')).toBe(true);
+  trigger.click();
+  const dialog = trigger.nextElementSibling as HTMLElement;
+  expect(dialog.classList.contains('gb-cp')).toBe(true);
+  const field = dialog.querySelector<HTMLInputElement>('.gb-cp-hex')!;
+  field.value = hex;
+  field.dispatchEvent(new Event('change', { bubbles: true }));
+  if (then !== 'open') {
+    dialog.dispatchEvent(new KeyboardEvent('keydown', { key: then === 'keep' ? 'Enter' : 'Escape', bubbles: true, cancelable: true }));
+  }
+  return dialog;
+}
+/** The color a picker trigger shows. */
+const triggerColor = (trigger: Element) => trigger.querySelector('.gb-cp-swatch')!.getAttribute('data-color');
+
 let lab: Lab;
 
 beforeAll(() => {
   (window as any).ResizeObserver = FakeResizeObserver;
   (window as any).GB = GB;
   (window as any).GBBuilder = TB;
+  // jsdom has no canvas; the color picker leaves its ring and panel blank without a 2D context.
+  HTMLCanvasElement.prototype.getContext = (() => null) as any;
   new Function(fs.readFileSync(path.join(__dirname, '..', 'media', 'gallery.js'), 'utf8'))();
+  // The page loads colorPicker.js after gallery.js and before palette.js.
+  new Function(fs.readFileSync(path.join(__dirname, '..', 'media', 'colorPicker.js'), 'utf8'))();
   const src = fs.readFileSync(path.join(__dirname, '..', 'media', 'palette.js'), 'utf8');
   // The webview loads palette.js as a classic script; evaluate it the same way.
   new Function(src)();
@@ -139,11 +164,10 @@ describe('Palette Lab', () => {
   it('shows the base color in the picker, and picking a color sets hue, lightness and chroma', () => {
     const c = ctx();
     const root = lab.render(c);
-    const picker = root.querySelector('.gb-pl-picker') as HTMLInputElement;
-    expect(picker.value).toBe(GB.oklchToHex({ l: 0.75, c: 0.13, h: 210 }));
+    const picker = root.querySelector<HTMLElement>('.gb-pl-base')!;
+    expect(triggerColor(picker)).toBe(GB.oklchToHex({ l: 0.75, c: 0.13, h: 210 }));
 
-    picker.value = '#ceaa3e';
-    picker.dispatchEvent(new Event('input'));
+    pickColor(picker, '#ceaa3e');
     const o = GB.hexToOklch('#ceaa3e');
     expect((root.querySelector('.gb-pl-hue') as HTMLInputElement).value).toBe(String(Math.round(o.h)));
 
@@ -154,9 +178,7 @@ describe('Palette Lab', () => {
 
   it('keeps the hue when a grey is picked', () => {
     const root = lab.render(ctx());
-    const picker = root.querySelector('.gb-pl-picker') as HTMLInputElement;
-    picker.value = '#808080';
-    picker.dispatchEvent(new Event('input'));
+    pickColor(root.querySelector<HTMLElement>('.gb-pl-base')!, '#808080');
     expect((root.querySelector('.gb-pl-hue') as HTMLInputElement).value).toBe('210');
   });
 
@@ -201,7 +223,7 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
   it('a custom frame color draws the bars in that color, and the Dark style draws dark bars', () => {
     const c = ctx();
     const root = lab.render(c);
-    setValue(root.querySelector<HTMLInputElement>('.gb-fr-custom-color')!, '#336699');
+    pickColor(root.querySelector<HTMLElement>('.gb-fr-custom')!, '#336699');
     expect((c.ui as any).frame).toEqual({ color: '#336699', style: 'filled' });
     expect(drawnIn(c, 'titleBar.activeBackground')).toBe('#336699');
     expect(framePick(root, 'custom').getAttribute('aria-checked')).toBe('true');
@@ -247,7 +269,7 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
     lab.restoreTry(ui, { mode: 'generated', rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, chromeIndex: 0, surfaces: 'neutral', frame: { style: 'filled', color: '#336699' } });
     const root = lab.render(ctx({ ui }));
     expect(framePick(root, 'custom').getAttribute('aria-checked')).toBe('true');
-    expect(root.querySelector<HTMLInputElement>('.gb-fr-custom-color')!.value).toBe('#336699');
+    expect(triggerColor(root.querySelector('.gb-fr-custom')!)).toBe('#336699');
     expect(root.querySelector<HTMLSelectElement>('.gb-fr-style')!.value).toBe('filled');
     expect(drawnIn({ ui }, 'titleBar.activeBackground')).toBe('#336699');
   });
@@ -318,7 +340,7 @@ describe('Palette Lab color editing', () => {
     lab.render(c);
     const root = pickIn(c, CHAT_INPUT);
     keyRow(root, 'errorForeground').querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="role"]')!.click();
-    setColor(keyRow(root, 'errorForeground').querySelector<HTMLInputElement>('.gb-ke-color')!, '#00ff00');
+    pickColor(keyRow(root, 'errorForeground').querySelector<HTMLElement>('.gb-ke-pick')!, '#00ff00');
     expect((c.ui as any).edits).toEqual({ swatches: { error: '#00ff00' }, keys: {} });
     expect(drawnIn(c, 'errorForeground')).toBe('#00ff00');
     expect(drawnIn(c, 'editorError.foreground')).toBe('#00ff00');
@@ -339,7 +361,7 @@ describe('Palette Lab color editing', () => {
     const before = drawnIn(c, 'editorError.foreground');
     const root = pickIn(c, CHAT_INPUT);
     keyRow(root, 'errorForeground').querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
-    setColor(keyRow(root, 'errorForeground').querySelector<HTMLInputElement>('.gb-ke-color')!, '#123456');
+    pickColor(keyRow(root, 'errorForeground').querySelector<HTMLElement>('.gb-ke-pick')!, '#123456');
     expect(drawnIn(c, 'errorForeground')).toBe('#123456');
     expect(drawnIn(c, 'editorError.foreground')).toBe(before);
     buttonFor(root, 'Reset all').click();
@@ -353,17 +375,18 @@ describe('Palette Lab color editing', () => {
     lab.render(c);
     const root = pickIn(c, CHAT_INPUT);
     keyRow(root, 'errorForeground').querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="role"]')!.click();
-    const input = keyRow(root, 'errorForeground').querySelector<HTMLInputElement>('.gb-ke-color')!;
+    const input = keyRow(root, 'errorForeground').querySelector<HTMLElement>('.gb-ke-pick')!;
     const dock = root.querySelector('.gb-dock')!;
     save.mockClear();
-    setColor(input, '#ff00ff', 'input');
+    const picker = pickColor(input, '#ff00ff', 'open');
     expect((c.ui as any).edits).toEqual({ swatches: { error: '#ff00ff' }, keys: {} });
     expect(save).toHaveBeenCalled();
     expect(drawnIn(c, 'errorForeground')).toBe('#ff00ff');
     expect(root.contains(input)).toBe(true);
+    expect(root.contains(picker)).toBe(true);
     expect(root.querySelector('.gb-dock')).toBe(dock);
     // A finished change redraws the whole Lab, the dock included.
-    setColor(input, '#ff00ff', 'change');
+    picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     expect(root.querySelector('.gb-dock')).not.toBe(dock);
     expect(root.querySelector('.gb-dock')).not.toBeNull();
   });
@@ -752,9 +775,7 @@ describe('Palette Lab Edit dock', () => {
     const role = TB.SWATCH_OF[key];
     const root = pickIn(c, page => [...page.querySelectorAll<HTMLElement>('.gb-pl-chrome [data-keys]')].find(isOpaquePart)!, 1400);
     root.querySelector<HTMLButtonElement>(`.gb-dock .gb-pl-key[data-key="${key}"] .gb-ke-seg[data-scope="role"]`)!.click();
-    const input = root.querySelector<HTMLInputElement>(`.gb-dock .gb-pl-key[data-key="${key}"] .gb-ke-color`)!;
-    input.value = '#336699';
-    input.dispatchEvent(new Event('change'));
+    pickColor(root.querySelector<HTMLElement>(`.gb-dock .gb-pl-key[data-key="${key}"] .gb-ke-pick`)!, '#336699');
     const keys: string[] = TB.KEY_GROUPS[role];
     expect(keys.map(k => [k, drawnIn(c, k)])).toEqual(keys.map(k => [k, '#336699']));
   });
@@ -777,9 +798,7 @@ describe('Palette Lab Edit dock', () => {
     const root = pickIn(c, CHAT_INPUT, 1400);
     const row = keyRows(root)[0];
     row.querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
-    const input = row.querySelector<HTMLInputElement>('.gb-ke-color')!;
-    input.value = '#123456';
-    input.dispatchEvent(new Event('change'));
+    pickColor(row.querySelector<HTMLElement>('.gb-ke-pick')!, '#123456');
     root.querySelector<HTMLButtonElement>('.gb-dock-close')!.click();
     dockOf(root)!.querySelector<HTMLButtonElement>('.gb-dock-reopen')!.click();
     const dock = dockOf(root)!;
@@ -814,9 +833,7 @@ describe('Palette Lab Edit dock', () => {
     document.body.replaceChildren(root);
     const row = keyRows(root)[0];
     row.querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
-    const input = row.querySelector<HTMLInputElement>('.gb-ke-color')!;
-    input.value = '#123456';
-    input.dispatchEvent(new Event('change'));
+    pickColor(row.querySelector<HTMLElement>('.gb-ke-pick')!, '#123456');
     buttonFor(root, 'Edits (1)').click();
     expect(root.querySelectorAll('.gb-dock-edits li')).toHaveLength(1);
     expect(root.querySelector('.gb-dock-edits li button')!.textContent).toBe('Reset');
@@ -892,15 +909,13 @@ describe('Palette Lab step 4 Roles', () => {
     const editor = rolesOf(root).querySelector<HTMLElement>('.gb-role-ed')!;
     expect(editor.dataset.swatch).toBe('raised');
     expect(editor.textContent).toContain(`Used by ${TB.KEY_GROUPS.raised.length} keys`);
-    expect(document.activeElement).toBe(editor.querySelector('.gb-pl-color'));
-    const input = editor.querySelector<HTMLInputElement>('.gb-pl-color')!;
-    input.value = '#333333';
-    input.dispatchEvent(new Event('change'));
+    expect(document.activeElement).toBe(editor.querySelector('.gb-cp-trigger'));
+    pickColor(editor.querySelector<HTMLElement>('.gb-cp-trigger')!, '#333333');
     expect(c.ui.edits.swatches.raised).toBe('#333333');
     buttonFor(rolesOf(root), 'Reset').click();
     expect(c.ui.edits.swatches.raised).toBeUndefined();
     const open = rolesOf(root).querySelector<HTMLElement>('.gb-role-ed')!;
-    open.querySelector<HTMLInputElement>('.gb-pl-color')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    open.querySelector<HTMLElement>('.gb-cp-trigger')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(rolesOf(root).querySelector('.gb-role-ed')).toBeNull();
     expect(document.activeElement).toBe(chipOf(root, 'raised'));
     expect(chipOf(root, 'raised').getAttribute('aria-expanded')).toBe('false');
@@ -1167,7 +1182,9 @@ describe('Palette Lab steps and label column', () => {
   it('draws the Frame row with no folder-color button and no region checkboxes', () => {
     const root = lab.render(ctx());
     const frame = root.querySelector<HTMLElement>('.gb-fr-box')!;
-    expect(frame.querySelectorAll('button:not([role="radio"])')).toHaveLength(0);
+    // The custom frame color's picker trigger is the one button besides the color choices.
+    expect(frame.querySelectorAll('button:not([role="radio"]):not(.gb-cp-trigger)')).toHaveLength(0);
+    expect(frame.querySelectorAll('.gb-cp-trigger.gb-fr-custom')).toHaveLength(1);
     expect(frame.contains(buttonFor(root, 'Try in VS Code'))).toBe(false);
     expect(root.querySelectorAll('input[type="checkbox"][data-region]')).toHaveLength(0);
   });
@@ -1671,5 +1688,161 @@ describe('Palette Lab Name across palette changes', () => {
     expect(nameOf(root)).toBe('Harbor');
     lab.restoreTry(ui, { ...BASE, hue: 90 });
     expect(nameOf(lab.render(ctx({ ui })))).toMatch(/ 90°$/);
+  });
+});
+
+describe('Palette Lab color picker', () => {
+  const rolesOf = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-roles')!;
+  const chipOf = (root: HTMLElement, sw: string) => rolesOf(root).querySelector<HTMLButtonElement>(`.gb-role-chip[data-swatch="${sw}"]`)!;
+  const roleTrigger = (root: HTMLElement) => rolesOf(root).querySelector<HTMLElement>('.gb-role-ed .gb-cp-trigger')!;
+  const errorRow = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-pl-edit .gb-pl-key[data-key="errorForeground"]')!;
+  const press = (el: Element, key: string) => el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  const BASE_KEYS = ['hue', 'lightness', 'chroma', 'mode', 'sourceLabel'];
+  const baseOf = (ui: any) => Object.fromEntries(BASE_KEYS.map(k => [k, ui[k]]));
+  /** The Lab for `c` in the page, with the Raised surface role's editor open. */
+  const openRaised = (c: any) => {
+    const root = lab.render(c);
+    document.body.replaceChildren(root);
+    chipOf(root, 'raised').click();
+    return root;
+  };
+
+  beforeEach(() => lab.restoreTry({}, { mode: 'generated', rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, chromeIndex: 0, surfaces: 'neutral' }));
+
+  it('{#four-places} a color picked at the base color, the custom frame, a role and a key in Edit reaches the Lab state', () => {
+    const c: any = ctx();
+    const root = lab.render(c);
+    // Unlike #ceaa3e, whose lightness and chroma equal the defaults, this color moves all three.
+    pickColor(root.querySelector<HTMLElement>('.gb-pl-base')!, '#7a3e9c');
+    const o = GB.hexToOklch('#7a3e9c');
+    expect([c.ui.hue, c.ui.lightness, c.ui.chroma]).toEqual([Math.round(o.h) % 360, Number(o.l.toFixed(2)), Number(o.c.toFixed(3))]);
+    expect([c.ui.hue, c.ui.lightness, c.ui.chroma]).not.toEqual([210, 0.75, 0.13]);
+    pickColor(root.querySelector<HTMLElement>('.gb-fr-custom')!, '#336699');
+    expect(c.ui.frame).toEqual({ color: '#336699', style: 'filled' });
+    chipOf(root, 'raised').click();
+    pickColor(roleTrigger(root), '#404040');
+    expect(c.ui.edits.swatches.raised).toBe('#404040');
+    const c2: any = ctx();
+    lab.render(c2);
+    const r2 = pickIn(c2, CHAT_INPUT);
+    // Whole role is the default scope, which writes the role; This key only writes the key.
+    errorRow(r2).querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
+    pickColor(errorRow(r2).querySelector<HTMLElement>('.gb-ke-pick')!, '#123456');
+    expect(c2.ui.edits.keys.errorForeground).toBe('#123456');
+  });
+
+  it('{#drag-live} a color changed in the Raised role\'s open picker saves and previews without closing the picker', () => {
+    const save = jest.fn();
+    const c: any = ctx({ save });
+    const root = openRaised(c);
+    const trigger = roleTrigger(root);
+    save.mockClear();
+    const dialog = pickColor(trigger, '#505050', 'open');
+    expect(save).toHaveBeenCalled();
+    expect(c.ui.edits.swatches.raised).toBe('#505050');
+    expect(drawnIn(c, 'editorWidget.background')).toBe('#505050');
+    expect(dialog.isConnected).toBe(true);
+    expect(root.querySelector('.gb-cp')).toBe(dialog);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    press(dialog, 'Escape');
+  });
+
+  it('{#cancel-state} Escape in the Raised role\'s picker puts the edits back and keeps the editor open; at the base color it puts back hue, lightness, chroma, mode and source', () => {
+    const c: any = ctx({ ui: { edits: { swatches: { error: '#ff0000' }, keys: {} } } });
+    const root = openRaised(c);
+    const before = JSON.parse(JSON.stringify(c.ui.edits));
+    const dialog = pickColor(roleTrigger(root), '#505050', 'open');
+    expect(c.ui.edits.swatches.raised).toBe('#505050');
+    press(dialog, 'Escape');
+    expect(c.ui.edits).toEqual(before);
+    expect(rolesOf(root).querySelector('.gb-role-ed')).not.toBeNull();
+    expect(document.activeElement).toBe(roleTrigger(root));
+
+    const c2: any = ctx({ ui: { mode: 'pasted', pasted: ['#ff8800', '#336699'], sourceLabel: 'Saved: Ocean', hue: 40, lightness: 0.6, chroma: 0.1 } });
+    const r2 = lab.render(c2);
+    const base = baseOf(c2.ui);
+    const d2 = pickColor(r2.querySelector<HTMLElement>('.gb-pl-base')!, '#20c3d9', 'open');
+    expect(c2.ui.mode).toBe('generated');
+    expect(c2.ui.sourceLabel).toBeUndefined();
+    press(d2, 'Escape');
+    expect(baseOf(c2.ui)).toEqual(base);
+  });
+
+  it('{#cancel-others} Escape at the custom frame and at a key in Edit puts them back with the dock open; at the base color the Hue slider shows the restored hue', () => {
+    const c: any = ctx({ ui: { frame: { index: 1, style: 'dark' } } });
+    const root = lab.render(c);
+    document.body.replaceChildren(root);
+    const frameBefore = JSON.parse(JSON.stringify(c.ui.frame));
+    const d = pickColor(root.querySelector<HTMLElement>('.gb-fr-custom')!, '#336699', 'open');
+    // The custom frame color now previews while it is dragged.
+    expect(c.ui.frame).toEqual({ color: '#336699', style: 'dark' });
+    expect(drawnIn(c, 'titleBar.activeBackground')).not.toBe('');
+    press(d, 'Escape');
+    expect(c.ui.frame).toEqual(frameBefore);
+    expect(document.activeElement).toBe(root.querySelector('.gb-fr-custom'));
+
+    const c2: any = ctx();
+    lab.render(c2);
+    const r2 = pickIn(c2, CHAT_INPUT, 1400);
+    document.body.replaceChildren(r2);
+    errorRow(r2).querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
+    const keysBefore = JSON.parse(JSON.stringify(c2.ui.edits.keys));
+    const d2 = pickColor(errorRow(r2).querySelector<HTMLElement>('.gb-ke-pick')!, '#123456', 'open');
+    expect(c2.ui.edits.keys.errorForeground).toBe('#123456');
+    press(d2, 'Escape');
+    expect(c2.ui.edits.keys).toEqual(keysBefore);
+    const dock = r2.querySelector<HTMLElement>('.gb-dock')!;
+    expect(dock).not.toBeNull();
+    expect(dock.hasAttribute('data-min')).toBe(false);
+    expect(document.activeElement).toBe(errorRow(r2).querySelector('.gb-ke-pick'));
+
+    const r3 = lab.render(ctx());
+    const hue = r3.querySelector<HTMLInputElement>('.gb-pl-hue')!;
+    expect(hue.value).toBe('210');
+    const d3 = pickColor(r3.querySelector<HTMLElement>('.gb-pl-base')!, '#ceaa3e', 'open');
+    expect(hue.value).not.toBe('210');
+    press(d3, 'Escape');
+    expect(hue.value).toBe('210');
+  });
+
+  it('{#trigger-follows} moving the Hue slider moves the base color trigger\'s swatch', () => {
+    const root = lab.render(ctx());
+    const hue = root.querySelector<HTMLInputElement>('.gb-pl-hue')!;
+    hue.value = '40';
+    hue.dispatchEvent(new Event('input'));
+    expect(triggerColor(root.querySelector('.gb-pl-base')!)).toBe(GB.oklchToHex({ l: 0.75, c: 0.13, h: 40 }));
+  });
+
+  it('{#base-bounds} the base color picker keeps lightness within the Lightness slider\'s range', () => {
+    const c: any = ctx();
+    const root = lab.render(c);
+    const trigger = root.querySelector<HTMLElement>('.gb-pl-base')!;
+    trigger.click();
+    const l = (trigger.nextElementSibling as HTMLElement).querySelector<HTMLInputElement>('.gb-cp-l')!;
+    l.value = '0.2';
+    l.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(l.value).toBe('0.30');
+    expect(c.ui.lightness).toBe(0.3);
+    press(trigger.nextElementSibling!, 'Escape');
+  });
+
+  it('a cancelled pick puts the step 6 result line back to what it said', () => {
+    const c: any = ctx();
+    const root = openRaised(c);
+    buttonFor(root, 'Try in VS Code').click();
+    const result = () => root.querySelector('.gb-bar-result')!.textContent;
+    expect(result()).toBe('Tried in VS Code');
+    const dialog = pickColor(roleTrigger(root), '#505050', 'keep');
+    expect(dialog.isConnected).toBe(false);
+    expect(result()).toBe('Changed since your last Try');
+    buttonFor(root, 'Try in VS Code').click();
+    press(pickColor(roleTrigger(root), '#606060', 'open'), 'Escape');
+    expect(result()).toBe('Tried in VS Code');
+  });
+
+  it('the base color row is a div, so a click inside the open picker is not forwarded to the trigger', () => {
+    const root = lab.render(ctx());
+    const row = root.querySelector('.gb-pl-base')!.closest('.gb-pl-field')!;
+    expect(row.tagName).toBe('DIV');
   });
 });

@@ -218,13 +218,22 @@
     ];
   }
 
+  /** Whether linear sRGB channels all fit 0-1, within a rounding allowance. */
+  const inGamut = rgb => rgb.every(v => v >= -1e-6 && v <= 1 + 1e-6);
+
+  /**
+   * Whether { l, c, h } fits sRGB as it is, by the channel check oklchToHex makes before it
+   * reduces chroma: true means oklchToHex keeps the chroma, false means it lowers it.
+   */
+  function oklchInGamut({ l, c, h: hue }) {
+    return inGamut(oklchToLinear(l, Math.max(0, c), hue));
+  }
+
   /**
    * { l, c, h } to '#rrggbb'. Out-of-gamut colors lose chroma in steps of 0.005 until
    * they fit sRGB, so lightness and hue are kept (clipping each channel would shift both).
    */
   function oklchToHex({ l, c, h: hue }) {
-    const eps = 1e-6;
-    const inGamut = rgb => rgb.every(v => v >= -eps && v <= 1 + eps);
     let chroma = Math.max(0, c);
     let rgb = oklchToLinear(l, chroma, hue);
     while (!inGamut(rgb) && chroma > 0) {
@@ -454,7 +463,7 @@
 
   return {
     VAR_PREFIX, h, tabs, varFor, parseColor, toHex, over, luminance, contrastRatio, contrastGrade, resolveTokenStyle,
-    hexToOklch, oklchToHex, HARMONY_RULES, harmony, paletteId, parseHexList,
+    hexToOklch, oklchToHex, oklchInGamut, HARMONY_RULES, harmony, paletteId, parseHexList,
     textOn, liftTo, CHROME_SURFACES, CHROME_REGIONS, chromeColors, modernUIDefaults,
   };
 });

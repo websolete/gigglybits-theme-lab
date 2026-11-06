@@ -355,9 +355,10 @@ export class ThemeLabPanel {
   private html(webview: vscode.Webview): string {
     // Order matters: shared.js defines window.GB, which the rest read when they load.
     // themeBuilder.js (window.GBBuilder) computes the candidate theme and gallery.js
-    // (window.GBGallery) draws it; palette.js uses them, then the app.
+    // (window.GBGallery) draws it; colorPicker.js (window.GBColorPicker) is the color picker;
+    // palette.js uses them, then the app.
     return labPageHtml(webview, this.extensionUri, 'Theme Lab',
-      ['shared.js', 'themeBuilder.js', 'gallery.js', 'palette.js', 'themeLab.js']);
+      ['shared.js', 'themeBuilder.js', 'gallery.js', 'colorPicker.js', 'palette.js', 'themeLab.js']);
   }
 
   private dispose(): void {

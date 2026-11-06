@@ -565,17 +565,51 @@
   // ------------------------------------------------------------------- editing
 
   /**
-   * A color input labelled `label` showing `current`: `apply(value, done)` runs as it moves
-   * (done false) and once more when the choice is made (done true).
+   * The Lab's color picker (media/colorPicker.js), a trigger labelled `label` showing `value`.
+   * window.GBColorPicker is read only here, when a picker is made, so the Theme Preview page,
+   * which does not load colorPicker.js, never needs it. `snapshot()` runs as the picker opens;
+   * `input(hex)` runs on every change, `change(hex)` once when the color is kept, and on Escape
+   * the step 6 result line goes back to what it said at the open and `cancel(snap)` puts back
+   * the part of the state this place changed.
+   * @param {{ label: string, value: string, className: string, bounds?: any, snapshot: () => any, input: (hex: string) => void, change: (hex: string) => void, cancel: (snap: any) => void }} o
    */
-  function colorInput(label, current, apply) {
-    const input = h('input', {
-      type: 'color', class: 'gb-pl-color', 'aria-label': label, title: label,
-      oninput: ev => apply(ev.target.value, false),
-      onchange: ev => apply(ev.target.value, true),
+  function colorPicker(o) {
+    let before = null;
+    let resultBefore = null;
+    // @ts-ignore provided by colorPicker.js
+    const trigger = window.GBColorPicker.create({
+      label: o.label, value: String(o.value || '#000000').slice(0, 7), className: o.className, bounds: o.bounds,
+      onInput: o.input,
+      onChange: hex => {
+        before = null;
+        o.change(hex);
+      },
+      onCancel: () => {
+        const snap = before;
+        before = null;
+        if (resultBefore) Object.assign(result, resultBefore);
+        o.cancel(snap);
+      },
     });
-    input.value = String(current || '#000000').slice(0, 7);
-    return input;
+    // The picker's own click handler runs first, so an open picker is a fresh one.
+    trigger.addEventListener('click', () => {
+      if (trigger.getAttribute('aria-expanded') !== 'true') return;
+      before = o.snapshot();
+      resultBefore = { text: result.text, after: result.after };
+    });
+    return trigger;
+  }
+
+  /** The Lab's edits as a copy that later edits cannot change. */
+  const copyEdits = edits => ({ swatches: { ...edits.swatches }, keys: { ...edits.keys } });
+
+  /** Focuses `selector` in the Lab around `el` after a redraw has replaced `el`. */
+  function refocusNear(el, selector) {
+    const lab = el.closest('.gb-palette');
+    return () => {
+      const next = lab && /** @type {HTMLElement | null} */ (lab.querySelector(selector));
+      if (next) next.focus();
+    };
   }
 
   /** What the dock's heading says the pick is: its text and its region, or the whole region. */
@@ -709,10 +743,22 @@
 
       const chip = h('span', { class: 'gb-ke-chip', 'aria-hidden': 'true' });
       const sub = h('span', { class: 'gb-ke-sub muted' });
-      const picker = h('input', {
-        type: 'color', class: 'gb-ke-color', 'aria-label': `${key} color`,
-        oninput: ev => applyColor(ev.target.value, false),
-        onchange: ev => applyColor(ev.target.value, true),
+      const picker = colorPicker({
+        label: `${key} color`, value: view.color, className: 'gb-ke-pick',
+        snapshot: () => copyEdits(s.edits),
+        input: v => applyColor(v, false),
+        change: v => {
+          const refocus = refocusNear(picker, `.gb-dock .gb-pl-key[data-key="${key}"] .gb-cp-trigger`);
+          applyColor(v, true);
+          refocus();
+        },
+        cancel: snap => {
+          const refocus = refocusNear(picker, `.gb-dock .gb-pl-key[data-key="${key}"] .gb-cp-trigger`);
+          if (snap) s.edits = snap;
+          save(ctx);
+          act.redraw();
+          refocus();
+        },
       });
       const hexField = h('input', {
         type: 'text', class: 'gb-ke-hex', spellcheck: 'false', 'aria-label': `${key} hex color, #rrggbb or #rrggbbaa`,
@@ -776,7 +822,7 @@
         chip.classList.toggle('gb-ke-unset', view.unset);
         chip.textContent = view.unset ? 'default' : '';
         chip.style.setProperty('--gb-ke-c', view.unset ? 'transparent' : withAlpha(view.color, view.alpha));
-        picker.value = view.color;
+        picker.setValue(view.color);
         hexField.value = view.unset ? '' : withAlpha(view.color, view.alpha);
         hexField.placeholder = view.unset ? 'VS Code default' : '';
         hexField.removeAttribute('aria-invalid');
@@ -888,6 +934,10 @@
       reopen() {
         dock.state = 'open';
         dock.step = 0;
+        redrawAll();
+      },
+      /** Redraws everything without marking the candidate changed, as a cancelled pick does. */
+      redraw() {
         redrawAll();
       },
     };
@@ -1032,7 +1082,7 @@
         onclick: () => {
           rolesUi.open = open ? null : sw;
           redraw();
-          focusIn(open ? chipAt(sw) : '.gb-role-ed .gb-pl-color');
+          focusIn(open ? chipAt(sw) : '.gb-role-ed .gb-cp-trigger');
         },
       }, swatchOf(theme.sw[sw], 'gb-role-dot'), h('span', { class: 'gb-role-name' }, roleName(sw)),
       h('span', { class: 'gb-role-n' }, count ? String(count) : 'code'));
@@ -1048,16 +1098,30 @@
         redraw();
         focusIn(chipAt(sw));
       };
-      const input = colorInput(`${name}: every key in this role`, theme.sw[sw], (v, done) => {
-        if (!done) big.style.background = v;
-        edit(e => { e.swatches[sw] = v; }, done);
-        if (done) focusIn('.gb-role-ed .gb-pl-color');
+      // Dragging changes the edits and saves without a redraw, so the picker stays open.
+      const input = colorPicker({
+        label: `${name}: every key in this role`, value: theme.sw[sw], className: 'gb-role-pick',
+        snapshot: () => copyEdits(s.edits),
+        input: v => {
+          big.style.background = v;
+          edit(e => { e.swatches[sw] = v; }, false);
+        },
+        change: v => {
+          edit(e => { e.swatches[sw] = v; }, true);
+          focusIn('.gb-role-ed .gb-cp-trigger');
+        },
+        cancel: snap => {
+          if (snap) s.edits = snap;
+          save(ctx);
+          redraw();
+          focusIn('.gb-role-ed .gb-cp-trigger');
+        },
       });
       const reset = s.edits.swatches[sw] ? h('button', {
         type: 'button', class: 'secondary gb-pl-reset', title: `Undo the edit to ${name}`,
         onclick: () => {
           edit(e => { delete e.swatches[sw]; }, true);
-          focusIn('.gb-role-ed .gb-pl-color');
+          focusIn('.gb-role-ed .gb-cp-trigger');
         },
       }, 'Reset') : null;
       // Keywords has no workbench key, so there is nothing in the preview to show.
@@ -1158,17 +1222,41 @@
       return b;
     };
 
-    // Frame: one palette color, or a custom one, and a style.
-    const customInput = h('input', {
-      type: 'color', class: 'gb-fr-custom-color', 'aria-label': 'Custom frame color', title: 'Custom frame color',
-      onchange: change(ev => { s.frame = { color: ev.target.value.toLowerCase(), style: frame.style }; }),
+    // Frame: one palette color, or a custom one, and a style. The custom color previews as it
+    // is dragged (saved without a redraw, so the picker stays open) and redraws once kept.
+    let customColor = color;
+    const customAt = '.gb-fr-custom';
+    const customInput = colorPicker({
+      label: 'Custom frame color', value: color, className: 'gb-fr-custom',
+      snapshot: () => ({ ...s.frame }),
+      input: hex => {
+        customColor = hex;
+        s.frame = { color: hex, style: frame.style };
+        markChanged();
+        save(ctx);
+      },
+      change: hex => {
+        const refocus = refocusNear(customInput, customAt);
+        customColor = hex;
+        s.frame = { color: hex, style: frame.style };
+        markChanged();
+        save(ctx);
+        redrawAll();
+        refocus();
+      },
+      cancel: snap => {
+        const refocus = refocusNear(customInput, customAt);
+        if (snap) s.frame = snap;
+        save(ctx);
+        redrawAll();
+        refocus();
+      },
     });
-    customInput.value = color;
     const framePicks = h('div', { class: 'gb-ch-picks', role: 'radiogroup', 'aria-label': 'Frame color' },
       candidate.colors.map((hex, i) => radio('gb-fr-pick', `Frame color ${i + 1} ${hex}`, i, i === frameIndex,
         change(() => { s.frame = { index: i, style: frame.style }; }), dot(hex), ` ${i + 1}`)),
       radio('gb-fr-pick', 'Custom frame color', 'custom', custom,
-        change(() => { s.frame = { color: customInput.value.toLowerCase(), style: frame.style }; }), 'Custom'),
+        change(() => { s.frame = { color: customColor.toLowerCase(), style: frame.style }; }), 'Custom'),
       customInput);
     const style = h('select', { class: 'gb-fr-style', 'aria-label': 'Frame style', onchange: change(ev => { s.frame = { ...frame, style: ev.target.value }; }) },
       h('option', { value: 'filled', selected: frame.style === 'filled' }, 'Filled'),
@@ -1698,33 +1786,45 @@
     const chromaValue = h('span', { class: 'gb-pl-value' });
 
     // Base color picker: picking a color sets hue, lightness and chroma from its OKLCH
-    // values, clamped to the slider ranges; moving a slider moves the picker.
-    let picking = false;
-    const picker = h('input', {
-      type: 'color', class: 'gb-pl-picker', 'aria-label': 'Base color',
-      title: 'Pick a base color; sets hue, lightness and chroma',
-      oninput: ev => {
-        const o = GBO(ev.target.value);
-        if (!o) return;
-        // A grey has no meaningful hue, so keep the current one.
-        if (o.c >= 0.01) s.hue = Math.round(o.h) % 360;
-        s.lightness = Math.min(0.95, Math.max(0.3, round(o.l, 2)));
-        s.chroma = Math.min(0.3, Math.max(0, round(o.c, 3)));
-        s.mode = 'generated';
-        delete s.sourceLabel;
-        markChanged();
+    // values, kept within the slider ranges; moving a slider moves the trigger's swatch.
+    const pickBase = hex => {
+      const o = GBO(hex);
+      if (!o) return;
+      // A grey has no meaningful hue, so keep the current one.
+      if (o.c >= 0.01) s.hue = Math.round(o.h) % 360;
+      s.lightness = Math.min(0.95, Math.max(0.3, round(o.l, 2)));
+      s.chroma = Math.min(0.3, Math.max(0, round(o.c, 3)));
+      s.mode = 'generated';
+      delete s.sourceLabel;
+      markChanged();
+      save(ctx);
+      syncControls();
+      drawCandidate();
+    };
+    const BASE_KEYS = ['hue', 'lightness', 'chroma', 'mode', 'sourceLabel'];
+    const picker = colorPicker({
+      label: 'Base color', value: window.GB.oklchToHex({ l: Number(s.lightness), c: Number(s.chroma), h: Number(s.hue) }),
+      className: 'gb-pl-base',
+      // The ranges of the Lightness and Chroma sliders below.
+      bounds: { l: [0.3, 0.95], c: [0, 0.3] },
+      snapshot: () => Object.fromEntries(BASE_KEYS.map(k => [k, s[k]])),
+      input: pickBase,
+      change: pickBase,
+      cancel: snap => {
+        if (snap) {
+          for (const k of BASE_KEYS) {
+            if (snap[k] === undefined) delete s[k];
+            else s[k] = snap[k];
+          }
+        }
         save(ctx);
-        picking = true;
         syncControls();
-        picking = false;
         drawCandidate();
       },
     });
 
     function syncControls() {
-      // Leave the picker alone while it is the control being moved, so it does not jump
-      // to the slider-rounded color mid-drag.
-      if (!picking) picker.value = window.GB.oklchToHex({ l: Number(s.lightness), c: Number(s.chroma), h: Number(s.hue) });
+      picker.setValue(window.GB.oklchToHex({ l: Number(s.lightness), c: Number(s.chroma), h: Number(s.hue) }));
       ruleSelect.value = s.rule;
       lightRange.value = String(s.lightness);
       chromaRange.value = String(s.chroma);
@@ -1735,7 +1835,8 @@
     }
 
     const controls = h('div', { class: 'gb-pl-controls' },
-      fieldRow('Base color', [picker]),
+      // A div, not a label: a label forwards a click on the picker's ring or panel to the trigger.
+      fieldRow('Base color', [picker], 'div'),
       fieldRow('Rule', [ruleSelect]),
       fieldRow('Hue', [hueRange, hueNumber]),
       fieldRow('Lightness', [lightRange, lightValue]),

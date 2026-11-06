@@ -236,7 +236,6 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-pl-field-control { display: flex; gap: var(--gb-space-2); align-items: center; min-width: 0; }
 .gb-pl-field-control input[type="range"] { flex: 1; min-width: 0; }
 .gb-pl-hue-number { width: 4.5em; }
-.gb-pl-picker { width: 2.5em; height: 1.8em; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
 .gb-pl-value { flex: none; width: 5ch; font-family: var(--vscode-editor-font-family); }
 
 /* Step 2: the palette table. A 24px chip and the hex over L C H, then four ratio columns in
@@ -307,7 +306,6 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 /* Frame and Editor choices. */
 .gb-ch-picks { flex-wrap: wrap; align-items: center; }
 .gb-fr-pick { min-height: 24px; padding: 1px 5px; }
-.gb-fr-custom-color { width: 26px; height: 24px; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
 .gb-ch-controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
 .gb-ch-controls label { display: inline-flex; gap: 4px; align-items: center; }
 .gb-ch-picks { display: inline-flex; gap: 4px; }
@@ -398,7 +396,6 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-pl-key-strip[hidden] { display: none; }
 .gb-pl-key-note { font-size: 0.9em; }
 .gb-pl-dot-none { border-style: dashed; }
-.gb-pl-color { inline-size: 32px; block-size: 24px; padding: 0; border: 1px solid var(--vscode-input-border, transparent); background: none; cursor: pointer; }
 .gb-pl-reset { padding: 0 var(--gb-space-2); min-height: 24px; }
 
 /* The color editor under the open key row (palette.js keyEditor): a large chip over a
@@ -431,7 +428,6 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-ke-seg[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .gb-ke-seg[disabled] { opacity: 0.45; cursor: default; }
 .gb-ke-seg:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-.gb-ke-color { inline-size: 32px; block-size: 24px; padding: 0; border: 1px solid var(--vscode-input-border, var(--gb-card-line)); background: none; cursor: pointer; }
 .gb-ke-hex { inline-size: 8.5rem; min-height: 24px; box-sizing: border-box; font-family: var(--vscode-editor-font-family); }
 .gb-ke-hex[aria-invalid="true"] { outline: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)); }
 .gb-ke-alpha { flex: 1 1 8rem; min-width: 6rem; max-inline-size: 16rem; }
@@ -561,3 +557,52 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-sg-saved:last-child { border-bottom: none; }
 .gb-sg-on { display: inline-flex; gap: var(--gb-space-1); align-items: center; }
 .gb-sg-empty { margin: 0; }
+
+/* The color picker (media/colorPicker.js): a trigger showing the color, and the picker it opens
+   after itself, fixed under the trigger so a scrolling dock does not clip it. */
+button.gb-cp-trigger { display: inline-flex; align-items: center; padding: 2px; min-height: 24px; }
+.gb-cp-swatch { inline-size: 32px; block-size: 18px; border-radius: 2px; border: 1px solid var(--vscode-input-border, var(--gb-card-line, rgba(128, 128, 128, .5))); }
+button.gb-cp-trigger[aria-expanded="true"] { outline: 1px solid var(--vscode-focusBorder); }
+.gb-cp {
+  position: fixed; z-index: 50; inline-size: 420px; max-inline-size: calc(100vw - 8px); box-sizing: border-box; padding: 10px;
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border, rgba(128, 128, 128, .4)));
+  border-radius: 6px; box-shadow: 0 6px 18px var(--vscode-widget-shadow, rgba(0, 0, 0, .5));
+  font-size: var(--vscode-font-size); font-weight: normal; text-align: start;
+}
+.gb-cp-head { display: flex; align-items: baseline; gap: var(--gb-space-2); margin-bottom: var(--gb-space-2); font-size: var(--gb-text-sm); }
+.gb-cp-keys { margin-inline-start: auto; white-space: nowrap; }
+.gb-cp-top { display: flex; gap: var(--gb-space-3); }
+.gb-cp-wheel { position: relative; inline-size: 200px; block-size: 200px; flex: none; }
+.gb-cp-ring { position: absolute; inset: 0; border-radius: 50%; cursor: crosshair; touch-action: none; }
+.gb-cp-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); cursor: crosshair; touch-action: none; outline: 1px solid rgba(128, 128, 128, .5); }
+.gb-cp-ring:focus-visible, .gb-cp-panel:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.gb-cp-ring canvas, .gb-cp-panel canvas { display: block; }
+.gb-cp-mark { position: absolute; inline-size: 12px; block-size: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; box-sizing: border-box; }
+.gb-cp-side { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; gap: 6px; }
+.gb-cp-swatches { display: flex; block-size: 36px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(128, 128, 128, .5); }
+.gb-cp-swatches > div { flex: 1; display: flex; align-items: flex-end; padding: 1px 4px; font-size: 10px; }
+.gb-cp-fields { display: grid; grid-template-columns: 66px minmax(0, 1fr); align-items: center; gap: 2px 6px; }
+.gb-cp-fl { font-size: var(--gb-text-sm); font-weight: normal; }
+.gb-cp-field {
+  inline-size: 100%; box-sizing: border-box; padding: 2px 5px; font-family: var(--vscode-editor-font-family, monospace); font-size: 12px;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px;
+}
+.gb-cp-field[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder, #be1100); }
+.gb-cp-hint { grid-column: 2; font-size: 10px; margin-top: -1px; }
+.gb-cp-note { margin: 0; font-size: 11px; color: var(--vscode-editorWarning-foreground, #cca700); border-inline-start: 2px solid currentColor; padding-inline-start: 6px; }
+.gb-cp-note[hidden] { display: none; }
+.gb-cp-lightness { margin-top: 10px; border-top: 1px solid rgba(128, 128, 128, .35); padding-top: var(--gb-space-2); }
+.gb-cp-bh { display: flex; align-items: center; gap: var(--gb-space-2); margin-bottom: 5px; font-size: var(--gb-text-sm); }
+.gb-cp-steps { display: inline-flex; margin-inline-start: auto; border: 1px solid rgba(128, 128, 128, .5); border-radius: 4px; overflow: hidden; }
+.gb-cp-steps button.gb-cp-step { border: 0; border-radius: 0; padding: 1px 8px; font-size: 11px; min-height: 0; }
+.gb-cp-steps button.gb-cp-step + button.gb-cp-step { border-inline-start: 1px solid rgba(128, 128, 128, .5); }
+.gb-cp-steps button.gb-cp-step[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.gb-cp-blocks, .gb-cp-blabels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.gb-cp-blocks button.gb-cp-block { block-size: 34px; padding: 0; border-radius: 4px; border: 1px solid rgba(128, 128, 128, .5); cursor: pointer; }
+.gb-cp-blocks button.gb-cp-block.gb-cp-cur { outline: 2px solid var(--vscode-foreground); outline-offset: 1px; }
+.gb-cp-blocks button.gb-cp-block:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.gb-cp-blocks button.gb-cp-block[disabled] { cursor: not-allowed; border-style: dashed; background: repeating-linear-gradient(45deg, rgba(128, 128, 128, .12) 0 5px, rgba(128, 128, 128, .24) 5px 10px); }
+.gb-cp-blabels { margin-top: 2px; font-size: 10px; text-align: center; color: var(--vscode-descriptionForeground); }
+.gb-cp-blabels b { display: block; font-weight: normal; color: var(--vscode-foreground); }

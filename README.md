@@ -56,6 +56,18 @@ Two tabs: start a new palette, or pick up one you kept.
 - **Wheel**: a base color first, then one of eight color-wheel harmony rules (Analogous, Monochromatic, Triad, Complementary, Split Complementary, Square, Compound, Shades, the rule set Adobe Color uses), and hue, lightness and chroma sliders. The five colors are computed in OKLCH, so equal lightness looks equally light across hues.
 - **Saved**: your saved themes, one line each with their colors, name and slot, and **Load**, which brings one back exactly; Enter on a line loads it too. The arrow beside Load shows **Use in this project**, **Use everywhere** and **Delete**, which do what [Saved themes](#saved-themes) describes. The foot of the tab opens [Style groups](#style-groups).
 
+#### The color picker
+
+Every color swatch in the Lab opens the same picker in place, under the swatch: the base color in step 1, the custom frame color in step 3, a role's color in step 4 and a key's color in step 5.
+
+- The **ring** sets the hue. Inside it, the **panel** shows that hue at every lightness, from 1 (white) at the top to 0 (black) at the bottom, and every chroma, from 0 (gray) at the left to 0.33 at the right. The striped, dimmed area is colors your screen cannot show at that hue, so you can see where the hue runs out of color. Drag either one, or focus it and use the arrow keys: on the ring Left and Right move the hue by 1 degree, or 10 with Shift; on the panel Up and Down move lightness by 0.01, and Left and Right move chroma by 0.005.
+- **Before** and **now** show the color the picker opened on and the color it has now.
+- The **Hex**, **Lightness**, **Chroma** and **Hue** fields show the color and take a typed value. Hover one to see what it measures and which way is more. When you type a chroma the screen cannot show at that lightness and hue, a note says it was reduced to fit the screen.
+- The five **lightness blocks** under it are your color two steps and one step darker, itself, and one step and two steps lighter, at the same chroma and hue. The step is 0.02, 0.05 (where it starts) or 0.10. Click a block to take that shade. A block that would be darker than black or lighter than white is striped and disabled.
+- The Theme Preview follows every change while the picker is open. **Enter**, or clicking anywhere outside the picker, keeps the color. **Esc** closes it and puts the design back exactly as it was before the picker opened.
+
+The base color's picker stays within the ranges of the Lightness and Chroma sliders.
+
 ### 2 Palette
 
 A line opens the step: the table shows how readable each color is as text on four dark backgrounds, as a contrast ratio from 1 (invisible) to 21 (black on white), higher being easier to read. The table has one line per palette color: a swatch (click it to copy the hex), the hex over its L C H values, and its contrast ratio and grade on a near-black background (`#121212`), VS Code's Dark+ editor and side bar (`#1e1e1e`, `#252526`) and your own editor background. Each column heading names its background, and hovering a ratio says what was measured and what its grade means. The weakest cell is outlined, and the step's heading names it with its grade. Past five colors the table scrolls. Under it, a legend says what each grade means: AAA (7:1 or more) is easy to read at any size, AA (4.5:1 or more) is fine for normal text, Large (3:1 or more) suits only large or bold text, icons and borders, and Fail (under 3:1) is hard to read. A last line says what the theme builder adjusts on its own: code text colors to at least 4.5:1 and the input outline to 3:1, which is why the drawing can differ from the table's numbers.
