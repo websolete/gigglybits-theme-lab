@@ -48,6 +48,139 @@
     'terminal.selectionForeground': 'Recolors selected terminal text, replacing the colors the program printed. VS Code leaves it unset.',
   };
 
+  /**
+   * Colors VS Code registers that the theme leaves to VS Code's own defaults, by group, each with
+   * the reason. The theme sets the main chrome and what you look at every day; these are the rest.
+   * A group covers its keys and every id under its prefixes ('chat.' takes chat.x, not chatX),
+   * except the ids the theme sets anyway. test/themeCoverage.test.ts checks that every color in
+   * test/fixtures/vscode-colors.json is in exactly one of KEY_GROUPS, UNSET_KEYS and this list.
+   */
+  const notDaily = 'Not part of the main chrome or what you see every day, so VS Code\'s default stays.';
+  const LEFT_TO_VSCODE = [
+    {
+      area: 'Debugging', reason: 'Seen only while debugging; VS Code\'s defaults read on any dark theme.',
+      keys: ['editor.stackFrameHighlightBackground', 'editor.focusedStackFrameHighlightBackground', 'editor.inlineValuesForeground',
+        'editor.inlineValuesBackground', 'commandCenter.debuggingBackground', 'debugConsoleInputIcon.foreground'],
+      prefixes: ['debugIcon', 'debugToolBar', 'debugTokenExpression', 'debugView', 'debugConsole', 'debugExceptionWidget'], except: [],
+    },
+    { area: 'Testing', reason: 'Test Explorer states use VS Code\'s fixed status colors.', keys: [], prefixes: ['testing'], except: [] },
+    {
+      area: 'Notebooks', reason: 'Notebooks are not drawn in the preview.', keys: [],
+      prefixes: ['notebook', 'interactive', 'notebookEditorOverviewRuler', 'notebookScrollbarSlider', 'notebookStatusErrorIcon', 'notebookStatusRunningIcon', 'notebookStatusSuccessIcon'],
+      except: [],
+    },
+    { area: 'Onboarding', reason: 'Welcome and walkthrough pages.', keys: [], prefixes: ['welcomePage', 'walkThrough', 'walkthrough'], except: [] },
+    {
+      area: 'Extensions view', reason: 'The Extensions view keeps VS Code\'s look.', keys: [], prefixes: ['extensionButton', 'extensionIcon', 'extensionBadge'],
+      except: ['extensionButton.background', 'extensionButton.foreground', 'extensionButton.hoverBackground'],
+    },
+    { area: 'Settings editor', reason: 'The Settings editor.', keys: [], prefixes: ['settings'], except: ['settings.headerForeground', 'settings.modifiedItemIndicator'] },
+    { area: 'Keyboard Shortcuts and Profiles editors', reason: 'Editors opened rarely.', keys: ['profiles.sashBorder'], prefixes: ['keybindingTable'], except: [] },
+    { area: 'Source control graph', reason: 'Graph lane colors are a fixed set.', keys: [], prefixes: ['scmGraph'], except: [] },
+    {
+      area: 'Agent sessions', reason: 'Agent session views and the agent sessions window change often between releases.',
+      keys: ['editorOverviewRuler.agentFeedbackForeground'],
+      prefixes: ['agentFeedbackEditorWidget', 'agentFeedbackInputWidget', 'agentSessionReadIndicator', 'agentSessionSelectedBadge',
+        'agentSessionSelectedUnfocusedBadge', 'agents', 'agentsPanel', 'agentsWindowGraphic', 'activeSessionView', 'inactiveSessionView',
+        'agentStatusIndicator', 'agentsBadge', 'agentsBottomPanel', 'agentsCard', 'agentsChatInput', 'agentsDetail', 'agentsGradient',
+        'agentsNewSessionButton', 'agentsUnreadBadge', 'agentsUpdateButton', 'agentsVoice', 'agentsMobileDiff'],
+      except: [],
+    },
+    { area: 'Charts', reason: 'Chart palettes are fixed hues.', keys: [], prefixes: ['charts', 'chart'], except: [] },
+    { area: 'Profile badge', reason: 'The profile badge keeps VS Code\'s look.', keys: [], prefixes: ['profileBadge'], except: [] },
+    {
+      area: 'Review comments', reason: 'Review comments.',
+      keys: ['editorGutter.commentGlyphForeground', 'editorGutter.commentRangeForeground', 'editorGutter.commentDraftGlyphForeground', 'editorGutter.commentUnresolvedGlyphForeground'],
+      prefixes: ['commentsView', 'editorCommentsWidget'], except: [],
+    },
+    { area: 'Extension gutter decorations', reason: 'Gutter items extensions draw.', keys: ['editorGutter.itemBackground', 'editorGutter.itemGlyphForeground'], prefixes: [], except: [] },
+    {
+      area: 'Rarely seen surfaces', reason: 'Rarely seen; their defaults derive from colors the theme sets.',
+      keys: ['browser.border', 'git.blame.editorDecorationForeground', 'ports.iconRunningProcessForeground', 'outputViewStickyScroll.background'],
+      prefixes: ['mcpIcon', 'markdown', 'markdownAlert', 'textPreformat', 'outputView', 'searchEditor', 'multiDiffEditor'],
+      except: ['textPreformat.background', 'textPreformat.foreground'],
+    },
+    { area: 'Celebrations', reason: 'Confetti colors are a fixed set.', keys: [], prefixes: ['confetti'], except: [] },
+    { area: 'Input-method composition', reason: 'Seen only while composing text with an input method.', keys: ['editor.compositionBorder'], prefixes: [], except: [] },
+    {
+      area: 'Opacity values', reason: 'Defaults are black with an alpha (#000a, #000f), not colors a role could supply.',
+      keys: ['editorUnnecessaryCode.opacity', 'minimap.foregroundOpacity'], prefixes: [], except: [],
+    },
+    {
+      area: 'Modern UI', reason: 'Modern UI colors VS Code derives, modeled where the preview draws them (media/shared.js MODERN_UI_RULES).', keys: [],
+      prefixes: ['surface', 'modernUI', 'modernPanel', 'modernTab', 'modernEditorTab', 'modernActivityBar', 'modernActivityBarItem', 'modernSash'], except: [],
+    },
+    {
+      area: 'Optional editor guides', reason: 'Shown only when bracket pair guides or indent guide colorization are turned on.',
+      keys: ['editorIndentGuide.background2', 'editorIndentGuide.background3', 'editorIndentGuide.background4', 'editorIndentGuide.background5',
+        'editorIndentGuide.background6', 'editorIndentGuide.activeBackground2', 'editorIndentGuide.activeBackground3', 'editorIndentGuide.activeBackground4',
+        'editorIndentGuide.activeBackground5', 'editorIndentGuide.activeBackground6'],
+      prefixes: ['editorBracketPairGuide'], except: [],
+    },
+    {
+      area: 'Older names', reason: 'Older names of colors the theme sets under their current names, or a color VS Code leaves unset so bracket colors show.',
+      keys: ['editorIndentGuide.background', 'editorIndentGuide.activeBackground', 'quickInput.list.focusBackground', 'editorActiveLineNumber.foreground',
+        'editorBracketMatch.foreground'],
+      prefixes: [], except: [],
+    },
+    {
+      area: 'Editor extras', reason: notDaily,
+      keys: ['editor.placeholder.foreground', 'editor.wordHighlightTextBackground', 'editor.wordHighlightTextBorder',
+        'editorBracketHighlight.foreground4', 'editorBracketHighlight.foreground5', 'editorBracketHighlight.foreground6',
+        'editorInlayHint.parameterBackground', 'editorInlayHint.parameterForeground', 'editorInlayHint.typeBackground', 'editorInlayHint.typeForeground',
+        'editorMultiCursor.primary.background', 'editorMultiCursor.primary.foreground', 'editorMultiCursor.secondary.background',
+        'editorMultiCursor.secondary.foreground', 'editorStickyScroll.background', 'editorStickyScroll.shadow', 'editorStickyScrollGutter.background',
+        'editorUnicodeHighlight.background', 'editorUnicodeHighlight.border', 'editorWordWrapIndicator.foreground', 'editorGutter.background',
+        'editorGutter.foldingControlForeground', 'editorHoverWidget.highlightForeground', 'editorSuggestWidget.focusOutline',
+        'editorActionList.background', 'editorActionList.focusBackground', 'editorActionList.focusForeground', 'editorActionList.foreground',
+        'editorMarkerNavigation.background', 'editorPane.background', 'minimap.selectionHighlight', 'minimap.selectionOccurrenceHighlight',
+        'minimapGutter.addedBackground', 'minimapGutter.deletedBackground', 'minimapGutter.modifiedBackground', 'diffEditor.move.border',
+        'diffEditor.moveActive.border', 'diffEditorOverview.insertedForeground', 'diffEditorOverview.removedForeground',
+        'peekViewEditorStickyScroll.background', 'peekViewEditorStickyScrollGutter.background'],
+      prefixes: [], except: [],
+    },
+    {
+      area: 'Workbench extras', reason: notDaily,
+      keys: ['editorGroupHeader.connectedTabsBackground', 'editorGroupHeader.noTabsBackground', 'sideBySideEditor.horizontalBorder',
+        'sideBySideEditor.verticalBorder', 'sideBar.dropBackground', 'panel.dropBorder', 'panelSection.dropBackground',
+        'editorGroup.dropIntoPromptBackground', 'editorGroup.dropIntoPromptForeground', 'commandCenter.activeForeground',
+        'commandCenter.inactiveBorder', 'commandCenter.inactiveForeground', 'statusBarItem.errorHoverBackground',
+        'statusBarItem.errorHoverForeground', 'statusBarItem.warningHoverBackground', 'statusBarItem.warningHoverForeground',
+        'statusBarItem.offlineHoverForeground', 'statusBarItem.remoteHoverForeground', 'checkbox.disabled.background',
+        'checkbox.disabled.foreground', 'actionBar.toggledBackground', 'editor.border', 'tree.inactiveIndentGuidesStroke',
+        'quickInputList.focusHighlightForeground'],
+      prefixes: [], except: [],
+    },
+    {
+      area: 'Inline chat and AI marks', reason: notDaily,
+      keys: ['inlineChat.background', 'inlineChat.border', 'inlineChat.foreground', 'inlineChat.shadow', 'inlineChatDiff.inserted',
+        'inlineChatDiff.removed', 'editorMinimap.inlineChatInserted', 'minimap.chatEditHighlight', 'editorLightBulbAi.foreground'],
+      prefixes: [], except: [],
+    },
+    { area: 'Inline edits', reason: notDaily, keys: [], prefixes: ['inlineEdit'], except: [] },
+    {
+      area: 'Symbol icons', reason: `${notDaily} The few the theme sets are the outline and suggestion icons the preview draws.`, keys: [],
+      prefixes: ['symbolIcon', 'terminalSymbolIcon'],
+      except: ['symbolIcon.classForeground', 'symbolIcon.fieldForeground', 'symbolIcon.functionForeground', 'symbolIcon.methodForeground', 'symbolIcon.variableForeground'],
+    },
+    {
+      area: 'Terminal extras', reason: notDaily, keys: [],
+      prefixes: ['terminalStickyScroll', 'terminalStickyScrollHover', 'terminalCommandDecoration', 'terminalCommandGuide', 'terminalOverviewRuler'], except: [],
+    },
+    { area: 'Merge conflicts', reason: notDaily, keys: [], prefixes: ['merge', 'mergeEditor'], except: [] },
+    {
+      area: 'Chat extras', reason: 'Unused (VS Code\'s own description says so), VS Code\'s fixed brand colors, or the voice, dictation and MCP views.',
+      keys: ['chat.inputWorkingBorderColor2', 'chat.inputWorkingBorderColor3', 'chat.voiceSpeakingGlow', 'chat.fusionBadgeGradientStart',
+        'chat.fusionBadgeGradientEnd', 'chat.workingProgressStableIconForeground', 'chat.workingProgressInsidersIconForeground',
+        'chat.voiceGlowBaseColor', 'chat.voiceListeningGlow', 'chat.dictationActiveMicGlow', 'chat.mcpCompatibilityWarningForeground'],
+      prefixes: [], except: [],
+    },
+  ];
+
+  /** True when LEFT_TO_VSCODE holds the id, by key or by prefix less except. */
+  const leftToVSCode = id => LEFT_TO_VSCODE.some(g => g.keys.includes(id)
+    || (g.prefixes.some(p => id.startsWith(`${p}.`)) && !g.except.includes(id)));
+
   const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
   const bg = GB.parseColor(THEME_BACKGROUND);
   const contrastOnBg = hex => GB.contrastRatio(GB.parseColor(hex), bg);
@@ -489,7 +622,7 @@
       'tab.unfocusedActiveBackground', 'tab.unfocusedActiveBorder', 'terminal.background', 'terminalCursor.background',
     ],
     deep: [
-      'sideBar.background', 'sideBarSectionHeader.background', 'panel.background',
+      'sideBar.background', 'sideBarSectionHeader.background', 'panel.background', 'activityBarTop.background',
       'editorGroupHeader.tabsBackground', 'tab.inactiveBackground', 'tab.unfocusedInactiveBackground',
       'diffEditor.unchangedRegionBackground', 'peekViewEditor.background', 'peekViewEditorGutter.background',
       'peekViewResult.background',
@@ -518,7 +651,7 @@
       'sideBarSectionHeader.border', 'panelSection.border',
       'panelSectionHeader.border', 'statusBar.debuggingBorder',
       'tab.border', 'editorGroupHeader.tabsBorder', 'diffEditor.border', 'notifications.border',
-      'editorRuler.foreground', 'terminal.border',
+      'editorRuler.foreground', 'terminal.border', 'sideBarActivityBarTop.border',
     ],
     border: [
       'widget.border', 'editorWidget.border', 'editorHoverWidget.border', 'editorSuggestWidget.border', 'menu.border',
@@ -536,7 +669,7 @@
       'editor.wordHighlightStrongBorder', 'editorError.background', 'editorError.border', 'editorWarning.background',
       'editorWarning.border', 'editorInfo.background', 'editorInfo.border', 'editorHint.border', 'editorGhostText.background',
       'editorGhostText.border', 'diffEditor.insertedTextBorder', 'diffEditor.removedTextBorder',
-      'peekViewEditor.matchHighlightBorder', 'terminal.findMatchBorder',
+      'peekViewEditor.matchHighlightBorder', 'terminal.findMatchBorder', 'activityBarTop.activeBackground',
     ],
     shadow: ['widget.shadow', 'scrollbar.shadow'],
     bright: [
@@ -559,14 +692,14 @@
       'radio.activeForeground', 'settings.headerForeground', 'statusBarItem.errorForeground',
       'statusBarItem.warningForeground', 'statusBarItem.offlineForeground', 'statusBarItem.prominentForeground',
       'statusBarItem.prominentHoverForeground', 'tab.hoverForeground', 'tab.selectedForeground', 'tab.unfocusedActiveForeground',
-      'terminal.foreground', 'editorLineNumber.activeForeground', 'chat.avatarForeground',
+      'terminal.foreground', 'editorLineNumber.activeForeground', 'chat.avatarForeground', 'activityBarTop.foreground',
     ],
     muted: [
       'descriptionForeground', 'breadcrumb.foreground',
       'tab.inactiveForeground', 'tab.unfocusedHoverForeground', 'panelTitle.inactiveForeground', 'peekViewResult.lineForeground',
       'peekViewTitleDescription.foreground', 'editorCodeLens.foreground', 'editorHint.foreground', 'editorInlayHint.foreground',
       'editorSuggestWidgetStatus.foreground', 'input.placeholderForeground', 'radio.inactiveForeground',
-      'diffEditor.unchangedRegionForeground', 'inlineChatInput.placeholderForeground',
+      'diffEditor.unchangedRegionForeground', 'inlineChatInput.placeholderForeground', 'activityBarTop.inactiveForeground',
     ],
     faint: [
       'disabledForeground', 'list.deemphasizedForeground', 'editorLineNumber.foreground', 'editorGhostText.foreground',
@@ -587,7 +720,7 @@
       'pickerGroup.foreground', 'inputOption.activeBorder', 'radio.activeBorder', 'peekView.border',
       'settings.modifiedItemIndicator', 'statusBarItem.focusBorder', 'editorCursor.foreground',
       'terminalCursor.foreground', 'banner.iconForeground', 'editorLightBulbAutoFix.foreground', 'editorBracketHighlight.foreground1',
-      'inlineChatInput.focusBorder',
+      'inlineChatInput.focusBorder', 'activityBarTop.activeBorder',
     ],
     accentHover: ['button.hoverBackground', 'extensionButton.hoverBackground', 'textLink.activeForeground'],
     accentText: [
@@ -674,6 +807,95 @@
     frameLineBg: ['tab.activeBorder'],
     frameLineDivider: ['editorGroup.border', 'sideBar.border', 'panel.border'],
   };
+
+  /**
+   * The everyday colors the theme sets beyond the original gallery (scrollbar and minimap marks,
+   * filter highlights, the unfocused window, sticky scroll and the like), each under a swatch
+   * that already exists. They join KEY_GROUPS below, so each swatch keeps one key list.
+   */
+  const EVERYDAY_KEY_GROUPS = {
+    bg: ['editorCursor.background', 'editorGroup.emptyBackground', 'minimap.background', 'editorOverviewRuler.background'],
+    deep: ['sideBarTitle.background', 'sideBarStickyScroll.background', 'panelStickyScroll.background'],
+    line: ['editor.inactiveLineHighlightBackground'],
+    raised: ['listFilterWidget.background'],
+    hover: ['editorStickyScrollHover.background'],
+    divider: ['tab.divider', 'diffEditor.diagonalFill', 'editorOverviewRuler.border'],
+    border: [
+      'editor.snippetFinalTabstopHighlightBorder', 'editorWidget.resizeBorder', 'simpleFindWidget.sashBorder',
+      'tab.lastPinnedBorder', 'tree.tableColumnsBorder',
+    ],
+    none: [
+      'button.secondaryBorder', 'editor.snippetFinalTabstopHighlightBackground', 'editor.snippetTabstopHighlightBorder',
+      'editor.symbolHighlightBorder', 'editorGroup.dropIntoPromptBorder', 'editorGroup.focusedEmptyBorder',
+      'editorGroupHeader.border', 'editorStickyScroll.border', 'editorUnnecessaryCode.border', 'list.filterMatchBorder',
+      'list.inactiveFocusBackground', 'listFilterWidget.outline', 'panelTitle.border', 'sideBarTitle.border',
+      'scrollbar.background', 'sideBarStickyScroll.border', 'panelStickyScroll.border',
+    ],
+    shadow: ['diffEditor.unchangedRegionShadow', 'listFilterWidget.shadow', 'sideBarStickyScroll.shadow', 'panelStickyScroll.shadow'],
+    bright: ['strongForeground'],
+    text: ['activityBarTop.dropBorder'],
+    muted: [
+      'search.resultsInfoForeground', 'editorOverviewRuler.bracketMatchForeground', 'editorOverviewRuler.commonContentForeground',
+      'editorOverviewRuler.commentUnresolvedForeground',
+    ],
+    faint: ['editorLineNumber.dimmedForeground', 'editorOverviewRuler.commentForeground', 'editorOverviewRuler.commentDraftForeground'],
+    textWash: ['diffEditor.unchangedCodeBackground', 'editor.snippetTabstopHighlightBackground', 'tree.tableOddRowsBackground'],
+    textWash2: ['editorOverviewRuler.rangeHighlightForeground'],
+    scroll: ['minimapSlider.background', 'editorOverviewRuler.wordHighlightTextForeground'],
+    scrollHover: ['minimapSlider.hoverBackground', 'editorOverviewRuler.wordHighlightForeground'],
+    scrollActive: ['minimapSlider.activeBackground'],
+    accent: ['statusBar.focusBorder', 'tab.dragAndDropBorder'],
+    accentHover: ['editorLink.activeForeground'],
+    accentHalf: ['list.dropBetweenBackground', 'editorOverviewRuler.selectionHighlightForeground', 'editorGutter.modifiedSecondaryBackground'],
+    accentSoft: ['editorOverviewRuler.wordHighlightStrongForeground'],
+    accentWash: ['editor.hoverHighlightBackground', 'editorGroup.dropBackground'],
+    findMatch: ['minimap.findMatchHighlight', 'editorOverviewRuler.findMatchForeground'],
+    findHighlight: ['editor.symbolHighlightBackground', 'list.filterMatchBackground'],
+    error: [
+      'editorBracketHighlight.unexpectedBracket.foreground', 'editorMarkerNavigationError.background', 'listFilterWidget.noMatchesOutline',
+      'minimap.errorHighlight', 'editorOverviewRuler.errorForeground', 'editorOverviewRuler.deletedForeground',
+    ],
+    warning: ['editorMarkerNavigationWarning.background', 'minimap.warningHighlight', 'editorOverviewRuler.warningForeground'],
+    success: ['editorOverviewRuler.addedForeground', 'editorOverviewRuler.currentContentForeground'],
+    info: [
+      'editorMarkerNavigationInfo.background', 'minimap.infoHighlight', 'editorOverviewRuler.infoForeground',
+      'editorOverviewRuler.modifiedForeground', 'editorOverviewRuler.incomingContentForeground',
+    ],
+    errorDeep: ['statusBarItem.offlineHoverBackground'],
+    warningDeep: ['editorMarkerNavigationWarning.headerBackground'],
+    infoDeep: ['editorMarkerNavigationInfo.headerBackground'],
+    errorFaint: ['editorMarkerNavigationError.headerBackground'],
+    successWash: ['editorGutter.addedSecondaryBackground', 'editorOverviewRuler.inlineChatInserted'],
+    errorWash: ['editor.linkedEditingBackground', 'editorGutter.deletedSecondaryBackground', 'editorOverviewRuler.inlineChatRemoved'],
+    // Frame: the unfocused window's bars and the pressed command center follow the frame settings.
+    frameBg: ['titleBar.inactiveBackground', 'statusBar.inactiveBackground'],
+    frameMuted: ['titleBar.inactiveForeground'],
+    frameCcBorder: ['commandCenter.activeBorder'],
+    frameHover: ['commandCenter.activeBackground', 'statusBarItem.compactHoverBackground', 'statusBarItem.remoteHoverBackground'],
+    frameWindow: ['window.inactiveBorder'],
+  };
+  /** The chat and terminal colors beyond the original gallery, the same way. */
+  const AREA_KEY_GROUPS = {
+    divider: ['chat.checkpointSeparator'],
+    border: ['chat.requestCodeBorder'],
+    none: ['terminal.findMatchHighlightBorder'],
+    bright: ['chat.thinkingShimmer'],
+    faint: ['terminal.initialHintForeground'],
+    textWash: ['chat.statusBackground'],
+    accent: ['chat.inputWorkingBorderColor1', 'chat.sessionStateIndicator.inProgressBorder', 'terminal.tab.activeBorder'],
+    accentSoft: ['chat.requestBubbleHoverBackground'],
+    accentWash: ['chat.requestBubbleBackground', 'terminal.dropBackground', 'terminal.hoverHighlightBackground'],
+    findMatch: ['chat.findMatchBackground'],
+    findHighlight: ['chat.findMatchHighlightBackground', 'terminal.findMatchHighlightBackground'],
+    warning: ['chat.sessionStateIndicator.needsInputBorder'],
+    success: ['chat.sessionStateIndicator.unvisitedBorder'],
+  };
+  for (const [name, groups] of Object.entries({ EVERYDAY_KEY_GROUPS, AREA_KEY_GROUPS })) {
+    for (const [swatch, keys] of Object.entries(groups)) {
+      if (!KEY_GROUPS[swatch]) {throw new Error(`theme-builder: ${name} names a swatch with no keys '${swatch}'`);}
+      KEY_GROUPS[swatch].push(...keys);
+    }
+  }
 
   /** The keys the frame settings decide: every key a Frame swatch takes. */
   const FRAME_KEYS = Object.keys(FRAME_SWATCHES).flatMap(name => KEY_GROUPS[name]);
@@ -799,7 +1021,7 @@
   }
 
   return {
-    THEME_BACKGROUND, UNSET_KEYS, GENERIC_SCOPES, ROLE_NAMES, LAB_THEME_LABEL, LAB_THEME_FILE,
+    THEME_BACKGROUND, UNSET_KEYS, LEFT_TO_VSCODE, leftToVSCode, GENERIC_SCOPES, ROLE_NAMES, LAB_THEME_LABEL, LAB_THEME_FILE,
     SLOT_COUNT, slotLabel, slotFile,
     KEY_GROUPS, SWATCHES, SWATCH_OF, FRAME_KEYS, GROUP_FAMILIES, ROLE_FAMILIES, TEXT_LEVELS, cleanChrome,
     DEFAULT_COLOR, roleColors, themeLabel, themeFileName, swatches, cleanEdits, buildColors, tokenColors, buildTheme, labSettings,

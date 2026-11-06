@@ -197,6 +197,35 @@ describe('Workbench drawing and VS Code\'s modern UI settings', () => {
     expect(workbench({ modern: false, tabStyle: 'pill' }).classList.contains('wb-pill')).toBe(false);
   });
 
+  it('{#activity-top} draws the activity bar where workbench.activityBar.location puts it: top, bottom or none', () => {
+    const colors = { 'activityBar.background': '#111111', 'activityBarTop.background': '#222222', 'activityBarTop.foreground': '#eeeeee' };
+    const draw = (activityBar: string) => {
+      const c = ctx();
+      for (const [key, value] of Object.entries(colors)) {
+        const rgba = GB.parseColor(value);
+        c.model.byKey.set(key, { key, prop: GB.varFor(key), value, rgba, hex: GB.toHex(rgba), source: 'theme' });
+      }
+      return (gallery as any).renderParts({ ...c, modernUI: { modern: false, uppercase: false, tabStyle: 'connected', activityBar } }, ['workbench'])[0].preview as HTMLElement;
+    };
+    const paintedWith = (wb: HTMLElement, key: string) =>
+      [...wb.querySelectorAll('[data-painted]')].filter(el => el.getAttribute('data-painted')!.split(' ').includes(key));
+    // The side bar at the window's edge is the default, and the top row is absent.
+    expect(paintedWith(draw('default'), 'activityBar.background')).toHaveLength(1);
+    expect(paintedWith(draw('default'), 'activityBarTop.background')).toHaveLength(0);
+    for (const place of ['top', 'bottom']) {
+      const wb = draw(place);
+      const row = paintedWith(wb, 'activityBarTop.background');
+      expect({ place, rows: row.length, fg: paintedWith(wb, 'activityBarTop.foreground').length > 0, side: paintedWith(wb, 'activityBar.background').length })
+        .toEqual({ place, rows: 1, fg: true, side: 0 });
+      const tree = wb.querySelector('[data-region="sideBar"] .wb-tree')!;
+      const after = Boolean(tree.compareDocumentPosition(row[0]) & Node.DOCUMENT_POSITION_FOLLOWING);
+      expect({ place, afterTree: after }).toEqual({ place, afterTree: place === 'bottom' });
+    }
+    const hidden = draw('hidden');
+    expect(paintedWith(hidden, 'activityBarTop.background')).toHaveLength(0);
+    expect(paintedWith(hidden, 'activityBar.background')).toHaveLength(0);
+  });
+
   it('has the casing and card rules in gallery.css', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', 'media', 'gallery.css'), 'utf8');
     const rules = [...css.matchAll(/([^{}]*)\{([^}]*)\}/g)];

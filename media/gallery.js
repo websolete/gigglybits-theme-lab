@@ -122,7 +122,7 @@
 
   const button = (label, spec, cls) => P('div', `gb-button${cls ? ' ' + cls : ''}`, spec, label);
   const primary = { bg: 'button.background', fg: 'button.foreground', bd: 'button.border' };
-  const secondary = { bg: 'button.secondaryBackground', fg: 'button.secondaryForeground', bd: 'button.border' };
+  const secondary = { bg: 'button.secondaryBackground', fg: 'button.secondaryForeground', bd: 'button.secondaryBorder' };
   const inputSpec = { bg: 'input.background', fg: 'input.foreground', bd: 'input.border' };
   const widgetShadow = { shadow: 'widget.shadow' };
 
@@ -187,21 +187,36 @@
           S('wb-menu', 'File   Edit   Selection   View'),
           P('div', 'wb-cc', { bg: 'commandCenter.background', fg: 'commandCenter.foreground', bd: 'commandCenter.border' }, I('search'), ' gigglybits-vscode-theme'),
           S('wb-spacer')), 'titleBar');
-        const activity = region(P('div', 'wb-activity', { bg: 'activityBar.background', bdR: 'activityBar.border' },
+        // workbench.activityBar.location: 'default' is the bar at the window's edge; 'top' and
+        // 'bottom' put its icons in a row at that end of the side bar; 'hidden' draws none.
+        const place = m && ['top', 'bottom', 'hidden'].includes(m.activityBar) ? m.activityBar : 'default';
+        const activity = place !== 'default' ? null : region(P('div', 'wb-activity', { bg: 'activityBar.background', bdR: 'activityBar.border' },
           P('div', 'wb-act', activeAct, I('files')),
           P('div', 'wb-act', { fg: 'activityBar.inactiveForeground' }, I('search')),
           P('div', 'wb-act', { fg: 'activityBar.inactiveForeground' }, I('source-control'),
             P('span', 'wb-act-badge', { bg: 'activityBarBadge.background', fg: 'activityBarBadge.foreground' }, '3')),
           P('div', 'wb-act', { fg: 'activityBar.inactiveForeground' }, I('extensions'))), 'activityBar');
+        const actRow = place === 'top' || place === 'bottom'
+          // Part of the side bar region, as in VS Code, where the row sits in the side bar.
+          ? (P('div', `wb-actrow wb-actrow-${place}`, { bg: 'activityBarTop.background', [place === 'top' ? 'bdB' : 'bdT']: 'sideBarActivityBarTop.border' },
+            P('div', 'wb-actrow-item', { fg: 'activityBarTop.foreground', bg: 'activityBarTop.activeBackground', bdB2: 'activityBarTop.activeBorder' }, I('files')),
+            P('div', 'wb-actrow-item', { fg: 'activityBarTop.inactiveForeground' }, I('search')),
+            P('div', 'wb-actrow-item', { fg: 'activityBarTop.inactiveForeground' }, I('source-control'),
+              P('span', 'wb-act-badge', { bg: 'activityBarBadge.background', fg: 'activityBarBadge.foreground' }, '3')),
+            P('div', 'wb-actrow-item', { fg: 'activityBarTop.inactiveForeground' }, I('extensions'))))
+          : null;
         const side = region(P('div', 'wb-side', { bg: 'sideBar.background', fg: 'sideBar.foreground', ...(modern ? { bd: 'surface.border' } : { bdR: 'sideBar.border' }) },
-          P('div', 'wb-side-title', { fg: 'sideBarTitle.foreground' }, 'Explorer'),
+          // With the icons at the top, they take the title's place, as in VS Code.
+          place === 'top' ? actRow : P('div', 'wb-side-title', { bg: 'sideBarTitle.background', fg: 'sideBarTitle.foreground', bdB: 'sideBarTitle.border' }, 'Explorer'),
           P('div', 'wb-section', { bg: 'sideBarSectionHeader.background', fg: 'sideBarSectionHeader.foreground', bdT: 'sideBarSectionHeader.border' }, I('chevron-down'), ' gigglybits'),
-          treeRow(0, 'folder-opened', 'src', null, { twistie: 'chevron-down' }),
-          treeRow(1, 'file-code', 'extension.ts', { bg: 'list.activeSelectionBackground', fg: 'list.activeSelectionForeground' }),
-          treeRow(1, 'file-code', 'paletteInspectorPanel.ts', { fg: 'gitDecoration.modifiedResourceForeground' }, { trail: 'M' }),
-          treeRow(1, 'file-code', 'themeSource.ts', { bg: 'list.hoverBackground', fg: 'list.hoverForeground' }),
-          treeRow(0, 'folder', 'media', null, { twistie: 'chevron-right' }),
-          treeRow(0, 'file', 'package.json', { fg: 'gitDecoration.untrackedResourceForeground' }, { trail: 'U' })), 'sideBar');
+          D('wb-tree',
+            treeRow(0, 'folder-opened', 'src', null, { twistie: 'chevron-down' }),
+            treeRow(1, 'file-code', 'extension.ts', { bg: 'list.activeSelectionBackground', fg: 'list.activeSelectionForeground' }),
+            treeRow(1, 'file-code', 'paletteInspectorPanel.ts', { fg: 'gitDecoration.modifiedResourceForeground' }, { trail: 'M' }),
+            treeRow(1, 'file-code', 'themeSource.ts', { bg: 'list.hoverBackground', fg: 'list.hoverForeground' }),
+            treeRow(0, 'folder', 'media', null, { twistie: 'chevron-right' }),
+            treeRow(0, 'file', 'package.json', { fg: 'gitDecoration.untrackedResourceForeground' }, { trail: 'U' })),
+          place === 'bottom' ? actRow : null), 'sideBar');
         const tabs = region(P('div', 'wb-tabs', { bg: 'editorGroupHeader.tabsBackground', bdB: 'editorGroupHeader.tabsBorder' },
           P('div', 'gb-tab gb-tab-active', activeTab, I('file-code'), ' extension.ts ', I('close')),
           P('div', 'gb-tab', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground', bdR: 'tab.border' }, I('file-code'), ' themeSource.ts ', I('circle-filled'))), 'tabs');
@@ -228,7 +243,7 @@
           line(4, [guide(true), T('context', 'variable.other.object.ts'), '.', T('subscriptions', 'variable.other.property.ts'), '.', T('push', 'entity.name.function.ts'), B('(', 2), T('register', 'entity.name.function.ts'), B('(', 3), B(')', 3), B(')', 2), ';', cursor()], { active: true, spec: { bg: 'editor.lineHighlightBackground', bd: 'editor.lineHighlightBorder' } }),
           line(5, [B('}', 1)]));
         const panel = region(P('div', 'wb-panel', { bg: 'panel.background', ...(modern ? { bd: 'modernPanel.border' } : { bdT: 'panel.border' }) },
-          D('wb-panel-tabs',
+          P('div', 'wb-panel-tabs', { bdB: 'panelTitle.border' },
             P('span', 'gb-ptab gb-ptab-active', activePtab, 'Terminal'),
             P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'Problems'),
             P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'Output')),
@@ -247,7 +262,7 @@
         // editor's background, as in VS Code, rather than whatever sits behind the drawing.
         const editorArea = P('div', 'wb-editor', { bg: 'editor.background', ...(modern ? { bd: 'surface.border' } : null) },
           D('wb-group1', tabs, crumbs, code), group2);
-        const cls = ['wb', modern && 'wb-modern', modern && m.tabStyle === 'pill' && 'wb-pill'].filter(Boolean).join(' ');
+        const cls = ['wb', modern && 'wb-modern', modern && m.tabStyle === 'pill' && 'wb-pill', !activity && 'wb-noact'].filter(Boolean).join(' ');
         return P('div', cls, { bd: 'window.activeBorder', ...(modern ? { bg: 'modernUI.shellBackground' } : null) }, title, activity, side,
           editorArea, panel, aux, status);
       },
@@ -260,6 +275,23 @@
       render: () => P('div', 'gb-surface', { bg: 'sideBar.background', fg: 'sideBar.foreground' },
         chatRequest(),
         chatResponse(),
+        D('gb-subhead', 'Request bubbles, checkpoints and search'),
+        labeled(
+          ['request bubble', P('div', 'gb-chat-bubble', { bg: 'chat.requestBubbleBackground', fg: 'foreground' }, 'Rename ',
+            P('span', 'gb-preformat', { bd: 'chat.requestCodeBorder' }, 'total'), ' to count')],
+          ['request bubble, hovered', P('div', 'gb-chat-bubble', { bg: 'chat.requestBubbleHoverBackground', fg: 'foreground' }, 'Rename total to count')],
+          ['checkpoint', P('div', 'gb-chat-checkpoint', { bdT: 'chat.checkpointSeparator', fg: 'descriptionForeground' }, 'Restore checkpoint')],
+          ['find in the transcript', D(null, 'the ', P('span', 'gb-mark', { bg: 'chat.findMatchBackground' }, 'palette'), ' and the ',
+            P('span', 'gb-mark', { bg: 'chat.findMatchHighlightBackground' }, 'palette'), ' colors')],
+          ['working', D(null, P('span', 'gb-chat-shimmer', { fg: 'chat.thinkingShimmer' }, 'Thinking...'), '  ',
+            P('span', 'gb-chat-status', { bg: 'chat.statusBackground' }, I('loading'), ' 2 files'))],
+          ['input while a request runs', P('div', 'gb-chat-input', { bg: 'input.background', fg: 'input.foreground', bd: 'chat.inputWorkingBorderColor1' },
+            P('span', 'gb-chat-text', { fg: 'input.placeholderForeground' }, 'Working...'))]),
+        D('gb-subhead', 'Chat editors: running, needs input, done and not yet seen'),
+        P('div', 'gb-tabstrip', { bg: 'editorGroupHeader.tabsBackground' },
+          ...[['Chat 1', 'chat.sessionStateIndicator.inProgressBorder'], ['Chat 2', 'chat.sessionStateIndicator.needsInputBorder'],
+            ['Chat 3', 'chat.sessionStateIndicator.unvisitedBorder']].map(([label, key]) =>
+            P('div', 'gb-tab', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground', bdT2: key }, I('comment-discussion'), ` ${label} `))),
         D('gb-subhead', 'Chat input'),
         labeled(
           ['not focused', chatInput()],
@@ -376,7 +408,10 @@
           P('div', 'wb-act', { fg: 'activityBar.inactiveForeground' }, I('source-control'),
             P('span', 'wb-act-badge', { bg: 'activityBarBadge.background', fg: 'activityBarBadge.foreground' }, '3')))],
         ['drop target', P('div', 'gb-actbar', { bg: 'activityBar.background', bdR: 'activityBar.border' },
-          P('div', 'wb-act', { fg: 'activityBar.inactiveForeground', bdT2: 'activityBar.dropBorder' }, I('extensions')))]),
+          P('div', 'wb-act', { fg: 'activityBar.inactiveForeground', bdT2: 'activityBar.dropBorder' }, I('extensions')))],
+        ['at the top or bottom, drop target', P('div', 'wb-actrow', { bg: 'activityBarTop.background' },
+          P('div', 'wb-actrow-item', { fg: 'activityBarTop.foreground', bg: 'activityBarTop.activeBackground', bdB2: 'activityBarTop.activeBorder' }, I('files')),
+          P('div', 'wb-actrow-item', { fg: 'activityBarTop.inactiveForeground', bdL2: 'activityBarTop.dropBorder' }, I('extensions')))]),
     },
 
     {
@@ -398,7 +433,22 @@
           ['warning', treeRow(1, 'file-code', 'shaky.ts', { fg: 'list.warningForeground' }, { guides: true, trail: '1' })],
           ['deemphasized', treeRow(1, 'file', 'out.log', { fg: 'list.deemphasizedForeground' }, { guides: true })],
           ['invalid', treeRow(1, 'file', 'missing.ts', { fg: 'list.invalidItemForeground' }, { guides: true })],
-          ['inactive indent guide', treeRow(2, 'file', 'nested.json', null, { guides: false })])),
+          ['inactive indent guide', treeRow(2, 'file', 'nested.json', null, { guides: false })],
+          ['focused, view unfocused', treeRow(2, 'symbol-method', 'dispose', { bg: 'list.inactiveFocusBackground' }, { guides: true })],
+          ['drop between rows', treeRow(1, 'file', 'shared.js', { bdT2: 'list.dropBetweenBackground' }, { guides: true })],
+          ['type-to-filter match', treeRow(1, 'file-code', ['the', P('span', 'gb-hlmatch', { bg: 'list.filterMatchBackground', bd: 'list.filterMatchBorder' }, 'meS'), 'ource.ts'], null, { guides: true })],
+          ['sticky folder while scrolling', P('div', 'gb-sticky', { bg: 'sideBarStickyScroll.background', bdB: 'sideBarStickyScroll.border', shadow: 'sideBarStickyScroll.shadow' },
+            treeRow(0, 'folder-opened', 'src', null, { twistie: 'chevron-down' }))],
+          ['search results message', P('div', 'gb-tree-row', { fg: 'search.resultsInfoForeground' }, '12 results in 3 files')]),
+        D('gb-subhead', 'Type to filter'),
+        states(
+          state('filter box', P('div', 'gb-widget gb-listfilter', { bg: 'listFilterWidget.background', ol: 'listFilterWidget.outline', shadow: 'listFilterWidget.shadow' }, I('filter'), ' theme')),
+          state('no matches', P('div', 'gb-widget gb-listfilter', { bg: 'listFilterWidget.background', ol: 'listFilterWidget.noMatchesOutline', shadow: 'listFilterWidget.shadow' }, I('filter'), ' zzz'))),
+        D('gb-subhead', 'Table (Keyboard Shortcuts, Ports)'),
+        D('gb-table',
+          ...[['Copy', 'Ctrl+C'], ['Paste', 'Ctrl+V'], ['Find', 'Ctrl+F']].map(([a, b], i) =>
+            P('div', 'gb-table-row', i % 2 ? { bg: 'tree.tableOddRowsBackground' } : null,
+              P('span', 'gb-table-cell', { bdR: 'tree.tableColumnsBorder' }, a), S('gb-table-cell', b))))),
     },
 
     {
@@ -434,7 +484,11 @@
             state('inactive', strip(tab('themeSource.ts', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground' }))),
             state('inactive, unsaved', strip(tab('themeSource.ts', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground', bdT: 'tab.inactiveModifiedBorder' }, 'circle-filled'))),
             state('hover', strip(tab('shared.js', { bg: 'tab.hoverBackground', fg: 'tab.hoverForeground', bdB: 'tab.hoverBorder' }))),
-            state('multi-selected', strip(tab('gallery.js', { bg: 'tab.selectedBackground', fg: 'tab.selectedForeground', bdT: 'tab.selectedBorderTop' })))),
+            state('multi-selected', strip(tab('gallery.js', { bg: 'tab.selectedBackground', fg: 'tab.selectedForeground', bdT: 'tab.selectedBorderTop' }))),
+            state('pinned, then a divider', P('div', 'gb-tabstrip', { bg: 'editorGroupHeader.tabsBackground', bdB: 'editorGroupHeader.border' },
+              tab('README.md', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground', bdR: 'tab.lastPinnedBorder' }, 'pinned'),
+              tab('theme.json', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground', bdR: 'tab.divider' }))),
+            state('dragging a tab between two', strip(tab('shared.js', { bg: 'tab.inactiveBackground', fg: 'tab.inactiveForeground', bdL2: 'tab.dragAndDropBorder' })))),
           D('gb-subhead', 'Unfocused editor group'),
           states(
             state('active', strip(tab('extension.ts', { bg: 'tab.unfocusedActiveBackground', fg: 'tab.unfocusedActiveForeground', bdT: 'tab.unfocusedActiveBorderTop', bdB: 'tab.unfocusedActiveBorder' }))),
@@ -450,7 +504,14 @@
               P('span', null, { fg: 'breadcrumb.activeSelectionForeground' }, 'activate'))),
             state('picker', P('div', 'gb-crumb-picker', { bg: 'breadcrumbPicker.background', fg: 'editorWidget.foreground', bd: 'editorWidget.border' },
               D('gb-dropdown-opt', I('symbol-method', { fg: 'symbolIcon.functionForeground' }), ' activate'),
-              D('gb-dropdown-opt', I('symbol-method', { fg: 'symbolIcon.functionForeground' }), ' deactivate')))));
+              D('gb-dropdown-opt', I('symbol-method', { fg: 'symbolIcon.functionForeground' }), ' deactivate')))),
+          D('gb-subhead', 'Editor groups'),
+          states(
+            state('empty group', P('div', 'gb-group-demo', { bg: 'editorGroup.emptyBackground' }, 'No editor open')),
+            state('empty group, focused', P('div', 'gb-group-demo', { bg: 'editorGroup.emptyBackground', ol: 'editorGroup.focusedEmptyBorder' }, 'No editor open')),
+            state('dragging an editor over a group', P('div', 'gb-group-demo', { bg: 'editor.background' },
+              P('div', 'gb-group-drop', { bg: 'editorGroup.dropBackground' },
+                P('span', 'gb-group-prompt', { bd: 'editorGroup.dropIntoPromptBorder' }, 'Hold Shift to drop into the editor'))))));
       },
     },
 
@@ -501,6 +562,82 @@
     },
 
     {
+      id: 'editor-highlights',
+      title: 'Editor: symbols, snippets, links and cursor',
+      wide: true,
+      render: () => {
+        const text = (...kids) => editor(line(14, [T('const', 'storage.type.ts'), ' ', ...kids, ' = ', T('load', 'entity.name.function.ts'), '();']));
+        const name = spec => P('span', 'gb-mark', spec, T('config', 'variable.other.constant.ts'));
+        return labeled(
+          ['word under the hover', text(name({ bg: 'editor.hoverHighlightBackground' }))],
+          ['symbol, after Go to Definition', text(name({ bg: 'editor.symbolHighlightBackground', bd: 'editor.symbolHighlightBorder' }))],
+          ['rename on type (linked editing)', text(name({ bg: 'editor.linkedEditingBackground' }))],
+          ['snippet placeholder', text(name({ bg: 'editor.snippetTabstopHighlightBackground', bd: 'editor.snippetTabstopHighlightBorder' }))],
+          ['snippet end', text(name({ bg: 'editor.snippetFinalTabstopHighlightBackground', bd: 'editor.snippetFinalTabstopHighlightBorder' }))],
+          ['unexpected bracket', editor(line(15, [T('call', 'entity.name.function.ts'), B('(', 1), T('x', 'variable.other.readwrite.ts'), B(')', 1), P('span', null, { fg: 'editorBracketHighlight.unexpectedBracket.foreground' }, ')'), ';']))],
+          ['link under Ctrl+hover', editor(line(16, [T('// see ', 'comment.line.double-slash.ts'), P('span', 'gb-link-active', { fg: 'editorLink.activeForeground' }, 'https://code.visualstudio.com')]))],
+          ['unused code', editor(line(17, [P('span', 'gb-unnecessary', { bd: 'editorUnnecessaryCode.border' }, T('let', 'storage.type.ts'), ' ', T('unused', 'variable.other.readwrite.ts'), ';')]))],
+          ['block cursor', editor(line(18, [T('retur', 'keyword.control.flow.ts'), P('span', 'gb-block-cursor', { bg: 'editorCursor.foreground', fg: 'editorCursor.background' }, 'n')]))],
+          ['cursor line, editor not focused', editor(line(19, [T('return', 'keyword.control.flow.ts'), ';'], { spec: { bg: 'editor.inactiveLineHighlightBackground' } }))],
+          ['final line, dimmed', editor(line(20, [T('}', 'punctuation.definition.block.ts')]),
+            P('div', 'gb-line', null, S('gb-gutter-mark'), P('span', 'gb-ln', { fg: 'editorLineNumber.dimmedForeground' }, '21'), D('gb-code')))],
+          ['sticky scroll', P('div', 'gb-sticky', { bg: 'editor.background', bdB: 'editorStickyScroll.border' },
+            line(3, [T('export', 'keyword.control.export.ts'), ' ', T('function', 'storage.type.function.ts'), ' ', T('activate', 'entity.name.function.ts'), '() {']))],
+          ['sticky scroll, hovered', P('div', 'gb-sticky', { bg: 'editorStickyScrollHover.background', bdB: 'editorStickyScroll.border' },
+            line(3, [T('export', 'keyword.control.export.ts'), ' ', T('function', 'storage.type.function.ts'), ' ', T('activate', 'entity.name.function.ts'), '() {']))]);
+      },
+    },
+
+    {
+      id: 'editor-scroll',
+      title: 'Editor: scrollbar, minimap and overview ruler',
+      blurb: 'The overview ruler is the strip beside the scrollbar; each mark shows where something is in the file.',
+      wide: true,
+      render: () => {
+        const RULER = [
+          ['error', 'editorOverviewRuler.errorForeground'], ['warning', 'editorOverviewRuler.warningForeground'],
+          ['info', 'editorOverviewRuler.infoForeground'], ['find match', 'editorOverviewRuler.findMatchForeground'],
+          ['selection', 'editorOverviewRuler.selectionHighlightForeground'], ['symbol', 'editorOverviewRuler.wordHighlightForeground'],
+          ['symbol, written', 'editorOverviewRuler.wordHighlightStrongForeground'], ['same text', 'editorOverviewRuler.wordHighlightTextForeground'],
+          ['range', 'editorOverviewRuler.rangeHighlightForeground'], ['bracket match', 'editorOverviewRuler.bracketMatchForeground'],
+          ['added', 'editorOverviewRuler.addedForeground'], ['modified', 'editorOverviewRuler.modifiedForeground'],
+          ['deleted', 'editorOverviewRuler.deletedForeground'], ['merge: current', 'editorOverviewRuler.currentContentForeground'],
+          ['merge: incoming', 'editorOverviewRuler.incomingContentForeground'], ['merge: common', 'editorOverviewRuler.commonContentForeground'],
+          ['comment', 'editorOverviewRuler.commentForeground'], ['comment, unresolved', 'editorOverviewRuler.commentUnresolvedForeground'],
+          ['comment, draft', 'editorOverviewRuler.commentDraftForeground'], ['inline chat, inserted', 'editorOverviewRuler.inlineChatInserted'],
+          ['inline chat, removed', 'editorOverviewRuler.inlineChatRemoved'],
+        ];
+        const MINIMAP = [['error', 'minimap.errorHighlight'], ['warning', 'minimap.warningHighlight'], ['info', 'minimap.infoHighlight'], ['find match', 'minimap.findMatchHighlight']];
+        const code = editor(
+          line(1, [T('import', 'keyword.control.import.ts'), ' ', T("'vscode'", 'string.quoted.single.ts'), ';']),
+          line(2, [T('const', 'storage.type.ts'), ' ', T('total', 'variable.other.constant.ts'), ' = ', T('0', 'constant.numeric.decimal.ts'), ';']),
+          line(3, [T('export', 'keyword.control.export.ts'), ' ', T('function', 'storage.type.function.ts'), ' ', T('run', 'entity.name.function.ts'), '() {}']));
+        const minimap = P('div', 'gb-minimap', { bg: 'minimap.background' },
+          P('span', 'gb-minimap-slider', { bg: 'minimapSlider.background' }),
+          ...MINIMAP.map(([label, key], i) => {
+            const mark = P('span', 'gb-minimap-mark', { bg: key });
+            mark.title = `minimap: ${label}`;
+            mark.style.top = `${8 + i * 14}px`;
+            return mark;
+          }));
+        const ruler = P('div', 'gb-ruler-strip', { bg: 'editorOverviewRuler.background', bdL: 'editorOverviewRuler.border' },
+          ...RULER.map(([label, key]) => {
+            const mark = P('span', 'gb-ruler-mark', { bg: key });
+            mark.title = `overview ruler: ${label}`;
+            return mark;
+          }));
+        const track = P('div', 'gb-scroll-track', { bg: 'scrollbar.background' }, P('span', 'gb-slider', { bg: 'scrollbarSlider.background' }));
+        return D(null,
+          D('gb-scroll-editor', D('gb-scroll-code', code), minimap, track, ruler),
+          states(
+            state('minimap slider: normal, hover, dragged', D('gb-scroll-demo',
+              P('span', 'gb-slider gb-slider-wide', { bg: 'minimapSlider.background' }),
+              P('span', 'gb-slider gb-slider-wide', { bg: 'minimapSlider.hoverBackground' }),
+              P('span', 'gb-slider gb-slider-wide', { bg: 'minimapSlider.activeBackground' })))));
+      },
+    },
+
+    {
       id: 'editor-diagnostics',
       title: 'Editor: diagnostics and gutter',
       wide: true,
@@ -515,7 +652,17 @@
             ['added line (gutter)', editor(line(24, [T('return', 'keyword.control.flow.ts'), ' ', T('true', 'constant.language.boolean.true.ts'), ';'], { gutter: { bg: 'editorGutter.addedBackground' } }))],
             ['modified line (gutter)', editor(line(25, [T('return', 'keyword.control.flow.ts'), ' ', T('false', 'constant.language.boolean.false.ts'), ';'], { gutter: { bg: 'editorGutter.modifiedBackground' } }))],
             ['deleted lines (gutter)', editor(line(26, [B('}', 1)], { gutter: { bdB2: 'editorGutter.deletedBackground' } }))],
-            ['light bulbs: fix, auto fix', editor(line(27, [I('lightbulb', { fg: 'editorLightBulb.foreground' }), ' ', I('lightbulb-autofix', { fg: 'editorLightBulbAutoFix.foreground' }), ' ', T('doThing', 'entity.name.function.ts'), '();']))]),
+            ['light bulbs: fix, auto fix', editor(line(27, [I('lightbulb', { fg: 'editorLightBulb.foreground' }), ' ', I('lightbulb-autofix', { fg: 'editorLightBulbAutoFix.foreground' }), ' ', T('doThing', 'entity.name.function.ts'), '();']))],
+            ['staged changes (gutter): added, modified, deleted', editor(
+              line(28, [T('a', 'variable.other.readwrite.ts'), ';'], { gutter: { bg: 'editorGutter.addedSecondaryBackground' } }),
+              line(29, [T('b', 'variable.other.readwrite.ts'), ';'], { gutter: { bg: 'editorGutter.modifiedSecondaryBackground' } }),
+              line(30, [B('}', 1)], { gutter: { bdB2: 'editorGutter.deletedSecondaryBackground' } }))]),
+          D('gb-subhead', 'Go to Next Problem'),
+          ...[['error', 'editorMarkerNavigationError', "Type 'string' is not assignable to type 'number'."],
+            ['warning', 'editorMarkerNavigationWarning', "'unused' is declared but never read."],
+            ['info', 'editorMarkerNavigationInfo', 'This may be converted to an async function.']].map(([icon, prefix, msg]) =>
+            P('div', 'gb-marker-nav', { bdT2: `${prefix}.background`, bdB2: `${prefix}.background`, bg: 'editor.background' },
+              P('div', 'gb-marker-nav-head', { bg: `${prefix}.headerBackground` }, I(icon, { fg: `problems${icon[0].toUpperCase()}${icon.slice(1)}Icon.foreground` }), ` ${msg}`))),
           D('gb-subhead', 'Problems panel'),
           P('div', 'gb-problems', { bg: 'panel.background', fg: 'foreground' },
             D('gb-problem', I('error', { fg: 'problemsErrorIcon.foreground' }), " Type 'string' is not assignable to type 'number'.", P('span', null, { fg: 'descriptionForeground' }, ' ts(2322) [Ln 20]')),
@@ -549,7 +696,7 @@
       title: 'Find widget and peek view',
       wide: true,
       render: () => {
-        const find = (inputExtra, result) => P('div', 'gb-widget gb-find', { bg: 'editorWidget.background', fg: 'editorWidget.foreground', bd: 'editorWidget.border', ...widgetShadow },
+        const find = (inputExtra, result) => P('div', 'gb-widget gb-find', { bg: 'editorWidget.background', fg: 'editorWidget.foreground', bd: 'editorWidget.border', bdL2: 'editorWidget.resizeBorder', ...widgetShadow },
           I('chevron-right'),
           P('div', 'gb-input gb-input-options', { ...inputSpec, ...inputExtra }, 'greet', S('wb-spacer'),
             P('span', 'gb-toggle', null, I('case-sensitive')),
@@ -572,7 +719,9 @@
         return P('div', 'gb-surface', { bg: 'editor.background', fg: 'editor.foreground' },
           states(
             state('find, with matches', find({ ol: 'focusBorder' }, S('gb-find-count', '2 of 5'))),
-            state('find, no results', find({ bd: 'inputValidation.errorBorder' }, P('span', 'gb-find-count', { fg: 'errorForeground' }, 'No results')))),
+            state('find, no results', find({ bd: 'inputValidation.errorBorder' }, P('span', 'gb-find-count', { fg: 'errorForeground' }, 'No results'))),
+            state('find in a terminal or webview, resize edge', P('div', 'gb-widget gb-find', { bg: 'editorWidget.background', fg: 'editorWidget.foreground', bdL2: 'simpleFindWidget.sashBorder', ...widgetShadow },
+              P('div', 'gb-input', { ...inputSpec, ol: 'focusBorder' }, 'verify'), S('gb-find-count', '1 of 3'), I('close')))),
           D('gb-subhead', 'Peek view'),
           peek);
       },
@@ -594,7 +743,29 @@
           P('div', 'gb-diff', { bdT: 'diffEditor.border', bdB: 'diffEditor.border' },
             P('div', 'gb-diff-side', { bdR: 'diffEditor.border' }, original),
             D('gb-diff-side', modified)),
-          P('div', 'gb-unchanged', { bg: 'diffEditor.unchangedRegionBackground', fg: 'diffEditor.unchangedRegionForeground' }, I('fold'), ' 12 hidden lines'));
+          P('div', 'gb-unchanged', { bg: 'diffEditor.unchangedRegionBackground', fg: 'diffEditor.unchangedRegionForeground', shadow: 'diffEditor.unchangedRegionShadow' }, I('fold'), ' 12 hidden lines'),
+          D('gb-subhead', 'Lines on one side only, and unchanged code'),
+          P('div', 'gb-diff', { bdT: 'diffEditor.border', bdB: 'diffEditor.border' },
+            P('div', 'gb-diff-side', { bdR: 'diffEditor.border' }, P('div', 'gb-diagonal', { bg: 'diffEditor.diagonalFill' })),
+            D('gb-diff-side', editor(line(9, [T('log', 'entity.name.function.ts'), '(total);'], { spec: { bg: 'diffEditor.unchangedCodeBackground' } })))));
+      },
+    },
+
+    {
+      id: 'title-bar',
+      title: 'Title bar and window focus',
+      blurb: 'VS Code dims the title bar and status bar while another window has focus.',
+      render: () => {
+        const bar = (spec, ccSpec, text) => P('div', 'gb-titlebar', spec,
+          S('wb-menu', 'File   Edit'),
+          P('div', 'wb-cc', ccSpec, I('search'), ` ${text}`), S('wb-spacer'));
+        const cc = { bg: 'commandCenter.background', fg: 'commandCenter.foreground', bd: 'commandCenter.border' };
+        return labeled(
+          ['focused', bar({ bg: 'titleBar.activeBackground', fg: 'titleBar.activeForeground', bdB: 'titleBar.border' }, cc, 'gigglybits')],
+          ['command center pressed', bar({ bg: 'titleBar.activeBackground', fg: 'titleBar.activeForeground', bdB: 'titleBar.border' },
+            { ...cc, bg: 'commandCenter.activeBackground', bd: 'commandCenter.activeBorder' }, 'gigglybits')],
+          ['window not focused', P('div', 'gb-window-frame', { bd: 'window.inactiveBorder' },
+            bar({ bg: 'titleBar.inactiveBackground', fg: 'titleBar.inactiveForeground', bdB: 'titleBar.border' }, cc, 'gigglybits'))]);
       },
     },
 
@@ -657,7 +828,7 @@
       id: 'panel',
       title: 'Panel',
       render: () => P('div', 'gb-panel', { bg: 'panel.background', fg: 'foreground', bdT: 'panel.border' },
-        D('wb-panel-tabs',
+        P('div', 'wb-panel-tabs', { bdB: 'panelTitle.border' },
           P('span', 'gb-ptab', { fg: 'panelTitle.activeForeground', bdB: 'panelTitle.activeBorder' }, 'Problems ',
             P('span', 'gb-badge', { bg: 'panelTitleBadge.background', fg: 'panelTitleBadge.foreground' }, '3')),
           P('span', 'gb-ptab', { fg: 'panelTitle.inactiveForeground' }, 'Output'),
@@ -665,7 +836,9 @@
           S('wb-spacer'),
           P('div', 'gb-input gb-panel-filter', { ...inputSpec, bd: 'panelInput.border' }, P('span', null, { fg: 'input.placeholderForeground' }, 'Filter'))),
         P('div', 'gb-panel-section', { bg: 'panelSectionHeader.background', fg: 'panelSectionHeader.foreground', bdT: 'panelSectionHeader.border' }, I('chevron-down'), ' TEST RESULTS'),
-        P('div', 'gb-panel-body', { bdT: 'panelSection.border' }, '15 tests passed')),
+        P('div', 'gb-panel-body', { bdT: 'panelSection.border' }, '15 tests passed'),
+        P('div', 'gb-sticky', { bg: 'panelStickyScroll.background', bdB: 'panelStickyScroll.border', shadow: 'panelStickyScroll.shadow' },
+          I('chevron-down'), ' src/shared.ts (sticky while scrolling)')),
     },
 
     {
@@ -689,6 +862,12 @@
             P('span', 'gb-sitem', { bg: 'statusBarItem.errorBackground', fg: 'statusBarItem.errorForeground' }, I('error'), ' Build failed'),
             P('span', 'gb-sitem', { bg: 'statusBarItem.warningBackground', fg: 'statusBarItem.warningForeground' }, I('warning'), ' Linting slow'),
             P('span', 'gb-sitem wb-remote', { bg: 'statusBarItem.offlineBackground', fg: 'statusBarItem.offlineForeground' }, I('debug-disconnect'), ' Offline'))],
+          ['hovered: remote, offline, an item with two hovers', bar(normal,
+            P('span', 'gb-sitem wb-remote', { bg: 'statusBarItem.remoteHoverBackground', fg: 'statusBarItem.remoteForeground' }, I('remote'), ' WSL'),
+            P('span', 'gb-sitem', { bg: 'statusBarItem.offlineHoverBackground', fg: 'statusBarItem.offlineForeground' }, I('debug-disconnect'), ' Offline'),
+            P('span', 'gb-sitem', { bg: 'statusBarItem.compactHoverBackground' }, I('bell'), ' 2'))],
+          ['keyboard focus on the bar', bar({ ...normal, ol: 'statusBar.focusBorder' }, S('gb-sitem', I('git-branch'), ' main'), S('wb-spacer'), S('gb-sitem', 'UTF-8'))],
+          ['window not focused', bar({ bg: 'statusBar.inactiveBackground', fg: 'statusBar.foreground', bdT: 'statusBar.border' }, S('gb-sitem', I('git-branch'), ' main'), S('wb-spacer'), S('gb-sitem', 'UTF-8'))],
           ['no folder open', bar({ bg: 'statusBar.noFolderBackground', fg: 'statusBar.noFolderForeground', bdT: 'statusBar.noFolderBorder' }, S('gb-sitem', I('bell')), S('wb-spacer'), S('gb-sitem', 'Plain Text'))],
           ['debugging', bar({ bg: 'statusBar.debuggingBackground', fg: 'statusBar.debuggingForeground', bdT: 'statusBar.debuggingBorder' }, S('gb-sitem', I('debug-alt'), ' Run Extension'), S('wb-spacer'), S('gb-sitem', 'Ln 4, Col 12'))]);
       },
@@ -708,7 +887,14 @@
           D('gb-term-line', 'selected: ', P('span', null, { bg: 'terminal.selectionBackground', fg: 'terminal.selectionForeground' }, 'npm run verify'),
             '   unfocused: ', P('span', null, { bg: 'terminal.inactiveSelectionBackground' }, 'npm run verify'),
             '   find: ', P('span', null, { bg: 'terminal.findMatchBackground', bd: 'terminal.findMatchBorder' }, 'verify')),
-          D('gb-term-line', '$ ', P('span', 'gb-term-cursor', { bg: 'terminalCursor.foreground', fg: 'terminalCursor.background' }, 'n')));
+          D('gb-term-line', '$ ', P('span', 'gb-term-cursor', { bg: 'terminalCursor.foreground', fg: 'terminalCursor.background' }, 'n')),
+          D('gb-term-line', 'other matches: ', P('span', null, { bg: 'terminal.findMatchHighlightBackground', bd: 'terminal.findMatchHighlightBorder' }, 'verify'),
+            '   hover: ', P('span', null, { bg: 'terminal.hoverHighlightBackground' }, 'https://localhost:3000')),
+          D('gb-term-line', P('span', null, { fg: 'terminal.initialHintForeground' }, 'Press Ctrl+I to ask for a command')),
+          D('gb-term-tabs',
+            P('div', 'gb-term-tab', { bdL2: 'terminal.tab.activeBorder' }, I('terminal'), ' pwsh'),
+            D('gb-term-tab', I('terminal'), ' node'),
+            P('div', 'gb-term-tab gb-term-drop', { bg: 'terminal.dropBackground' }, 'drop here to split')));
       },
     },
 
@@ -718,6 +904,7 @@
       render: () => P('div', 'gb-surface', { bg: 'editor.background', fg: 'foreground' },
         labeled(
           ['foreground', P('span', null, { fg: 'foreground' }, 'Default text in the workbench')],
+          ['strong', P('span', null, { fg: 'strongForeground' }, 'Text and icons drawn for the most contrast')],
           ['description', P('span', null, { fg: 'descriptionForeground' }, 'Secondary text such as setting descriptions')],
           ['error', P('span', null, { fg: 'errorForeground' }, 'Something went wrong')],
           ['disabled', P('span', null, { fg: 'disabledForeground' }, 'Not available here')],
@@ -743,7 +930,7 @@
         states(
           state('text selection', P('span', 'gb-demo-box', null, 'select ', P('span', null, { bg: 'selection.background' }, 'this text'))),
           state('sash hover', D('gb-sash-demo', P('span', 'gb-sash', { bg: 'sash.hoverBorder' }))),
-          state('scrollbar: normal, hover, dragging', P('div', 'gb-scroll-demo', { shadow: 'scrollbar.shadow' },
+          state('scrollbar: normal, hover, dragging', P('div', 'gb-scroll-demo', { shadow: 'scrollbar.shadow', bg: 'scrollbar.background' },
             P('span', 'gb-slider', { bg: 'scrollbarSlider.background' }),
             P('span', 'gb-slider', { bg: 'scrollbarSlider.hoverBackground' }),
             P('span', 'gb-slider', { bg: 'scrollbarSlider.activeBackground' }))))),
@@ -931,7 +1118,7 @@
 
   // ------------------------------------------------------------------- public
 
-  /** The context's modern UI settings, { modern, uppercase, tabStyle }, or null when absent. */
+  /** The context's workbench settings, { modern, uppercase, tabStyle, activityBar }, or null when absent. */
   const modernOf = context => (context && context.modernUI && typeof context.modernUI === 'object' ? context.modernUI : null);
 
   /**
@@ -966,7 +1153,8 @@
   /**
    * The previews alone, without the inspector's chips and definitions, for the Theme Lab.
    * context needs only { model: { byKey }, tokens }, plus modernUI ({ modern, uppercase,
-   * tabStyle }) to draw the modern workbench; without it the drawing is the classic one. ids
+   * tabStyle, activityBar }) to draw the modern workbench or move the activity bar; without it
+   * the drawing is the classic one with the activity bar at the side. ids
    * picks cards in catalog order (all when omitted). Each result carries the card's id, title,
    * blurb and analyze() info.
    */

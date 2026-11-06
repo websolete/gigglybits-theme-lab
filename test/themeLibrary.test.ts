@@ -342,7 +342,10 @@ describe('slot settings and the Roles step settings', () => {
     const design = parseDesign(read('design-baseline.json'));
     const expected = read('design-baseline-settings.json');
     const actual = slotSettings({ id: 'baseline', name: 'Baseline', slot: 1, design, groups: [], savedAt: '2026-11-06T00:00:00.000Z' });
-    expect(actual.colors).toEqual(expected.colors);
+    // Every color the baseline holds is set and unchanged; a color added to the theme since is
+    // an addition, not a change to the old design.
+    const kept = Object.fromEntries(Object.keys(expected.colors).map(k => [k, actual.colors[k]]));
+    expect(kept).toEqual(expected.colors);
     expect(actual.tokenColors).toEqual(expected.tokenColors);
   });
 });

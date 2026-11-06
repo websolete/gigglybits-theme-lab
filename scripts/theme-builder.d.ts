@@ -37,6 +37,30 @@ export function cleanChrome(chrome?: unknown): { syntax: number[] | null; depth:
 /** The Roles step's families, in order; each swatch belongs to exactly one. */
 export const ROLE_FAMILIES: readonly { id: string; name: string; how: string; roles: readonly string[] }[];
 
+/**
+ * A group of colors the theme leaves to VS Code, with the reason. It covers its keys and every id
+ * under one of its prefixes (prefix, then a dot), apart from the ids in except.
+ */
+export interface LeftToVSCodeGroup {
+  area: string;
+  reason: string;
+  keys: readonly string[];
+  prefixes: readonly string[];
+  except: readonly string[];
+}
+
+/** Every color the theme leaves to VS Code's defaults, by group. */
+export const LEFT_TO_VSCODE: readonly LeftToVSCodeGroup[];
+
+/** True when LEFT_TO_VSCODE holds the id. */
+export function leftToVSCode(id: string): boolean;
+
+/** Gallery keys the theme leaves unset on purpose, each with the reason. */
+export const UNSET_KEYS: Readonly<Record<string, string>>;
+
+/** Every gallery key, grouped by the swatch it takes. */
+export const KEY_GROUPS: Readonly<Record<string, readonly string[]>>;
+
 /** The keys the frame settings decide; every other key follows the editor settings. */
 export const FRAME_KEYS: readonly string[];
 

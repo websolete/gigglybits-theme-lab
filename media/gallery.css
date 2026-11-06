@@ -124,6 +124,13 @@
   font-size: 13px;
   border: 1px solid transparent;
 }
+/* No activity bar at the window's edge: workbench.activityBar.location is top, bottom or hidden. */
+.wb-noact { grid-template-columns: 0 190px minmax(0, 1fr) 240px; }
+.wb-side { display: flex; flex-direction: column; }
+.wb-tree { flex: 1; }
+.wb-actrow { display: flex; align-items: stretch; height: 30px; padding: 0 6px; }
+.wb-actrow-item { position: relative; display: flex; align-items: center; justify-content: center; width: 32px; border-bottom: 2px solid transparent; }
+.wb-actrow-bottom { margin-bottom: -8px; }
 .wb-editor { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 .wb-group1, .wb-group2 { min-width: 0; overflow: hidden; }
 .wb-aux { grid-area: aux; min-width: 0; display: flex; flex-direction: column; }
@@ -360,6 +367,41 @@
 .gb-sash { position: absolute; left: 58px; top: 0; bottom: 0; width: 4px; }
 .gb-scroll-demo { display: flex; gap: 6px; padding: 6px; }
 .gb-slider { display: inline-block; width: 10px; height: 46px; }
+.gb-slider-wide { width: 36px; height: 30px; }
+
+/* Coverage additions: drawings for the everyday colors (scrollbar marks, minimap, sticky scroll...). */
+.gb-scroll-editor { display: flex; align-items: stretch; min-height: 92px; }
+.gb-scroll-code { flex: 1; min-width: 0; }
+.gb-scroll-code > .gb-editor { height: 100%; }
+.gb-minimap { position: relative; width: 56px; }
+.gb-minimap-slider { position: absolute; left: 0; right: 0; top: 0; height: 40px; }
+.gb-minimap-mark { position: absolute; left: 6px; right: 6px; height: 3px; }
+.gb-scroll-track { width: 12px; display: flex; flex-direction: column; }
+.gb-scroll-track .gb-slider { width: 12px; height: 34px; }
+.gb-ruler-strip { width: 14px; display: flex; flex-direction: column; gap: 1px; padding: 2px 0; }
+.gb-ruler-mark { display: block; height: 3px; margin: 0 2px; }
+.gb-sticky { position: relative; }
+.gb-listfilter { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; min-width: 120px; }
+.gb-table { font-size: 12px; }
+.gb-table-row { display: flex; }
+.gb-table-cell { flex: 1; padding: 2px 8px; }
+.gb-group-demo { display: flex; align-items: center; justify-content: center; width: 220px; height: 70px; font-size: 12px; opacity: 0.9; }
+.gb-group-drop { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.gb-group-prompt { padding: 3px 8px; border-radius: 4px; }
+.gb-marker-nav { margin: 4px 0; }
+.gb-marker-nav-head { padding: 4px 8px; font-size: 12px; }
+.gb-diagonal { height: 22px; }
+.gb-block-cursor { display: inline-block; }
+.gb-unnecessary { opacity: 0.7; }
+.gb-link-active { text-decoration: underline; }
+.gb-titlebar { display: flex; align-items: center; gap: 12px; height: 30px; padding: 0 10px; min-width: 320px; }
+.gb-window-frame { display: block; }
+.gb-chat-bubble { padding: 6px 10px; border-radius: 10px; font-size: 12px; }
+.gb-chat-checkpoint { padding-top: 4px; font-size: 11px; text-align: center; }
+.gb-chat-status { padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+.gb-chat-shimmer { font-style: italic; }
+.gb-term-tabs { display: flex; gap: 6px; margin-top: 6px; }
+.gb-term-tab { padding: 2px 8px; border-left: 2px solid transparent; }
 
 /* --------------------------------------------- extension contributions */
 

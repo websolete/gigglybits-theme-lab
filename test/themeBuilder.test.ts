@@ -58,7 +58,9 @@ const flatten = (rules: any[]) =>
     fontStyle: r.settings?.fontStyle,
   }));
 
+/** The keys the gallery paints, gathered over every activity bar position. */
 let galleryKeys: Set<string>;
+const ACTIVITY_BAR_PLACES = ['default', 'top', 'bottom', 'hidden'];
 
 beforeAll(() => {
   (window as any).GB = GB;
@@ -71,19 +73,24 @@ beforeAll(() => {
     byKey.set(key, { key, prop: GB.varFor(key), value, rgba, hex: GB.toHex(rgba), source: 'theme' });
   }
   const model = { byKey, tokens: [] };
-  const { node } = gallery.render({
-    model,
-    tokens: model.tokens,
-    snapshot: { contributions: {} },
-    ui: { filter: '', source: 'all', lowContrast: false },
-    copy: () => undefined,
-    sourceBadge: (s: string) => document.createTextNode(s),
-    contrastBadge: (r: number) => document.createTextNode(r.toFixed(1)),
-    trackOpen: (d: HTMLElement) => d,
-  });
   galleryKeys = new Set<string>();
-  for (const el of node.querySelectorAll('[data-keys]')) {
-    for (const k of el.getAttribute('data-keys')!.split(' ')) {galleryKeys.add(k);}
+  // One render per activity bar position, modern UI off, so keys painted only with the
+  // activity bar at the top or bottom count as gallery keys too.
+  for (const activityBar of ACTIVITY_BAR_PLACES) {
+    const { node } = gallery.render({
+      model,
+      tokens: model.tokens,
+      snapshot: { contributions: {} },
+      ui: { filter: '', source: 'all', lowContrast: false },
+      modernUI: { modern: false, uppercase: false, tabStyle: 'connected', activityBar },
+      copy: () => undefined,
+      sourceBadge: (s: string) => document.createTextNode(s),
+      contrastBadge: (r: number) => document.createTextNode(r.toFixed(1)),
+      trackOpen: (d: HTMLElement) => d,
+    });
+    for (const el of node.querySelectorAll('[data-keys]')) {
+      for (const k of el.getAttribute('data-keys')!.split(' ')) {galleryKeys.add(k);}
+    }
   }
 });
 
@@ -275,7 +282,9 @@ describe('Frame and Editor', () => {
     for (const entry of included) {
       const shipped = JSON.parse(fs.readFileSync(path.join(BASELINE, TB.themeFileName(entry)), 'utf8'));
       const built = TB.buildTheme(entry);
-      const diff = changed(shipped.colors, built.colors).filter(k => !EXCEPT.has(k));
+      // Every key the baseline holds keeps its value; a key added since is not a change to it.
+      const kept = Object.fromEntries(Object.keys(shipped.colors).map(k => [k, built.colors[k]]));
+      const diff = changed(shipped.colors, kept).filter(k => !EXCEPT.has(k));
       expect({ palette: entry.name, diff }).toEqual({ palette: entry.name, diff: [] });
       expect(built.tokenColors).toEqual(shipped.tokenColors);
     }
@@ -408,7 +417,7 @@ describe('Style groups', () => {
 
   it('holds the tab, list and tree, button and editor text families', () => {
     const f = TB.GROUP_FAMILIES;
-    expect([f.tabs.keys.length, f.lists.keys.length, f.buttons.keys.length]).toEqual([24, 21, 8]);
+    expect([f.tabs.keys.length, f.lists.keys.length, f.buttons.keys.length]).toEqual([27, 27, 9]);
     expect(f.editorText.keys).toEqual(['editor.foreground']);
     expect(f.editorText.tokens).toEqual(['Keyword', 'Function', 'String', 'Type', 'Number', 'Comment']);
     expect(f.lists.keys.every((k: string) => k.startsWith('list.') || k.startsWith('tree.'))).toBe(true);
@@ -417,7 +426,7 @@ describe('Style groups', () => {
 
   it('leaves the two frame tab lines out of the Tabs family', () => {
     const tabs = TB.GROUP_FAMILIES.tabs.keys;
-    expect(tabs.length).toBe(24);
+    expect(tabs.length).toBe(27);
     expect(tabs.filter((k: string) => k === 'tab.activeBorderTop' || k === 'tab.activeBorder')).toEqual([]);
   });
 
@@ -480,5 +489,53 @@ describe('the Roles step settings: syntax colors, surface depth and text contras
     const listed = families.flatMap(f => f.roles);
     expect(listed.filter((r, i) => listed.indexOf(r) !== i)).toEqual([]);
     expect([...listed].sort()).toEqual(Object.keys(TB.SWATCHES).sort());
+  });
+});
+
+describe('the colors you see every day', () => {
+  const snapshot: string[] = require('./fixtures/vscode-colors.json').ids;
+  const grouped = new Set<string>(Object.values(TB.KEY_GROUPS as Record<string, string[]>).flat());
+  /** A trailing '.*' takes every id under the prefix and a dot, so terminal.* is not terminalX. */
+  const named = (list: string[]) => snapshot.filter(id => list.some(p => (p.endsWith('.*') ? id.startsWith(p.slice(0, -1)) : id === p)));
+  /** Ids neither set by the theme and painted by the gallery nor left to VS Code. */
+  const undecided = (ids: string[]) => ids.filter(id => !(grouped.has(id) && galleryKeys.has(id)) && !TB.leftToVSCode(id));
+
+  // The work order's everyday list, plus the seven ids the user chose to set in its Task 1.
+  const EVERYDAY = [
+    'activityBarTop.*', 'editorOverviewRuler.*', 'minimap.background', 'minimap.errorHighlight', 'minimap.findMatchHighlight',
+    'minimap.infoHighlight', 'minimap.warningHighlight', 'list.dropBetweenBackground', 'list.filterMatchBackground', 'list.filterMatchBorder',
+    'list.inactiveFocusBackground', 'listFilterWidget.*', 'tree.tableColumnsBorder', 'tree.tableOddRowsBackground', 'quickInput.list.focusBackground',
+    'titleBar.inactiveBackground', 'titleBar.inactiveForeground', 'window.inactiveBorder', 'commandCenter.activeBackground', 'commandCenter.activeBorder',
+    'statusBar.focusBorder', 'statusBar.inactiveBackground', 'statusBarItem.compactHoverBackground', 'statusBarItem.offlineHoverBackground',
+    'statusBarItem.remoteHoverBackground', 'editor.hoverHighlightBackground', 'editor.symbolHighlightBackground', 'editor.symbolHighlightBorder',
+    'editor.linkedEditingBackground', 'editor.snippetTabstopHighlightBackground', 'editor.snippetTabstopHighlightBorder',
+    'editor.snippetFinalTabstopHighlightBackground', 'editor.snippetFinalTabstopHighlightBorder', 'editorBracketMatch.foreground',
+    'editorBracketHighlight.unexpectedBracket.foreground', 'editorActiveLineNumber.foreground', 'editorLineNumber.dimmedForeground',
+    'editorCursor.background', 'editorLink.activeForeground', 'editorUnnecessaryCode.border', 'editorMarkerNavigationError.*',
+    'editorMarkerNavigationWarning.*', 'editorMarkerNavigationInfo.*', 'editorGutter.addedSecondaryBackground', 'editorGutter.modifiedSecondaryBackground',
+    'editorGutter.deletedSecondaryBackground', 'editorGroup.dropBackground', 'editorGroup.dropIntoPromptBorder', 'editorGroup.emptyBackground',
+    'editorGroup.focusedEmptyBorder', 'editorGroupHeader.border', 'tab.dragAndDropBorder', 'tab.lastPinnedBorder', 'panelTitle.border',
+    'sideBarTitle.border', 'editorStickyScroll.border', 'editorStickyScrollHover.*', 'sideBarStickyScroll.*', 'panelStickyScroll.*',
+    'diffEditor.diagonalFill', 'diffEditor.unchangedCodeBackground', 'diffEditor.unchangedRegionShadow', 'scrollbar.background',
+    'button.secondaryBorder', 'editorWidget.resizeBorder', 'search.resultsInfoForeground', 'simpleFindWidget.*',
+    'sideBarTitle.background', 'sideBarActivityBarTop.border', 'tab.divider', 'editor.inactiveLineHighlightBackground', 'minimapSlider.*',
+  ];
+
+  it('{#everyday-set} sets and draws every everyday color, or leaves it to VS Code', () => {
+    const ids = named(EVERYDAY);
+    // 112 on VS Code 1.145.2; a refreshed snapshot may name a few more or fewer.
+    expect(ids.length).toBeGreaterThan(100);
+    expect(undecided(ids)).toEqual([]);
+  });
+
+  // The feature areas the theme sets and draws: chat and the terminal (the user narrowed the
+  // planned five to these two on 2026-11-06).
+  const AREAS = ['chat.*', 'terminal.*'];
+
+  it('{#areas-set} sets and draws every chat and terminal color, leaves it unset on purpose, or leaves it to VS Code', () => {
+    const ids = named(AREAS);
+    // 62 on VS Code 1.145.2: 50 set, 1 unset, 11 left to VS Code.
+    expect(ids.length).toBeGreaterThan(40);
+    expect(undecided(ids).filter(id => !(id in TB.UNSET_KEYS))).toEqual([]);
   });
 });

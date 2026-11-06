@@ -216,19 +216,19 @@ describe('modern UI settings, host side', () => {
     ThemeLabPanel.show(extensionUri, identity, memento, library);
     const lab = labs()[labs().length - 1];
     await lab.receive!({ type: 'ready' });
-    expect(modernMessages(lab)).toEqual([{ type: 'modernUI', modernUI: { modern: true, uppercase: false, tabStyle: 'connected' } }]);
+    expect(modernMessages(lab)).toEqual([{ type: 'modernUI', modernUI: { modern: true, uppercase: false, tabStyle: 'connected', activityBar: 'default' } }]);
 
     settings['workbench.experimental.modernUIUppercaseViewHeaders'] = true;
     const event = { affectsConfiguration: (id: string) => id === 'workbench.experimental.modernUIUppercaseViewHeaders' };
     for (const listener of configListeners) { listener(event); }
-    expect(modernMessages(lab)[1]).toEqual({ type: 'modernUI', modernUI: { modern: true, uppercase: true, tabStyle: 'connected' } });
+    expect(modernMessages(lab)[1]).toEqual({ type: 'modernUI', modernUI: { modern: true, uppercase: true, tabStyle: 'connected', activityBar: 'default' } });
 
     await lab.receive!({ type: 'openPreviewWindow' });
     // The window opened with the Lab, so it already had the change; its own ready sends them again.
     const window = panels.filter(p => p.viewType === 'gigglybits.themePreview').pop()!;
     window.posted.length = 0;
     await window.receive!({ type: 'ready' });
-    expect(modernMessages(window)).toEqual([{ type: 'modernUI', modernUI: { modern: true, uppercase: true, tabStyle: 'connected' } }]);
+    expect(modernMessages(window)).toEqual([{ type: 'modernUI', modernUI: { modern: true, uppercase: true, tabStyle: 'connected', activityBar: 'default' } }]);
   });
 });
 

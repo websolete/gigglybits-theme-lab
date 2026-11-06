@@ -158,6 +158,7 @@
     "smoke:bundle": "node scripts/smoke-bundle.js",
     "themes": "node scripts/build-themes.js",
     "themes:check": "node scripts/build-themes.js --check",
+    "colors:snapshot": "node scripts/vscode-colors.js",
     "test": "npm run check-types:test && jest",
     "verify": "npm run check-types && npm run lint && npm test",
     "clean": "node -e \"for (const d of ['dist', 'out']) require('fs').rmSync(d, { recursive: true, force: true })\"",

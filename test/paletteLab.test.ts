@@ -332,7 +332,7 @@ describe('Palette Lab color editing', () => {
     expect(row.querySelector('.gb-pl-key-head')!.textContent).toContain(drawnValue);
     expect(row.querySelector('.gb-pl-key-head')!.textContent).not.toContain('unset');
     expect(row.textContent).toContain('works it out');
-    expect(keyRow(root, 'window.activeBorder').querySelector('.gb-pl-key-rolename')!.textContent).toMatch(/ \(1\)$/);
+    expect(keyRow(root, 'window.activeBorder').querySelector('.gb-pl-key-rolename')!.textContent).toMatch(/ \(2\)$/);
   });
 
   it('editing a role recolors every key in it, and Try in VS Code sends the edit', () => {
@@ -1553,7 +1553,7 @@ describe('Palette Lab style groups', () => {
     enter(root);
     expect([...familySelect(root).options].map(o => o.textContent)).toEqual(['Tabs', 'Lists and trees', 'Buttons', 'Editor text']);
     choose(familySelect(root), 'buttons');
-    expect(box(root).querySelectorAll('.gb-sg-row')).toHaveLength(8);
+    expect(box(root).querySelectorAll('.gb-sg-row')).toHaveLength(9);
     const options = [...roleSelect(root, 'button.background').options].map(o => o.textContent);
     expect(options[0]).toBe("Theme's own");
     const editorRoles = Object.keys(TB.SWATCHES).filter((n: string) => TB.SWATCHES[n][2] === 'editor').map((n: string) => TB.SWATCHES[n][0]);
