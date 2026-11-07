@@ -4,6 +4,8 @@ All notable changes to GigglyBits Theme Lab are documented in this file.
 
 ## Unreleased
 
+- **The steps say what you do in them.** Start is now **Pick your colors**, Palette is **Check readability**, Roles is **Color by purpose**, Edit is **Fine-tune a part** and Try and save is **Try it, then save**. Frame and accent keeps its name.
+- **Try and save shows the palette as plain swatches.** The Fail, Large, AA and AAA tags beside each color are gone; point at a swatch for its weakest grade and pair, or see step 2 for every grade.
 - **Show where shows where.** A role's **Show where** button now brings the Theme Preview window forward, opening it if it was closed, and outlines every part that role colors there, scrolled to the first. It used to open the Edit panel on the role's first color.
 - **Try and save stands apart.** Its border, heading and heading line take the color of the Try in VS Code button, and it floats a little above the bottom of the Theme Lab instead of touching the edge.
 - **Try and save explains itself, and lets you use a theme right after saving it.** A line under the buttons says what Try in VS Code and Save theme do. Once the design is saved (or loaded from Saved themes) and unchanged, **Use in this project** and **Use everywhere** appear beside Save theme, so you no longer go back to Start to apply it. The pinned bar is a little slimmer: the readability sentence moved into the palette's tooltip, since step 2 shows the same grades.

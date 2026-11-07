@@ -214,10 +214,10 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-shift { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0 0; font-size: var(--gb-text-sm); cursor: help; }
 .gb-shift-raised { color: var(--vscode-editorWarning-foreground); }
 
-/* Step 6, Try and save: a card stuck to the bottom. The heading band carries the last result;
+/* Step 6, Try it, then save: a card stuck to the bottom. The heading band carries the last result;
    the body is Name with Try in VS Code (the one filled button), Save theme and, once saved, the
-   two Use buttons; then one line: what Try and Save do, and the palette, one pill per color with
-   its weakest grade (the readability sentence is in its tooltip). The card color is opaque, so
+   two Use buttons; then one line: what Try and Save do, and the palette, one swatch per color
+   (each color's weakest grade and the readability sentence are in tooltips). The card color is opaque, so
    the steps scroll under it unseen. */
 /* It floats a little above the bottom edge; the page color below it hides what scrolls past.
    Its border, heading band and heading line take VS Code's primary button color, the color of
@@ -243,12 +243,7 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-pl-buttons button[hidden] { display: none; }
 .gb-bar .gb-bar-use { min-height: 28px; white-space: nowrap; }
 .gb-bar-chips { display: flex; flex-wrap: wrap; gap: var(--gb-space-1); min-width: 0; }
-.gb-bar-pill {
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 2px; cursor: help;
-  border: 1px solid var(--gb-card-line); border-radius: 999px; background: var(--gb-inset);
-}
-.gb-bar-pill .badge { font-size: 0.9em; }
-.gb-bar-chip { inline-size: 16px; block-size: 16px; border-radius: 50%; border: 1px solid var(--gb-border); box-sizing: border-box; }
+.gb-bar-chip { inline-size: 18px; block-size: 18px; border-radius: 50%; border: 1px solid var(--gb-border); box-sizing: border-box; cursor: help; }
 .gb-bar-read { margin: 0; color: var(--vscode-descriptionForeground); }
 .gb-bar-low { white-space: nowrap; cursor: help; }
 .gb-bar-low .badge { font-size: 1em; }
@@ -304,7 +299,7 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
   .gb-preview { flex: 1 1 auto; }
   .gb-tasks { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--gb-space-2); row-gap: var(--gb-space-3); }
   .gb-tasks > * { grid-column: 1 / -1; }
-  /* The Try and save bar's summary sits close under its buttons. */
+  /* The step 6 bar's summary sits close under its buttons. */
   .gb-bar2 { margin-top: 2px; }
   /* With the dock open, the folded step headings, the dock and the bar share the height under
      the band, so the dock's body scrolls inside it instead of pushing the page. */

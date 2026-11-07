@@ -53,7 +53,7 @@ The Workbench preview draws the window the way your VS Code draws it. With the m
 
 A GigglyBits theme sets the main chrome and what you look at every day: besides the editor, side bar, tabs, panel and status bar, that includes the activity bar at the top or bottom, scrollbar and minimap marks, the Explorer's type-to-filter highlight, the title bar and status bar while another window has focus, symbol and snippet highlights, sticky scroll, and the chat and terminal colors. Each takes its value from one of the theme's roles, and the preview draws every color the theme sets. The rest of the colors VS Code registers, such as debugging, notebooks, merge conflicts and the agent sessions window, keep VS Code's own defaults on purpose, each group with a reason.
 
-### 1 Start
+### 1 Pick your colors
 
 Two tabs: start a new palette, or pick up one you kept.
 
@@ -72,7 +72,7 @@ Every color swatch in the Lab opens the same picker in place, under the swatch: 
 
 The base color's picker stays within the ranges of the Lightness and Chroma sliders.
 
-### 2 Palette
+### 2 Check readability
 
 A line opens the step: the table shows how readable each color is as text on four dark backgrounds, as a contrast ratio from 1 (invisible) to 21 (black on white), higher being easier to read. The table has one line per palette color: a swatch (click it to copy the hex), the hex over its L C H values, and its contrast ratio and grade on a near-black background (`#121212`), VS Code's Dark+ editor and side bar (`#1e1e1e`, `#252526`) and your own editor background. Each column heading names its background, and hovering a ratio says what was measured and what its grade means. The weakest cell is outlined, and the step's heading names it with its grade. Past five colors the table scrolls. Under it, a legend says what each grade means: AAA (7:1 or more) is easy to read at any size, AA (4.5:1 or more) is fine for normal text, Large (3:1 or more) suits only large or bold text, icons and borders, and Fail (under 3:1) is hard to read. A last line says what the theme builder adjusts on its own: code text colors to at least 4.5:1 and the input outline to 3:1, which is why the drawing can differ from the table's numbers.
 
@@ -83,7 +83,7 @@ Two rows, each a palette color choice and a select. Hover a row's name to see wh
 - **Frame** colors the title bar, activity bar, status bar and window border: one palette color or a custom color, and a style. **Filled** gives solid colored bars with black or white text, which a new design starts with; **Dark** gives dark bars with accent lines in the frame color. In a Filled frame the active tab's lines, the line between split editors and the side bar, panel and resize borders take the frame color too. When the folder still has an old per-folder color, a note says it is drawn over any theme's frame and that **Use in this project** with a saved theme replaces it.
 - **Editor** colors everything else: an accent color (buttons, focus, links, selection) and Neutral, Tinted or Rich surfaces. In a Filled frame, changing the Editor choices never moves the bars, and changing the Frame never moves an editor color.
 
-### 4 Roles
+### 4 Color by purpose
 
 Every color in the theme belongs to a role, and step 4 shows all 84 of them in the seven families the theme builder makes them in: Syntax, Accent, Surfaces, Text, Status, Terminal and Frame. Each family has a line saying how it is made from your palette, its own setting where it has one, and its roles as buttons. Status, Terminal and Frame start folded to a strip of their colors, and **Show** opens them.
 
@@ -92,9 +92,9 @@ Every color in the theme belongs to a role, and step 4 shows all 84 of them in t
 - **Text: Contrast** sets the four gray text levels: **Soft**, **Standard** (where a design starts) or **High**.
 - **Accent** and **Frame** show their step 3 choice, with a link to change it there. Status and Terminal use fixed hues and have no setting.
 
-Each role button shows its color, its name and how many VS Code colors use it; Keywords shows **code**, since only code highlighting uses it. Click one to open its editor under its family: a color picker that changes every color in the role, **Reset** once it is edited, and **Show where**, which opens the role's first color in the Edit panel as a click in the preview would. Esc closes the editor and returns to the role. On a wide tab Roles sits above Edit and folds to its heading while the Edit panel is open; on a narrow tab it folds with steps 1 to 3. Try in VS Code and Save theme carry the three settings, and a design that leaves them where they start saves and builds exactly as before.
+Each role button shows its color, its name and how many VS Code colors use it; Keywords shows **code**, since only code highlighting uses it. Click one to open its editor under its family: a color picker that changes every color in the role, **Reset** once it is edited, and **Show where**, which opens the role's first color in the Edit panel as a click in the preview would. Esc closes the editor and returns to the role. On a wide tab step 4 sits above step 5 and folds to its heading while the Edit panel is open; on a narrow tab it folds with steps 1 to 3. Try in VS Code and Save theme carry the three settings, and a design that leaves them where they start saves and builds exactly as before.
 
-### The preview window and 5 Edit
+### The preview window and 5 Fine-tune a part
 
 The preview is drawn only in the **Theme Preview** window, which opens with the Theme Lab in a compact window of its own. It is an ordinary window, not kept on top, so VS Code can come in front of it. It is one scrolling page of two sections:
 
@@ -108,15 +108,15 @@ Click any part of the preview window and the **Edit** panel opens in step 5:
 - The part's color keys are listed under **This part**, and the keys of the box around it under **Around it**. Each key is one line: its color, name, hex, contrast and role.
 - Click a line to open its color editor. One editor is open at a time. **Change** picks **This key only** or the key's **Whole role**, which changes every key in the role and the shades made from it. **Color** is a color picker and a hex field that also takes `#rrggbbaa`, and **Opacity** sets the key's transparency.
 - **Transparent** sets the key to its color at 0% opacity. **Use VS Code default** leaves the key out of the theme, so VS Code draws it in its own default color; the preview draws it unset. **Reset** undoes the edit. A role's color is always opaque, so Opacity, Transparent and Use VS Code default change the key alone.
-- With nothing picked, the panel says to pick a part in the preview window or open a role in Roles. Step 4 is the keyboard path to any color, and the way to reach the drawn parts that are too small to click comfortably.
+- With nothing picked, the panel says to pick a part in the preview window or open a role in step 4. Step 4 is the keyboard path to any color, and the way to reach the drawn parts that are too small to click comfortably.
 - **Edits (n)** lists your edits, each with **Reset**, and **Reset all** undoes them all.
-- Esc or the close button closes the panel and puts focus on the **Roles** button on step 5's line, which moves to step 4 and focuses its first role. While you have edits, it stays as one line you can open again.
+- Esc or the close button closes the panel and puts focus on the **Color by purpose** button on step 5's line, which moves to step 4 and focuses its first role. While you have edits, it stays as one line you can open again.
 - A pick brings the Lab tab forward and focuses it, ready to edit.
 - On a narrow tab, a pick folds steps 1 to 4 to their heading lines, which keep their state. Click a heading to open that step; the panel shrinks to one line, and opening it again brings back the line you had open, scrolled where it was. A pick in the title bar, activity bar or status bar puts the Frame row at the top of the panel, and a pick in the editor tabs or the second editor group puts the Editor row there.
 
-### 6 Try and Save
+### 6 Try it, then save
 
-The last step is a card stuck to the bottom of the steps. Its heading says what it last did, which is announced to screen readers. Under it are **Name**, **Try in VS Code** and **Save theme**, then the palette: each color with its weakest grade (hover one for its weakest pair), and a sentence on how readable the palette is, naming any color that suits only large text or is hard to read, with the weakest contrast.
+The last step is a card stuck to the bottom of the steps. Its heading says what it last did, which is announced to screen readers. Under it are **Name**, **Try in VS Code** and **Save theme**, then the palette: one swatch per color (hover one for its weakest grade and pair), and a sentence on how readable the palette is, naming any color that suits only large text or is hard to read, with the weakest contrast.
 
 On a narrow tab, while the Edit panel is open, the open step and the Edit panel have a highlighted border and heading, so you can tell them from the folded steps.
 

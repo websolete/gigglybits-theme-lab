@@ -1,7 +1,7 @@
 // @ts-check
 // Palette Lab for the Theme Lab, laid out to the design council's contract
 // (.copirate/working/prototypes/theme-lab-council/CONTRACT-v4.md): numbered steps (1 Start,
-// 2 Palette, 3 Frame and accent, 4 Roles, 5 Edit, 6 Try and Save) and a Preview card. From 75rem
+// 2 Check readability, 3 Frame and accent, 4 Color by purpose, 5 Fine-tune a part, 6 Try it, then save) and a Preview card. From 75rem
 // they are two panes, the Preview card and steps 4 and 5 on the right; narrower, one column. render()
 // builds each region in the order of the width.
 //
@@ -105,7 +105,7 @@
     return s;
   }
 
-  /** The steps that collapse: 1 Start to 5 Edit. Step 6, Try and save, always shows. */
+  /** The steps that collapse: 1 Pick your colors to 5 Fine-tune a part. Step 6, Try it, then save, always shows. */
   const SECTIONS = [1, 2, 3, 4, 5];
 
   /** Opens step `n` in the state, leaving the other steps as they are. */
@@ -1197,7 +1197,7 @@
       if (picked.around.length) body.append(group('gb-dock-around', 'Around it', keysWord(picked.around.length), columns(), ...picked.around.map(keyRow)));
     }
 
-    if (!picked) body.append(h('p', { class: 'muted gb-dock-none' }, 'Pick a part in the preview window, or open a role in Roles.'));
+    if (!picked) body.append(h('p', { class: 'muted gb-dock-none' }, 'Pick a part in the preview window, or open a role in step 4, Color by purpose.'));
     section.append(body);
     return section;
   }
@@ -1901,7 +1901,7 @@
       h('div', { class: 'gb-ag-head' }, h('span', { class: 'gb-ag-title' }, 'Accent groups'),
         h('span', { class: 'muted gb-ag-key', title: 'Each row ends with what the group gets: its color, the color hovered, text on it, a selection tint and a wash' }, 'Preview: color, hover, text, selection, wash')),
       h('p', { class: 'muted gb-ag-note' }, 'Give a set of controls its own color. On Accent a group follows the accent above. Whichever color it takes, its hover, text and selection shades are worked out from it.'),
-      accentEdited ? h('p', { class: 'gb-ag-overridden' }, 'The Accent role in step 4, Roles, has an edit of its own. It wins over these choices until you reset it there.') : null,
+      accentEdited ? h('p', { class: 'gb-ag-overridden' }, 'The Accent role in step 4, Color by purpose, has an edit of its own. It wins over these choices until you reset it there.') : null,
       rows);
   }
 
@@ -2300,7 +2300,7 @@
     // Roles on the step 5 line opens step 4 if it is collapsed, scrolls to it and focuses its
     // first chip: the keyboard path to any color without a pick (CONTRACT-v4 section 7).
     const rolesGo = h('button', {
-      class: 'secondary gb-roles-go', title: 'Moves to step 4, Roles, where any color in the theme can be changed',
+      class: 'secondary gb-roles-go', title: 'Moves to step 4, Color by purpose, where any color in the theme can be changed',
       onclick: () => {
         if (!s.sections.includes(4)) {
           openSection(s, 4);
@@ -2312,15 +2312,15 @@
         if (typeof chip.scrollIntoView === 'function') chip.scrollIntoView({ block: 'nearest' });
         chip.focus();
       },
-    }, 'Roles');
+    }, 'Color by purpose');
     const s4Line = h('div', { class: 'gb-s4-line' },
       h('span', { class: 'gb-s4-text muted' }, 'Click any part of the preview window to fine-tune its colors.'), rolesGo);
     const editHost = h('div', { class: 'gb-s4-edit' });
     const barSlot = h('div', { class: 'gb-bar-main' });
     // Step 6: its heading carries the result text (which reads "Overwrites 'X'" instead while
     // Name is another saved theme's name); under Name and the buttons, the palette summary:
-    // each color with its weakest grade, then a sentence on how readable the palette is.
-    const chipsEl = h('div', { class: 'gb-bar-chips', role: 'list', 'aria-label': 'Palette colors and their weakest grade' });
+    // one swatch per color, then a sentence on how readable the palette is.
+    const chipsEl = h('div', { class: 'gb-bar-chips', role: 'list', 'aria-label': 'Palette colors' });
     const lowEl = h('span', { class: 'gb-bar-low' });
     // The readability sentence is for screen readers and the palette's tooltip; the bar stays one
     // line shorter for it, since step 2 shows the same grades in full.
@@ -2416,12 +2416,13 @@
       // decisionControls' first item is a step number, which the heading carries here.
       barSlot.replaceChildren(...decisionControls(candidate, ctx, showResult).slice(1));
       const worst = weakestPerColor(candidate.colors.slice(0, 10), columns);
+      // Each color is a bare swatch; its weakest grade lives in its tooltip, and step 2 shows the
+      // grades in full.
       chipsEl.replaceChildren(...worst.map(w => {
-        const [cls] = contrastGrade(w.ratio);
-        const chip = h('span', { class: 'gb-bar-chip', 'aria-hidden': 'true' });
+        const chip = h('span', { class: 'gb-bar-chip', role: 'listitem', title: ratioTitle(w.ratio, `${w.hex} at its weakest, on ${w.col.label} (${w.col.hex})`) },
+          h('span', { class: 'gb-sr' }, w.hex));
         chip.style.background = w.hex;
-        return h('span', { class: 'gb-bar-pill', role: 'listitem', title: ratioTitle(w.ratio, `${w.hex} at its weakest, on ${w.col.label} (${w.col.hex})`) },
-          chip, h('span', { class: 'gb-sr' }, `${w.hex}: `), h('span', { class: `badge ${cls}` }, GRADE_TAGS[cls]));
+        return chip;
       }));
       lowEl.title = lowTitle;
       lowEl.replaceChildren('Weakest contrast ', h('span', { class: `badge ${lowCls}` }, `${low.ratio.toFixed(1)}:1`), '.');
@@ -2627,21 +2628,21 @@
             onclick: () => ctx.post({ type: 'openPreviewWindow' }),
           }, 'Open Preview')));
 
-      const s1 = step(1, 'Start', states[1], note,
+      const s1 = step(1, 'Pick your colors', states[1], note,
         h('p', { class: 'gb-step-lead muted' }, 'Pick a base color and a rule. The rule makes five related colors, and every color in the theme is worked out from those five, readability included. Or start from a theme you saved.'),
         startTabs);
-      const s2 = step(2, 'Palette', states[2], paletteSlot);
+      const s2 = step(2, 'Check readability', states[2], paletteSlot);
       const s3 = step(3, 'Frame and accent', states[3],
         h('p', { class: 'gb-step-lead muted' }, 'Choose which palette colors the window uses. Text and hover shades on each color are worked out for you and stay readable.'),
         feSlot);
       // Step 4, Roles, has a class of its own: gb-s4 is step 5 (Edit), which kept its class.
       const sRoles = h('div', { class: 'gb-step gb-roles', 'data-step': '4', role: 'group', 'aria-labelledby': 'gb-step-4-h' },
-        stepHead(4, 'Roles', states.roles), h('div', { class: 'gb-step-body', id: 'gb-step-4-b' }, rolesSlot));
+        stepHead(4, 'Color by purpose', states.roles), h('div', { class: 'gb-step-body', id: 'gb-step-4-b' }, rolesSlot));
       // Step 5 keeps the class gb-s4; its body is the line pointing to the preview, or the dock.
       const s4 = h('div', { class: 'gb-step gb-s4', 'data-step': '5', role: 'group', 'aria-labelledby': 'gb-step-5-h' },
-        stepHead(5, 'Edit', states[4]), h('div', { class: 'gb-step-body', id: 'gb-step-5-b' }, s4Line, editHost));
+        stepHead(5, 'Fine-tune a part', states[4]), h('div', { class: 'gb-step-body', id: 'gb-step-5-b' }, s4Line, editHost));
       const bar = h('div', { class: 'gb-step gb-bar', 'data-step': '6', role: 'group', 'aria-labelledby': 'gb-step-6-h' },
-        stepHead(6, 'Try and save', resultEl), h('div', { class: 'gb-step-body' }, barSlot, bar2));
+        stepHead(6, 'Try it, then save', resultEl), h('div', { class: 'gb-step-body' }, barSlot, bar2));
       stepEls = [...[s1, s2, s3].map((el, i) => ({ n: i + 1, el })), { n: 4, el: sRoles }, { n: 5, el: s4 }];
       allToggle.hidden = false;
       // Wide, the Preview card, step 4 (Roles) and step 5 with its Edit dock have the second pane.

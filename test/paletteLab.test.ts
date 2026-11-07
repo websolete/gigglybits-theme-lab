@@ -809,14 +809,14 @@ describe('Palette Lab Edit dock', () => {
       const root = renderAt(width);
       document.body.replaceChildren(root);
       const button = root.querySelector<HTMLButtonElement>('.gb-s4-line .gb-roles-go')!;
-      expect(button.textContent).toBe('Roles');
+      expect(button.textContent).toBe('Color by purpose');
       button.click();
       expect({ width, focused: document.activeElement }).toEqual({ width, focused: root.querySelector('.gb-roles .gb-role-chip') });
       expect(dockOf(root)).toBeNull();
     }
   });
 
-  it('{#no-pick-line} the dock reopened with no pick shows its heading and the line pointing to the preview and Roles', () => {
+  it('{#no-pick-line} the dock reopened with no pick shows its heading and the line pointing to the preview and step 4', () => {
     const c = ctx();
     lab.render(c);
     const root = pickIn(c, CHAT_INPUT, 1400);
@@ -827,10 +827,10 @@ describe('Palette Lab Edit dock', () => {
     dockOf(root)!.querySelector<HTMLButtonElement>('.gb-dock-reopen')!.click();
     const dock = dockOf(root)!;
     expect(dock.hasAttribute('data-min')).toBe(false);
-    // Step 5's own heading says '5 Edit'; the dock's heading names the part, here none.
+    // Step 5's own heading says '5 Fine-tune a part'; the dock's heading names the part, here none.
     expect(dock.querySelector('.gb-dock-h')!.textContent).toBe('No part picked');
-    expect(root.querySelector('#gb-step-5-h')!.textContent).toMatch(/^5\s*Edit/);
-    expect(dock.querySelector('.gb-dock-body')!.textContent).toBe('Pick a part in the preview window, or open a role in Roles.');
+    expect(root.querySelector('#gb-step-5-h')!.textContent).toMatch(/^5\s*Fine-tune a part/);
+    expect(dock.querySelector('.gb-dock-body')!.textContent).toBe('Pick a part in the preview window, or open a role in step 4, Color by purpose.');
   });
 
   it('{#esc-focus} Esc in the open dock closes it and moves focus to the step 5 line\'s Roles button', () => {
@@ -895,7 +895,7 @@ describe('Palette Lab step 4 Roles', () => {
   it('{#roles-rows} step 4 is headed Roles and holds the seven families in order, the first four open and the last three folded, with 84 role chips once each is shown', () => {
     const root = lab.render(ctx());
     const head = rolesOf(root).querySelector(':scope > .gb-step-h')!;
-    expect([head.querySelector('.gb-step-n')!.textContent, head.querySelector('.gb-step-t')!.textContent]).toEqual(['4', 'Roles']);
+    expect([head.querySelector('.gb-step-n')!.textContent, head.querySelector('.gb-step-t')!.textContent]).toEqual(['4', 'Color by purpose']);
     const rows = familyRows(root);
     expect(rows.map(r => r.querySelector('.gb-rf-name')!.textContent)).toEqual(FAMILIES);
     expect(rows.map(r => r.hasAttribute('data-folded'))).toEqual([false, false, false, false, true, true, true]);
@@ -913,7 +913,7 @@ describe('Palette Lab step 4 Roles', () => {
     expect(chips.every(ch => ch.tagName === 'BUTTON')).toBe(true);
   });
 
-  it('{#step-headings} reads the step headings 1 to 6 as Start, Palette, Frame and accent, Roles, Edit, Try and save', () => {
+  it('{#step-headings} reads the step headings 1 to 6 as Pick your colors, Check readability, Frame and accent, Color by purpose, Fine-tune a part, Try it, then save', () => {
     for (const width of [1400, 880]) {
       const root = renderAt(width);
       const heads = [...root.querySelectorAll<HTMLElement>('.gb-step-h')]
@@ -921,7 +921,7 @@ describe('Palette Lab step 4 Roles', () => {
         .sort((a, b) => Number(a[0]) - Number(b[0]));
       expect({ width, heads }).toEqual({
         width,
-        heads: [['1', 'Start'], ['2', 'Palette'], ['3', 'Frame and accent'], ['4', 'Roles'], ['5', 'Edit'], ['6', 'Try and save']],
+        heads: [['1', 'Pick your colors'], ['2', 'Check readability'], ['3', 'Frame and accent'], ['4', 'Color by purpose'], ['5', 'Fine-tune a part'], ['6', 'Try it, then save']],
       });
     }
   });
@@ -1041,16 +1041,18 @@ describe('Palette Lab step 5 bar', () => {
     expect(ratioOf(ten.querySelector('.gb-bar .gb-bar-low')!.textContent)).toBe(ratioOf(ten.querySelector('.gb-s2 .gb-step-state')!.textContent));
   });
 
-  it('{#bar-summary} is headed Try and save, gives each color its weakest grade, and says which colors are hard to read', () => {
+  it('{#bar-summary} is headed Try it, then save, shows each color as a bare swatch with its weakest grade in the tooltip, and says which colors are hard to read', () => {
     const root = lab.render(ctx());
     const head = root.querySelector('.gb-bar > .gb-step-h')!;
-    expect(head.querySelector('.gb-step-t')!.textContent).toBe('Try and save');
+    expect(head.querySelector('.gb-step-t')!.textContent).toBe('Try it, then save');
     expect(head.contains(result(root))).toBe(true);
     expect(root.querySelector('.gb-bar .gb-bar-read')!.textContent).toMatch(/^All 5 colors read well as normal text on every background\. Weakest contrast \d+\.\d:1\.$/);
     const three = lab.render(ctx({ ui: { mode: 'pasted', pasted: ['#333333', '#ffffff', '#eeeeee'] } }));
-    const pills = [...three.querySelectorAll<HTMLElement>('.gb-bar .gb-bar-pill')];
-    expect(pills.map(p => p.querySelector('.badge')!.textContent)).toEqual(['Fail', 'AAA', 'AAA']);
-    expect(pills[0].title).toMatch(/^Hard to read; avoid it for text\. #333333 at its weakest, on /);
+    const chips = [...three.querySelectorAll<HTMLElement>('.gb-bar .gb-bar-chip')];
+    expect(chips).toHaveLength(3);
+    expect(three.querySelectorAll('.gb-bar .gb-bar-chips .badge')).toHaveLength(0);
+    expect(three.querySelector('.gb-bar-pill')).toBeNull();
+    expect(chips[0].title).toMatch(/^Hard to read; avoid it for text\. #333333 at its weakest, on /);
     expect(three.querySelector('.gb-bar .gb-bar-read')!.textContent)
       .toMatch(/^2 of 3 colors read well as normal text on every background\. #333333 is hard to read on some backgrounds\. /);
   });
@@ -1104,7 +1106,7 @@ describe('Palette Lab collapsible steps', () => {
         expect({ width, n, expanded: headButton(root, n).getAttribute('aria-expanded') }).toEqual({ width, n, expanded: String(n === 1) });
       }
       expect(c.ui.sections).toEqual([1]);
-      // Step 6, Try and save, has no collapse: its body always shows.
+      // Step 6, Try it, then save, has no collapse: its body always shows.
       expect(root.querySelector<HTMLElement>('.gb-bar > .gb-step-body')!.hidden).toBe(false);
       expect(root.querySelector('.gb-bar .gb-step-btn')).toBeNull();
     }
@@ -1201,7 +1203,7 @@ describe('Theme Preview drawing fit', () => {
 describe('Palette Lab steps and label column', () => {
   it('opens each of steps 1, 2 and 3 with a numbered heading, and no step is a bordered box', () => {
     const root = lab.render(ctx());
-    const steps: Array<[string, string, string]> = [['.gb-s1', '1', 'Start'], ['.gb-s2', '2', 'Palette'], ['.gb-s3', '3', 'Frame and accent']];
+    const steps: Array<[string, string, string]> = [['.gb-s1', '1', 'Pick your colors'], ['.gb-s2', '2', 'Check readability'], ['.gb-s3', '3', 'Frame and accent']];
     for (const [selector, n, title] of steps) {
       const el = root.querySelector<HTMLElement>(selector)!;
       const head = el.firstElementChild!;
