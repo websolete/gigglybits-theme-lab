@@ -232,7 +232,23 @@
     const depth = typeof c.depth === 'number' && Number.isFinite(c.depth)
       ? Math.round(Math.min(2, Math.max(0.5, c.depth)) * 10) / 10 : 1;
     const text = Object.prototype.hasOwnProperty.call(TEXT_LEVELS, c.text) ? c.text : 'standard';
-    return { syntax, depth, text };
+    return { syntax, depth, text, accentGroups: cleanAccentGroups(c.accentGroups) };
+  }
+
+  /**
+   * The accent groups' own colors, cleaned: { [group id]: { index } | { color } }, index a palette
+   * color (clamped when built), color a shift from the base or an older fixed '#rrggbb'. A group
+   * that is missing, unknown or invalid follows the accent, so {} builds as before.
+   */
+  function cleanAccentGroups(value) {
+    const out = {};
+    if (!value || typeof value !== 'object') {return out;}
+    for (const [id, src] of Object.entries(value)) {
+      if (!Object.prototype.hasOwnProperty.call(ACCENT_GROUPS, id) || !src || typeof src !== 'object') {continue;}
+      if (Number.isInteger(src.index) && src.index >= 0) {out[id] = { index: src.index };}
+      else if (typeof src.color === 'string' && (isShift(src.color) || /^#[0-9a-f]{6}$/i.test(src.color))) {out[id] = { color: src.color.toLowerCase() };}
+    }
+    return out;
   }
 
   /**
@@ -275,17 +291,69 @@
    */
   const DEFAULT_COLOR = 'default';
 
+  // ---- Shifts: an override that follows the palette ----
+  //
+  // An edit stores how far the user moved a color from the one the builder works out, not the
+  // color itself, so a new base color moves the edit with it. A shift is the string
+  // '~dl,dc,dh' (OKLCH lightness, chroma and hue offsets) with an optional '/aa' alpha byte,
+  // such as '~0.05,-0.02,12/80'. A '#rrggbb' or '#rrggbbaa' edit is an older fixed color; it
+  // still builds exactly as before, and the Lab turns it into a shift when it loads it.
+
+  const SHIFT = /^~(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:\/([0-9a-f]{2}))?$/i;
+  const isShift = v => typeof v === 'string' && SHIFT.test(v);
+
+  /** The shift's parts: { dl, dc, dh, alpha }, alpha a 2-digit hex byte or null. */
+  function parseShift(v) {
+    const m = SHIFT.exec(String(v));
+    return m ? { dl: Number(m[1]), dc: Number(m[2]), dh: Number(m[3]), alpha: m[4] ? m[4].toLowerCase() : null } : null;
+  }
+
+  /** `computed` ('#rrggbb' or '#rrggbbaa') moved by `shift`. Without its own alpha it keeps computed's. */
+  function applyShift(shift, computed) {
+    const s = parseShift(shift);
+    if (!s || !HEX.test(computed)) {return computed;}
+    const o = GB.hexToOklch(computed.slice(0, 7));
+    const lch = {
+      l: Math.min(1, Math.max(0, o.l + s.dl)),
+      c: Math.max(0, o.c + s.dc),
+      h: (((o.h + s.dh) % 360) + 360) % 360,
+    };
+    // A color on the edge of sRGB (a channel at 0 or 255) can land a hair outside it after
+    // rounding, and oklchToHex would then take a whole 0.005 of chroma off. Shave the hair first.
+    for (let i = 0; i < 100 && lch.c > 0 && !GB.oklchInGamut(lch); i++) {lch.c = Math.max(0, lch.c - 0.00005);}
+    const hex = GB.oklchToHex(lch);
+    const alpha = s.alpha !== null ? s.alpha : computed.length === 9 ? computed.slice(7).toLowerCase() : '';
+    return hex + alpha;
+  }
+
   /**
-   * The Lab's edits, cleaned: { swatches: { name: hex }, keys: { key: hex | 'default' } }.
-   * Anything that is not a '#rrggbb' or '#rrggbbaa' string is dropped, except 'default' as a key
-   * edit (DEFAULT_COLOR), so a bad value never reaches a theme.
+   * The shift that moves `computed` to `target` (each '#rrggbb' or '#rrggbbaa'). A 6-digit target
+   * carries no alpha, so the result keeps computed's; an 8-digit one sets it. Rounded finely
+   * enough that applyShift(shiftFor(t, c), c) gives t back.
+   */
+  function shiftFor(target, computed) {
+    const a = GB.hexToOklch(computed.slice(0, 7));
+    const b = GB.hexToOklch(target.slice(0, 7));
+    const num = (x, digits) => {
+      const v = Number(x.toFixed(digits));
+      return String(Object.is(v, -0) ? 0 : v);
+    };
+    const dh = ((((b.h - a.h) % 360) + 540) % 360) - 180;
+    const alpha = target.length === 9 ? `/${target.slice(7).toLowerCase()}` : '';
+    return `~${num(b.l - a.l, 6)},${num(b.c - a.c, 6)},${num(dh, 4)}${alpha}`;
+  }
+
+  /**
+   * The Lab's edits, cleaned: { swatches: { name: value }, keys: { key: value } }. A value is a
+   * shift, or a '#rrggbb' / '#rrggbbaa' fixed color; a key edit may also be 'default'
+   * (DEFAULT_COLOR). Anything else is dropped, so a bad value never reaches a theme.
    */
   function cleanEdits(edits) {
     const pick = (obj, allowDefault) => {
       const out = {};
       if (obj && typeof obj === 'object') {
         for (const [k, v] of Object.entries(obj)) {
-          if (typeof v === 'string' && (HEX.test(v) || (allowDefault && v === DEFAULT_COLOR))) {out[k] = v.toLowerCase();}
+          if (typeof v === 'string' && (HEX.test(v) || isShift(v) || (allowDefault && v === DEFAULT_COLOR))) {out[k] = v.toLowerCase();}
         }
       }
       return out;
@@ -294,23 +362,70 @@
   }
 
   /**
+   * The palette's base color: for a generated palette the color its lightness, chroma and hue
+   * name (the Lab's Base color), otherwise its first color. `design` is { mode?, hue?,
+   * lightness?, chroma?, colors }, as a saved design or a Try record holds it.
+   */
+  function baseColor(design) {
+    const d = design && typeof design === 'object' ? design : {};
+    if (d.mode !== 'pasted' && [d.hue, d.lightness, d.chroma].every(v => typeof v === 'number' && Number.isFinite(v))) {
+      return GB.oklchToHex({ l: d.lightness, c: d.chroma, h: d.hue });
+    }
+    return Array.isArray(d.colors) && typeof d.colors[0] === 'string' ? d.colors[0].toLowerCase() : '#808080';
+  }
+
+  /**
+   * The color the editor accent is made from, before the readability lift: chrome.color when it
+   * is a custom color (a shift from the base, or an older fixed '#rrggbb'), otherwise the palette
+   * color chrome.index picks (clamped, default color 1). A custom accent works like a palette
+   * pick: it tints the surfaces and sets the status colors' lightness too.
+   */
+  function accentSource(entry, chrome = {}) {
+    const c = chrome && typeof chrome === 'object' ? chrome : {};
+    if (isShift(c.color) || (typeof c.color === 'string' && /^#[0-9a-f]{6}$/i.test(c.color))) {
+      return accentGroupColor(entry, { color: c.color });
+    }
+    return entry.colors[Math.min(Math.max(0, Number(c.index) || 0), entry.colors.length - 1)];
+  }
+
+  /** entry.base when it is a '#rrggbb' color, otherwise the palette's first color. */
+  const baseOf = entry => (typeof entry.base === 'string' && /^#[0-9a-f]{6}$/i.test(entry.base) ? entry.base.toLowerCase() : entry.colors[0].toLowerCase());
+
+  /**
    * The Frame settings, cleaned: { style: 'dark' | 'filled', color: '#rrggbb' }. chrome.frame is
-   * { index?, color?, style? }; a '#rrggbb' color wins over index, index picks a palette color
-   * (clamped), and with no usable color or index the frame follows chrome.index, the editor
-   * accent. A style other than 'filled' is 'dark', so a bad or missing frame builds today's frame.
+   * { index?, color?, style? }; a color wins over index. A shift color is a custom color that
+   * follows the base (entry.base, else color 1); a '#rrggbb' one is an older fixed color. index
+   * picks a palette color (clamped), and with no usable color or index the frame follows
+   * the editor accent (accentSource). A style other than 'filled' is 'dark', so a bad or missing
+   * frame builds today's frame.
    */
   function frameOf(entry, chrome = {}) {
     const f = chrome && typeof chrome.frame === 'object' && chrome.frame !== null ? chrome.frame : {};
     const last = entry.colors.length - 1;
     const clamp = i => Math.min(Math.max(0, Math.round(Number(i)) || 0), last);
     const style = f.style === 'filled' ? 'filled' : 'dark';
+    if (isShift(f.color)) return { style, color: applyShift(String(f.color).replace(/\/[0-9a-f]{2}$/i, ''), baseOf(entry)) };
     if (typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color)) return { style, color: f.color.toLowerCase() };
-    const index = Number.isFinite(Number(f.index)) && f.index !== null && f.index !== undefined ? clamp(f.index) : clamp(chrome.index);
-    return { style, color: entry.colors[index].toLowerCase() };
+    if (Number.isFinite(Number(f.index)) && f.index !== null && f.index !== undefined) {return { style, color: entry.colors[clamp(f.index)].toLowerCase() };}
+    return { style, color: accentSource(entry, chrome).toLowerCase() };
   }
 
-  /** An edited value; a 6-digit edit of a translucent swatch keeps the swatch's alpha. */
-  function editedValue(edit, computed) {
+  /**
+   * The roles the builder lifts for readability, with the contrast each must reach on the editor
+   * background. A shift edit of one of them is lifted the same way, so moving a text color can
+   * make it brighter but never unreadable.
+   */
+  const LIFTED = { kw: 4.5, fn: 4.5, str: 4.5, type: 4.5, num: 4.5, accent: 4.5, error: 4.5, warning: 4.5, success: 4.5, conflict: 4.5, inputBorder: 3 };
+
+  /** An opaque color raised until it reads `ratio` on the editor background; a translucent one as it is. */
+  const lifted = (hex, ratio) => (ratio && hex.length === 7 ? GB.liftTo(hex, THEME_BACKGROUND, ratio) : hex);
+
+  /**
+   * An edited value. A shift moves the computed value (then lifts it when the role is lifted);
+   * an older fixed color replaces it, and a 6-digit one on a translucent value keeps its alpha.
+   */
+  function editedValue(edit, computed, ratio = 0) {
+    if (isShift(edit)) {return lifted(applyShift(edit, computed), ratio);}
     return edit.length === 7 && computed.length === 9 ? edit + computed.slice(7) : edit;
   }
 
@@ -327,7 +442,7 @@
     const se = cleanEdits(edits).swatches;
     const sw = {};
     const put = (name, value) => {
-      sw[name] = se[name] ? editedValue(se[name], value) : value;
+      sw[name] = se[name] ? editedValue(se[name], value, LIFTED[name]) : value;
       return sw[name];
     };
     const opaque = hex => hex.slice(0, 7);
@@ -336,11 +451,10 @@
     const [kw, fn, str, type, num] = roleColors(entry, roles.syntax);
     put('kw', kw); put('fn', fn); put('str', str); put('type', type); put('num', num);
 
-    const index = Math.min(Math.max(0, Number(chrome.index) || 0), entry.colors.length - 1);
     // The palette's accent tints the surfaces and sets the status colors' lightness. An edited
     // accent replaces only the accent and the swatches made from it, so changing the button
     // color does not also re-tint the side bar or move the error red.
-    const paletteAccent = GB.liftTo(entry.colors[index], THEME_BACKGROUND, MIN_CONTRAST);
+    const paletteAccent = GB.liftTo(accentSource(entry, chrome), THEME_BACKGROUND, MIN_CONTRAST);
     const accentLch = GB.hexToOklch(paletteAccent);
     const accent = opaque(put('accent', paletteAccent));
     const editedAccentLch = GB.hexToOklch(accent);
@@ -588,11 +702,11 @@
     },
     {
       id: 'accent', name: 'Accent', roles: ['accent', 'accentHover', 'accentText', 'accentTextFaint', 'accentHalf', 'accentSoft', 'accentSel', 'accentWash', 'accentFaint'],
-      how: 'The Editor accent from step 3, lifted to 4.5:1. The rest are its hover, the text drawn on it and see-through steps of it.',
+      how: 'The accent from step 3, a palette color or a custom one, lifted to 4.5:1. The rest are its hover, the text drawn on it and see-through steps of it.',
     },
     {
       id: 'surfaces', name: 'Surfaces', roles: ['bg', 'deep', 'line', 'raised', 'hover', 'select', 'divider', 'border', 'inputBorder', 'shadow', 'none'],
-      how: 'Steps lighter and darker than the editor background, as far apart as Depth sets, tinted toward the accent\'s hue at step 3\'s surface strength. Input outlines are lifted to 3:1.',
+      how: 'Steps lighter and darker than the editor background, as far apart as Depth sets, tinted toward the accent\'s hue as strongly as step 3\'s Surfaces choice sets. Input outlines are lifted to 3:1.',
     },
     {
       id: 'text', name: 'Text', roles: ['bright', 'text', 'muted', 'faint', 'textWash', 'textWash2', 'scroll', 'scrollHover', 'scrollActive'],
@@ -927,6 +1041,89 @@
   const isEditorRole = name => typeof name === 'string' && Object.prototype.hasOwnProperty.call(SWATCHES, name) && SWATCHES[name][2] === 'editor';
 
   /**
+   * The accent groups (walkthrough decision G1): sets of keys the accent colors that can take
+   * their colors from another palette color. Every key is in an Accent-family swatch and outside
+   * FRAME_KEYS (test/themeBuilder.test.ts checks); a key in no group always follows the accent.
+   */
+  const ACCENT_GROUPS = {
+    buttons: {
+      label: 'Buttons', about: 'Primary and extension buttons: background, hover, text and separator',
+      keys: ['button.background', 'button.hoverBackground', 'button.foreground', 'button.separator',
+        'extensionButton.background', 'extensionButton.hoverBackground', 'extensionButton.foreground'],
+    },
+    badges: {
+      label: 'Badges and progress', about: 'Count badges and the progress bar',
+      keys: ['badge.background', 'badge.foreground', 'panelTitleBadge.background', 'panelTitleBadge.foreground', 'progressBar.background'],
+    },
+    links: {
+      label: 'Links', about: 'Links in text and notifications, and a link under the pointer',
+      keys: ['textLink.foreground', 'textLink.activeForeground', 'editorLink.activeForeground', 'notificationLink.foreground'],
+    },
+    selection: {
+      label: 'Selection and highlights', about: 'Selected text, word and bracket highlights, and matches in lists and suggestions',
+      keys: ['editor.selectionBackground', 'selection.background', 'terminal.selectionBackground', 'editor.inactiveSelectionBackground',
+        'editor.selectionHighlightBackground', 'terminal.inactiveSelectionBackground', 'editor.wordHighlightStrongBackground',
+        'editor.hoverHighlightBackground', 'terminal.hoverHighlightBackground', 'editorBracketMatch.background', 'editorBracketMatch.border',
+        'editor.foldBackground', 'editorOverviewRuler.selectionHighlightForeground', 'editorOverviewRuler.wordHighlightStrongForeground',
+        'list.highlightForeground', 'list.focusHighlightForeground', 'editorSuggestWidget.highlightForeground',
+        'editorSuggestWidget.focusHighlightForeground', 'list.dropBackground', 'list.dropBetweenBackground'],
+    },
+    focus: {
+      label: 'Focus outlines', about: 'Focus rings on inputs, toggles, lists, the status bar and the chat input',
+      keys: ['focusBorder', 'list.focusOutline', 'list.focusAndSelectionOutline', 'inputOption.activeBorder', 'inputOption.activeBackground',
+        'radio.activeBorder', 'radio.activeBackground', 'statusBarItem.focusBorder', 'statusBar.focusBorder', 'inlineChatInput.focusBorder'],
+    },
+    cursor: {
+      label: 'Cursor', about: 'The editor and terminal cursor',
+      keys: ['editorCursor.foreground', 'terminalCursor.foreground'],
+    },
+  };
+
+  /**
+   * The Accent family made from one color, by the rules swatches() uses for the accent: lifted
+   * to 4.5:1 on the editor background, a hover 0.05 lighter, black or white text on it, and the
+   * see-through steps. An accent group draws its keys from this set.
+   */
+  function accentSet(color) {
+    const accent = GB.liftTo(color, THEME_BACKGROUND, MIN_CONTRAST).slice(0, 7);
+    const lch = GB.hexToOklch(accent);
+    const accentText = textOn(accent);
+    return {
+      accent,
+      accentHover: GB.oklchToHex({ l: Math.min(MAX_LIGHTNESS, lch.l + 0.05), c: lch.c, h: lch.h }),
+      accentText, accentTextFaint: accentText + '66',
+      accentHalf: accent + '80', accentSoft: accent + '40', accentSel: accent + '4d', accentWash: accent + '26', accentFaint: accent + '1a',
+    };
+  }
+
+  /** An accent group's source color: its palette color (clamped), or its custom color resolved against the base. */
+  function accentGroupColor(entry, src) {
+    if (Number.isInteger(src.index)) {return entry.colors[Math.min(src.index, entry.colors.length - 1)].toLowerCase();}
+    if (isShift(src.color)) {return applyShift(src.color.replace(/\/[0-9a-f]{2}$/i, ''), baseOf(entry));}
+    return typeof src.color === 'string' ? src.color.toLowerCase() : null;
+  }
+
+  /**
+   * Moves each accent group's keys to the Accent family made from the group's own color.
+   * An edit to the Accent role wins (walkthrough decision G2): while 'accent' is edited, every
+   * group follows it; an edit to another Accent-family role keeps that role for its keys.
+   */
+  function applyAccentGroups(colors, entry, chrome, edits) {
+    const groups = cleanChrome(chrome).accentGroups;
+    const se = cleanEdits(edits).swatches;
+    if (se.accent || !Object.keys(groups).length) {return;}
+    for (const [id, src] of Object.entries(groups)) {
+      const color = accentGroupColor(entry, src);
+      if (!color) {continue;}
+      const set = accentSet(color);
+      for (const key of ACCENT_GROUPS[id].keys) {
+        const swatch = SWATCH_OF[key];
+        if (key in colors && swatch in set && !se[swatch]) {colors[key] = set[swatch];}
+      }
+    }
+  }
+
+  /**
    * What the groups set, as { keys: { key: value }, tokens: { rule name: value } } from the
    * swatches sw. An entry counts only when it names a key or token rule of its group's family
    * and an Editor swatch; every other entry, and anything that is not a group, is ignored.
@@ -963,9 +1160,53 @@
         colors[key] = sw[swatch];
       }
     }
+    applyAccentGroups(colors, entry, chrome, edits);
     Object.assign(colors, groupValues(sw, groups).keys);
-    Object.assign(colors, cleanEdits(edits).keys);
+    // A shift moves the key's value as the roles and groups left it; a key with no value has
+    // nothing to move, so its shift is dropped. A single key is not lifted: its role says
+    // nothing about whether this one key draws text (a button background is in the accent role).
+    for (const [key, edit] of Object.entries(cleanEdits(edits).keys)) {
+      if (!isShift(edit)) {colors[key] = edit;}
+      else if (typeof colors[key] === 'string' && HEX.test(colors[key])) {colors[key] = applyShift(edit, colors[key]);}
+    }
     return Object.fromEntries(Object.keys(colors).sort().map(k => [k, colors[k]]));
+  }
+
+  /**
+   * The color a swatch would have without its own edit: the one its shift is measured from.
+   * Every other edit still applies, so a role made from an edited role keeps that edit.
+   */
+  function preferredSwatch(entry, chrome, edits, name) {
+    const e = cleanEdits(edits);
+    delete e.swatches[name];
+    return swatches(entry, chrome, e)[name];
+  }
+
+  /** The color a key would have without its own edit, or undefined when the theme leaves it unset. */
+  function preferredKey(entry, chrome, edits, groups, key) {
+    const e = cleanEdits(edits);
+    delete e.keys[key];
+    return buildColors(entry, chrome, e, groups)[key];
+  }
+
+  /**
+   * edits with every fixed color turned into a shift from the color it replaces, one at a time,
+   * so each later one is measured with the earlier ones already shifts. A key the theme leaves
+   * unset has nothing to measure from and keeps its fixed color, as does 'default'.
+   */
+  function toShifts(entry, chrome, edits, groups = []) {
+    const out = cleanEdits(edits);
+    for (const [name, v] of Object.entries(out.swatches)) {
+      if (isShift(v)) {continue;}
+      const from = preferredSwatch(entry, chrome, out, name);
+      if (typeof from === 'string' && HEX.test(from)) {out.swatches[name] = shiftFor(v, from);}
+    }
+    for (const [key, v] of Object.entries(out.keys)) {
+      if (isShift(v) || v === DEFAULT_COLOR) {continue;}
+      const from = preferredKey(entry, chrome, out, groups, key);
+      if (typeof from === 'string' && HEX.test(from)) {out.keys[key] = shiftFor(v, from);}
+    }
+    return out;
   }
 
   /** The baseline token rules; an Editor text group sets a rule's foreground. */
@@ -1025,5 +1266,7 @@
     SLOT_COUNT, slotLabel, slotFile,
     KEY_GROUPS, SWATCHES, SWATCH_OF, FRAME_KEYS, GROUP_FAMILIES, ROLE_FAMILIES, TEXT_LEVELS, cleanChrome,
     DEFAULT_COLOR, roleColors, themeLabel, themeFileName, swatches, cleanEdits, buildColors, tokenColors, buildTheme, labSettings,
+    isShift, parseShift, applyShift, shiftFor, baseColor, preferredSwatch, preferredKey, toShifts,
+    ACCENT_GROUPS, accentSet, cleanAccentGroups, accentSource,
   };
 });

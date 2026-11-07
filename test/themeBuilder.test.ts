@@ -539,3 +539,140 @@ describe('the colors you see every day', () => {
     expect(undecided(ids).filter(id => !(id in TB.UNSET_KEYS))).toEqual([]);
   });
 });
+
+describe('shifts: edits and a custom frame color that follow the palette', () => {
+  const green = { colors: GB.harmony('analogous', { hue: 145, lightness: 0.7, chroma: 0.14 }).map((d: any) => d.hex), base: GB.oklchToHex({ l: 0.7, c: 0.14, h: 145 }) };
+  const red = { colors: GB.harmony('analogous', { hue: 25, lightness: 0.7, chroma: 0.14 }).map((d: any) => d.hex), base: GB.oklchToHex({ l: 0.7, c: 0.14, h: 25 }) };
+
+  it('{#shift-round-trip} a shift measured from one color gives the target back, alpha included', () => {
+    for (const [target, from] of [['#336699', '#a0c060'], ['#123456', '#1e1e1e'], ['#ff8800', '#202020'], ['#33669980', '#336699']]) {
+      expect(TB.applyShift(TB.shiftFor(target, from), from)).toBe(target);
+    }
+    // A 6-digit target on a translucent color keeps that color's alpha.
+    expect(TB.applyShift(TB.shiftFor('#336699', '#11223380'), '#11223380')).toBe('#33669980');
+    expect(TB.shiftFor('#336699', '#336699')).toBe('~0,0,0');
+  });
+
+  it('{#clean-shift} cleanEdits keeps shifts and fixed colors, and drops anything else', () => {
+    const cleaned = TB.cleanEdits({ swatches: { raised: '~0.05,-0.01,12', bad: '~x' }, keys: { 'tab.border': '~0,0,0/00', 'a.b': '#123456', 'c.d': 'default', 'e.f': 'red' } });
+    expect(cleaned).toEqual({ swatches: { raised: '~0.05,-0.01,12' }, keys: { 'tab.border': '~0,0,0/00', 'a.b': '#123456', 'c.d': 'default' } });
+  });
+
+  it('{#edit-follows-base} a role edit made on a green palette moves with the base when it turns red', () => {
+    const preferred = TB.swatches(green, {}).raised;
+    const edits = TB.toShifts(green, {}, { swatches: { raised: '#404a40' }, keys: {} });
+    expect(TB.isShift(edits.swatches.raised)).toBe(true);
+    expect(TB.swatches(green, {}, edits).raised).toBe('#404a40');
+    // On red, the edit sits the same distance from red's own Raised surface.
+    const onRed = TB.swatches(red, {}, edits).raised;
+    expect(onRed).toBe(TB.applyShift(edits.swatches.raised, TB.swatches(red, {}).raised));
+    expect(onRed).not.toBe('#404a40');
+    expect(preferred).not.toBe(TB.swatches(red, {}).raised);
+  });
+
+  it('{#edit-lifted} a shift edit of a text role is lifted to 4.5:1 on the editor background; a fixed color and a single key are not', () => {
+    const dark = '#202020';
+    const shifted = TB.toShifts(green, {}, { swatches: { kw: dark }, keys: {} });
+    const kw = TB.swatches(green, {}, shifted).kw;
+    expect(GB.contrastRatio(GB.parseColor(kw), GB.parseColor(TB.THEME_BACKGROUND))).toBeGreaterThanOrEqual(4.5);
+    expect(TB.swatches(green, {}, { swatches: { kw: dark }, keys: {} }).kw).toBe(dark);
+    const key = TB.toShifts(green, {}, { swatches: {}, keys: { 'button.background': '#102030' } });
+    expect(TB.buildColors(green, {}, key)['button.background']).toBe('#102030');
+  });
+
+  it('{#to-shifts-keeps} toShifts keeps default and a key the theme leaves unset as they are', () => {
+    const unset = Object.keys(TB.UNSET_KEYS)[0];
+    const out = TB.toShifts(green, {}, { swatches: {}, keys: { 'button.background': 'default', [unset]: '#123456' } });
+    expect(out.keys).toEqual({ 'button.background': 'default', [unset]: '#123456' });
+  });
+
+  it('{#frame-follows-base} a custom frame shift is measured from entry.base and follows it; a fixed one stays', () => {
+    const shift = TB.shiftFor('#336699', green.base);
+    const frame = { color: shift, style: 'filled' };
+    expect(TB.buildColors(green, { frame })['titleBar.activeBackground']).toBe('#336699');
+    expect(TB.buildColors(red, { frame })['titleBar.activeBackground']).toBe(TB.applyShift(shift, red.base));
+    expect(TB.buildColors(red, { frame: { color: '#336699', style: 'filled' } })['titleBar.activeBackground']).toBe('#336699');
+    // Without a base the shift is measured from color 1.
+    expect(TB.buildColors({ colors: green.colors }, { frame })['titleBar.activeBackground']).toBe(TB.applyShift(shift, green.colors[0]));
+  });
+
+  it('{#base-color} baseColor is the generated base, or a pasted palette\'s first color', () => {
+    expect(TB.baseColor({ mode: 'generated', hue: 145, lightness: 0.7, chroma: 0.14, colors: green.colors })).toBe(green.base);
+    expect(TB.baseColor({ mode: 'pasted', colors: ['#AA0000', '#00aa00'] })).toBe('#aa0000');
+  });
+});
+
+describe('accent groups: a group of accent colors from another palette color', () => {
+  const triad = { colors: GB.harmony('triad', { hue: 300, lightness: 0.6, chroma: 0.14 }).map((d: any) => d.hex), base: GB.oklchToHex({ l: 0.6, c: 0.14, h: 300 }) };
+  const accentRoles = TB.ROLE_FAMILIES.find((f: any) => f.id === 'accent').roles;
+
+  it('{#groups-valid} every group key is drawn by an Accent role and is not a frame key, and no key is in two groups', () => {
+    const seen = new Set<string>();
+    for (const [id, def] of Object.entries(TB.ACCENT_GROUPS) as [string, any][]) {
+      for (const key of def.keys) {
+        expect({ id, key, accent: accentRoles.includes(TB.SWATCH_OF[key]), frame: TB.FRAME_KEYS.includes(key), twice: seen.has(key) })
+          .toEqual({ id, key, accent: true, frame: false, twice: false });
+        seen.add(key);
+      }
+    }
+  });
+
+  it('{#accent-set-parity} accentSet of the accent color is exactly the Accent family swatches() makes', () => {
+    const sw = TB.swatches(triad, { index: 1 });
+    const set = TB.accentSet(triad.colors[1]);
+    for (const [name, value] of Object.entries(set)) { expect({ name, value }).toEqual({ name, value: sw[name] }); }
+  });
+
+  it('{#group-applies} Buttons from color 3 moves only the button colors, to the Accent family made from color 3', () => {
+    const before = TB.buildColors(triad, { index: 0 });
+    const after = TB.buildColors(triad, { index: 0, accentGroups: { buttons: { index: 2 } } });
+    const set = TB.accentSet(triad.colors[2]);
+    const changed = Object.keys(before).filter(k => before[k] !== after[k]);
+    expect(changed.every(k => TB.ACCENT_GROUPS.buttons.keys.includes(k))).toBe(true);
+    expect(after['button.background']).toBe(set.accent);
+    expect(after['button.hoverBackground']).toBe(set.accentHover);
+    expect(after['badge.background']).toBe(before['badge.background']);
+  });
+
+  it('{#accent-edit-wins} an Accent role edit wins over every group; an edit to another Accent role keeps that role for its keys', () => {
+    const edited = TB.toShifts(triad, { index: 0 }, { swatches: { accent: '#3a7f3a' }, keys: {} });
+    const plain = TB.buildColors(triad, { index: 0 }, edited);
+    expect(TB.buildColors(triad, { index: 0, accentGroups: { buttons: { index: 2 } } }, edited)).toEqual(plain);
+    const text = TB.buildColors(triad, { index: 0, accentGroups: { buttons: { index: 2 } } }, { swatches: { accentText: '#ff00ff' }, keys: {} });
+    expect(text['button.foreground']).toBe('#ff00ff');
+    expect(text['button.background']).toBe(TB.accentSet(triad.colors[2]).accent);
+  });
+
+  it('{#group-custom} a custom group color is a shift from the base and follows it', () => {
+    const shift = TB.shiftFor('#2f6fd0', triad.base);
+    const on = TB.buildColors(triad, { index: 0, accentGroups: { links: { color: shift } } });
+    expect(on['textLink.foreground']).toBe(TB.accentSet('#2f6fd0').accent);
+  });
+
+  it('{#groups-clean} cleanAccentGroups keeps known groups with an index or a color, and drops the rest', () => {
+    expect(TB.cleanAccentGroups({ buttons: { index: 2 }, links: { color: '~0.1,0,20' }, nope: { index: 1 }, cursor: { index: -1 }, focus: 'x' }))
+      .toEqual({ buttons: { index: 2 }, links: { color: '~0.1,0,20' } });
+    expect(TB.cleanChrome({}).accentGroups).toEqual({});
+  });
+});
+
+describe('a custom accent: the step 3 Accent from any color', () => {
+  const triad = { colors: GB.harmony('triad', { hue: 300, lightness: 0.6, chroma: 0.14 }).map((d: any) => d.hex), base: GB.oklchToHex({ l: 0.6, c: 0.14, h: 300 }) };
+
+  it('{#accent-custom} chrome.color, a shift from the base, builds the accent and the surface hue the way a palette pick of that color does', () => {
+    const shift = TB.shiftFor('#2f9e44', triad.base);
+    const custom = TB.swatches(triad, { index: 0, color: shift, surfaces: 'rich' });
+    const asPick = TB.swatches({ ...triad, colors: ['#2f9e44', ...triad.colors.slice(1)] }, { index: 0, surfaces: 'rich' });
+    for (const name of ['accent', 'accentHover', 'accentText', 'deep', 'raised', 'select', 'error']) {
+      expect({ name, value: custom[name] }).toEqual({ name, value: asPick[name] });
+    }
+    expect(TB.accentSource(triad, { index: 2, color: shift })).toBe(TB.applyShift(shift, triad.base));
+  });
+
+  it('{#accent-custom-fallback} ignores a chrome.color that is neither a shift nor a hex, and a frame with no color or index follows the custom accent', () => {
+    expect(TB.accentSource(triad, { index: 2, color: 'teal' })).toBe(triad.colors[2]);
+    const shift = TB.shiftFor('#2f9e44', triad.base);
+    const dark = TB.swatches(triad, { index: 0, color: shift, frame: { style: 'dark' } });
+    expect(dark.frameActive).toBe(GB.liftTo(TB.applyShift(shift, triad.base), '#1e1e1e', 4.5));
+  });
+});

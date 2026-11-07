@@ -1,7 +1,7 @@
 // @ts-check
 // Palette Lab for the Theme Lab, laid out to the design council's contract
 // (.copirate/working/prototypes/theme-lab-council/CONTRACT-v4.md): numbered steps (1 Start,
-// 2 Palette, 3 Frame and Editor, 4 Roles, 5 Edit, 6 Try and Save) and a Preview card. From 75rem
+// 2 Palette, 3 Frame and accent, 4 Roles, 5 Edit, 6 Try and Save) and a Preview card. From 75rem
 // they are two panes, the Preview card and steps 4 and 5 on the right; narrower, one column. render()
 // builds each region in the order of the width.
 //
@@ -76,9 +76,12 @@
     // The frame is an object per state too: { index } or { color }, and a style.
     const f = s.frame;
     const okStyle = f && (f.style === 'filled' || f.style === 'dark');
-    const okColor = f && typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color);
+    const okColor = f && typeof f.color === 'string' && (/^#[0-9a-f]{6}$/i.test(f.color) || Builder().isShift(f.color));
     const okIndex = f && Number.isInteger(f.index) && f.index >= 0;
     if (!okStyle || !(okColor || okIndex)) s.frame = DEFAULT_FRAME();
+    // A custom accent (step 3) is a shift from the base, or an older fixed color; anything else goes.
+    const a = s.accentColor;
+    if (!(typeof a === 'string' && (/^#[0-9a-f]{6}$/i.test(a) || Builder().isShift(a)))) delete s.accentColor;
     // The preview tabs and Pin are gone: the preview window draws the Workbench and the widgets
     // on one page, so a state saved before then drops its tab.
     delete s.previewTab;
@@ -95,7 +98,19 @@
       if (typeof g.name !== 'string') g.name = '';
       if (!g.roles || typeof g.roles !== 'object') g.roles = {};
     }
+    // The open sections: step numbers 1 to 5. A fresh Lab opens on Start alone.
+    if (!Array.isArray(s.sections)) s.sections = [1];
+    s.sections = s.sections.filter(n => SECTIONS.includes(n));
+    shiftFixedColors(s, ctx);
     return s;
+  }
+
+  /** The steps that collapse: 1 Start to 5 Edit. Step 6, Try and save, always shows. */
+  const SECTIONS = [1, 2, 3, 4, 5];
+
+  /** Opens step `n` in the state, leaving the other steps as they are. */
+  function openSection(s, n) {
+    if (!s.sections.includes(n)) s.sections = [...s.sections, n].sort();
   }
 
   // ----------------------------------------------------------------- style groups
@@ -155,10 +170,207 @@
    * up in one column. A row holding buttons uses a div: a label would forward a click on
    * its text to the first button.
    */
-  function fieldRow(name, controls, tag = 'label') {
+  function fieldRow(name, controls, tag = 'label', title = undefined) {
     return h(tag, { class: 'gb-pl-field' },
-      h('span', { class: 'gb-pl-field-name' }, name),
+      h('span', { class: 'gb-pl-field-name', title }, name),
       h(tag === 'label' ? 'span' : 'div', { class: 'gb-pl-field-control' }, ...controls));
+  }
+
+  // ------------------------------------------------------------- the Rule picker
+
+  /** One line on what each harmony rule makes, for the Rule picker. */
+  const RULE_NOTES = {
+    analogous: 'Neighbors up to 60° either side of the base. Close, calm hues.',
+    monochromatic: 'One hue: lighter, darker and softer versions of it.',
+    triad: 'Three hues evenly spaced, 120° apart.',
+    complementary: 'The base and its opposite, 180° away, with softer versions.',
+    'split-complementary': 'The base and the two hues either side of its opposite.',
+    square: 'Four hues evenly spaced, 90° apart.',
+    compound: 'The base and a neighbor, plus the pair opposite them.',
+    shades: 'One hue in five lightness steps.',
+  };
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    return el;
+  }
+
+  /**
+   * A rule's wheel diagram: a faint hue ring, and each of the rule's colors as a dot at its hue.
+   * Dots further out are lighter, so one hue at several lightnesses reads as a spoke.
+   */
+  function ruleWheel(rule, base, colors, size) {
+    const el = svg('svg', { width: size, height: size, viewBox: '-20 -20 40 40', class: 'gb-rule-wheel', 'aria-hidden': 'true' });
+    for (let a = 0; a < 360; a += 15) {
+      const t1 = ((a - 90) * Math.PI) / 180;
+      const t2 = ((a + 15 - 90) * Math.PI) / 180;
+      const [r, r2] = [19, 16.5];
+      const p = (rad, t) => `${(rad * Math.cos(t)).toFixed(2)} ${(rad * Math.sin(t)).toFixed(2)}`;
+      el.append(svg('path', {
+        d: `M${p(r, t1)} A${r} ${r} 0 0 1 ${p(r, t2)} L${p(r2, t2)} A${r2} ${r2} 0 0 0 ${p(r2, t1)}Z`,
+        fill: window.GB.oklchToHex({ l: 0.6, c: 0.1, h: a + 7.5 }), opacity: 0.8,
+      }));
+    }
+    HARMONY_RULES[rule].slots.forEach(([dh, dl], i) => {
+      const t = ((base.hue + dh - 90) * Math.PI) / 180;
+      const rad = 5 + ((dl + 0.16) / 0.32) * 8;
+      el.append(svg('circle', {
+        cx: (rad * Math.cos(t)).toFixed(2), cy: (rad * Math.sin(t)).toFixed(2), r: dh === 0 && dl === 0 ? 4.2 : 3.2,
+        fill: colors[i], stroke: '#111', 'stroke-width': 0.8,
+      }));
+    });
+    return el;
+  }
+
+  /** A rule's five colors as a strip of blocks. */
+  function ruleStrip(colors) {
+    return h('span', { class: 'gb-rule-strip', 'aria-hidden': 'true' }, colors.map(hex => {
+      const block = h('span', null);
+      block.style.background = hex;
+      return block;
+    }));
+  }
+
+  let ruleCount = 0;
+  /** Numbers the Wheel sliders' ids, so their labels point at them and two Lab roots never share one. */
+  let sliderCount = 0;
+
+  /**
+   * The Rule picker (S2 in the walkthrough log): a button showing the rule's wheel diagram, name
+   * and five colors at the current base, opening a listbox where every rule shows the same with
+   * a line on what it makes. A native select cannot draw colors. Keyboard: arrows, Home, End,
+   * Enter or Space to pick, Escape to close, and a letter jumps to the next rule starting with it.
+   * `base()` gives { hue, lightness, chroma }, `current()` the rule id, and `onChange` takes an
+   * event-like { target: { value } }. Returns { el, sync }: sync() redraws for a new base or rule.
+   */
+  function rulePicker(base, current, onChange) {
+    const id = `gb-rule-${++ruleCount}`;
+    const ids = Object.keys(HARMONY_RULES);
+    const colorsOf = rule => window.GB.harmony(rule, base()).map(d => d.hex);
+    let active = 0;
+    const button = h('button', {
+      type: 'button', class: 'gb-rule-btn gb-pl-rule', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-controls': `${id}-list`,
+      onclick: () => (list.hidden ? openList() : closeList(true)),
+      onkeydown: ev => {
+        if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(ev.key)) {
+          ev.preventDefault();
+          openList();
+        }
+      },
+    });
+    const list = h('div', {
+      class: 'gb-rule-list', role: 'listbox', id: `${id}-list`, tabindex: '-1', 'aria-label': 'Harmony rule',
+      onkeydown: ev => {
+        const move = to => {
+          ev.preventDefault();
+          active = (to + ids.length) % ids.length;
+          paintActive();
+        };
+        if (ev.key === 'ArrowDown') move(active + 1);
+        else if (ev.key === 'ArrowUp') move(active - 1);
+        else if (ev.key === 'Home') move(0);
+        else if (ev.key === 'End') move(ids.length - 1);
+        else if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          choose(ids[active]);
+        } else if (ev.key === 'Escape') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          closeList(true);
+        } else if (ev.key === 'Tab') closeList(false);
+        else if (/^[a-z]$/i.test(ev.key)) {
+          const from = ids.findIndex((rid, i) => i > active && HARMONY_RULES[rid].name.toLowerCase().startsWith(ev.key.toLowerCase()));
+          const at = from >= 0 ? from : ids.findIndex(rid => HARMONY_RULES[rid].name.toLowerCase().startsWith(ev.key.toLowerCase()));
+          if (at >= 0) move(at);
+        }
+      },
+      onfocusout: ev => {
+        if (!el.contains(/** @type {Node | null} */ (ev.relatedTarget))) closeList(false);
+      },
+    });
+    list.hidden = true;
+    const el = h('div', { class: 'gb-rule' }, button, list);
+
+    function optionId(i) { return `${id}-o${i}`; }
+    function paintActive() {
+      list.querySelectorAll('[role="option"]').forEach((o, i) => o.classList.toggle('gb-rule-active', i === active));
+      list.setAttribute('aria-activedescendant', optionId(active));
+      const o = list.querySelector(`#${optionId(active)}`);
+      if (o && typeof o.scrollIntoView === 'function') o.scrollIntoView({ block: 'nearest' });
+    }
+    function drawOptions() {
+      const b = base();
+      list.replaceChildren(...ids.map((rid, i) => {
+        const colors = colorsOf(rid);
+        return h('div', {
+          class: 'gb-rule-opt', role: 'option', id: optionId(i), 'data-rule': rid, 'aria-selected': String(rid === current()),
+          onmousedown: ev => ev.preventDefault(),
+          onclick: () => choose(rid),
+        }, ruleWheel(rid, b, colors, 40),
+        h('span', { class: 'gb-rule-text' }, h('span', { class: 'gb-rule-name' }, HARMONY_RULES[rid].name), h('span', { class: 'gb-rule-note' }, RULE_NOTES[rid] || '')),
+        ruleStrip(colors));
+      }));
+    }
+    /**
+     * Places the open list against the window under the button (above it when there is more room
+     * there), so a column that scrolls on its own, such as the wide layout's task column, cannot
+     * clip it. A scroll outside the list closes it, since the button has moved away.
+     */
+    function place() {
+      if (typeof button.getBoundingClientRect !== 'function') return;
+      const r = button.getBoundingClientRect();
+      const vw = window.innerWidth || 0;
+      const vh = window.innerHeight || 0;
+      if (!(vw > 0 && vh > 0 && r.width > 0)) return;
+      const width = Math.max(r.width, Math.min(480, vw - 16));
+      const left = Math.max(8, Math.min(r.left, vw - width - 8));
+      const below = vh - r.bottom - 8;
+      const above = r.top - 8;
+      const up = below < 240 && above > below;
+      Object.assign(list.style, {
+        position: 'fixed', left: `${left}px`, width: `${width}px`,
+        top: up ? '' : `${r.bottom + 2}px`, bottom: up ? `${vh - r.top + 2}px` : '',
+        maxHeight: `${Math.max(160, Math.min(384, up ? above : below))}px`,
+      });
+    }
+    const onScroll = ev => {
+      if (!list.contains(/** @type {Node} */ (ev.target))) closeList(false);
+    };
+    function openList() {
+      active = Math.max(0, ids.indexOf(current()));
+      drawOptions();
+      list.hidden = false;
+      place();
+      window.addEventListener('scroll', onScroll, true);
+      window.addEventListener('resize', onScroll);
+      button.setAttribute('aria-expanded', 'true');
+      paintActive();
+      list.focus();
+    }
+    function closeList(refocus) {
+      if (list.hidden) return;
+      list.hidden = true;
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+      button.setAttribute('aria-expanded', 'false');
+      if (refocus) button.focus();
+    }
+    function choose(rid) {
+      closeList(true);
+      if (rid !== current()) onChange({ target: { value: rid } });
+    }
+    function sync() {
+      const rule = current();
+      const colors = colorsOf(rule);
+      button.setAttribute('aria-label', `Harmony rule: ${HARMONY_RULES[rule].name}`);
+      button.replaceChildren(ruleWheel(rule, base(), colors, 26), h('span', { class: 'gb-rule-name' }, HARMONY_RULES[rule].name), ruleStrip(colors),
+        h('span', { class: 'codicon codicon-chevron-down gb-rule-chev', 'aria-hidden': 'true' }));
+      if (!list.hidden) drawOptions();
+    }
+    sync();
+    return { el, sync };
   }
 
   // ------------------------------------------------------------------ pieces
@@ -284,7 +496,7 @@
           h('div', { class: 'gb-pl-color-cell' }, chip,
             h('span', { class: 'gb-pl-color-text' },
               h('span', { class: 'gb-pl-hex' }, hex),
-              d ? h('span', { class: 'gb-pl-oklch muted' }, `L ${d.l.toFixed(2)} C ${d.c.toFixed(3)} H ${Math.round(d.h)}`) : null))),
+              d ? h('span', { class: 'gb-pl-oklch muted', title: 'OKLCH values: L is lightness (0 black, 1 white), C is chroma (0 gray, higher more vivid), H is hue in degrees' }, `L ${d.l.toFixed(2)} C ${d.c.toFixed(3)} H ${Math.round(d.h)}`) : null))),
         columns.map(col => {
           const ratio = contrastRatio(fg, parseColor(col.hex));
           const [cls, words] = contrastGrade(ratio);
@@ -302,7 +514,7 @@
         }));
     });
     const head = h('tr', null,
-      h('th', { scope: 'col' }, 'Color'),
+      h('th', { scope: 'col' }, 'Palette color'),
       columns.map(col => h('th', { scope: 'col', title: `${col.about} (${col.hex})` },
         h('span', { class: 'gb-pl-bg-name' }, col.label), h('span', { class: 'gb-pl-bg-hex muted' }, col.hex))));
     return h('div', { class: 'gb-pl-table-wrap' },
@@ -315,19 +527,22 @@
   /** Step 2's opening line: what the table's numbers are. */
   function contrastIntro() {
     return h('p', { class: 'gb-pl-intro muted' },
-      'How readable each color is as text on four dark backgrounds. Each cell shows "Aa" in the color on that background, small as normal text and bold as large text, then its contrast ratio: higher is easier to read, from 1 (invisible) to 21 (black on white).');
+      'How readable each palette color is as text on four dark backgrounds. Each cell shows "Aa" in the color, at normal size and large and bold, then its contrast ratio: higher reads more easily, from 1 (invisible) to 21 (black on white).');
   }
 
   /**
-   * Names the grade thresholds and what each means, so the badge colors and the short grade
-   * names never carry the meaning alone.
+   * Names the grade thresholds on one line, each grade's badge and its range ('7:1+'), so the
+   * badge colors and the short grade names never carry the meaning alone. What each grade means
+   * is in its tooltip, and in hidden text for screen readers.
    */
   function contrastLegend() {
     return h('div', { class: 'gb-pl-legend', role: 'list', 'aria-label': 'What the grades mean' },
-      [['aaa', 'AAA', '7:1 or more'], ['aa', 'AA', '4.5:1 or more'], ['large', 'Large', '3:1 or more'], ['fail', 'Fail', 'under 3:1']]
-        .map(([cls, tag, range]) => h('div', { class: 'gb-pl-legend-row', role: 'listitem' },
+      h('span', { class: 'gb-pl-legend-l', 'aria-hidden': 'true' }, 'Grades'),
+      [['aaa', 'AAA', '7:1+', '7:1 or more'], ['aa', 'AA', '4.5:1+', '4.5:1 or more'], ['large', 'Large', '3:1+', '3:1 or more'], ['fail', 'Fail', 'under 3:1', 'under 3:1']]
+        .map(([cls, tag, short, range]) => h('span', { class: 'gb-pl-legend-row', role: 'listitem', title: `${tag}, ${range}: ${GRADE_MEANING[cls]}` },
           h('span', { class: `badge ${cls}` }, tag),
-          h('span', null, h('b', null, range), `: ${GRADE_MEANING[cls]}`))));
+          h('span', null, short),
+          h('span', { class: 'gb-sr' }, `: ${GRADE_MEANING[cls]}`))));
   }
 
   // ------------------------------------------------------------- candidate theme
@@ -353,18 +568,55 @@
    * theme alone.
    */
   function themeOf(candidate, s, groups = []) {
-    const index = Math.min(Number(s.chromeIndex) || 0, candidate.colors.length - 1);
-    const chrome = { index, surfaces: s.surfaces, frame: s.frame, ...roleSettingsOf(s) };
-    const entry = { colors: candidate.colors };
+    const { index, chrome, entry } = inputsOf(candidate, s);
     const B = Builder();
     // A key edited to VS Code's default is left out, so the drawing shows it unset: a modern UI
     // key in VS Code's worked-out default (galleryContext), any other in the Lab's own color.
     const colors = Object.fromEntries(Object.entries(B.buildColors(entry, chrome, s.edits, groups)).filter(([, v]) => v !== B.DEFAULT_COLOR));
     return {
-      index, chrome, colors,
+      index, chrome, entry, groups, colors,
       sw: B.swatches(entry, chrome, s.edits),
       tokens: B.tokenColors(entry, chrome, s.edits, groups),
     };
+  }
+
+  /** The candidate's base color: the Wheel's Base color, or a pasted palette's first color. */
+  function baseHexOf(candidate) {
+    return Builder().baseColor({
+      mode: candidate.source, hue: candidate.baseHue, lightness: candidate.lightness, chroma: candidate.chroma, colors: candidate.colors,
+    });
+  }
+
+  /** What the builder takes for the candidate: the accent index, the chrome choices and the entry (palette and base). */
+  function inputsOf(candidate, s) {
+    const index = Math.min(Number(s.chromeIndex) || 0, candidate.colors.length - 1);
+    const chrome = { index, ...(s.accentColor ? { color: s.accentColor } : {}), surfaces: s.surfaces, frame: s.frame, ...roleSettingsOf(s) };
+    const entry = { colors: candidate.colors, base: baseHexOf(candidate) };
+    return { index, chrome, entry };
+  }
+
+  /** The edits and frame last checked for fixed colors, so a state with none left is not checked again. */
+  let fixedChecked = '';
+
+  /**
+   * Turns the fixed colors an older state, a saved theme or a Try holds into shifts that follow
+   * the palette (media/themeBuilder.js toShifts): each edit is measured from the color it
+   * replaces, and a custom frame color from the base color. A key the theme leaves unset keeps
+   * its fixed color, having nothing to measure from.
+   */
+  function shiftFixedColors(s, ctx) {
+    const sig = JSON.stringify([s.edits, s.frame]);
+    if (sig === fixedChecked) return;
+    const B = Builder();
+    const fixed = v => typeof v === 'string' && v.startsWith('#');
+    const frameFixed = fixed(s.frame.color);
+    const editsFixed = [...Object.values(s.edits.swatches), ...Object.values(s.edits.keys)].some(fixed);
+    if (frameFixed || editsFixed) {
+      const { chrome, entry } = inputsOf(candidateOf(s), s);
+      if (frameFixed) s.frame = { color: B.shiftFor(s.frame.color, entry.base), style: s.frame.style };
+      if (editsFixed) s.edits = B.toShifts(entry, { ...chrome, frame: s.frame }, s.edits, previewGroups(ctx, s));
+    }
+    fixedChecked = JSON.stringify([s.edits, s.frame]);
   }
 
   /**
@@ -442,7 +694,7 @@
    * is { key, value } once a key's color editor is switched to 'key' (this key only) or 'role'
    * (every key in its role); without one, keyEditor picks from the edits.
    */
-  const dock = { state: 'closed', key: null, scope: null, edits: false, scroll: 0, step: 0 };
+  const dock = { state: 'closed', key: null, scope: null, edits: false, scroll: 0 };
   /**
    * The ui state the pick and the dock belong to. The Theme Lab redraws with the same state
    * object, so they survive its redraws; a render with another state starts with neither.
@@ -455,13 +707,19 @@
     Object.assign(result, { text: '', after: null, pendingSave: null, ownName: null });
     groupsMode = false;
     newGroupOpen = false;
-    Object.assign(dock, { state: 'closed', key: null, scope: null, edits: false, scroll: 0, step: 0 });
+    Object.assign(dock, { state: 'closed', key: null, scope: null, edits: false, scroll: 0 });
     Object.assign(rolesUi, { shown: [], open: null });
+    highlighted = '';
   }
-  /** Opens the dock on a pick, with the first key's strip open. */
-  function openDockOn(part) {
+  /**
+   * Opens the dock on a pick, with the first key's strip open, and opens step 5 in `ui`; the
+   * other steps stay open or collapsed as they were.
+   */
+  function openDockOn(part, ui) {
     picked = part;
-    Object.assign(dock, { state: 'open', key: part.keys[0] || part.around[0] || null, scope: null, scroll: 0, step: 0 });
+    Object.assign(dock, { state: 'open', key: part.keys[0] || part.around[0] || null, scope: null, scroll: 0 });
+    if (!Array.isArray(ui.sections)) ui.sections = [1];
+    openSection(ui, 5);
   }
 
   function describePart(part, card, scope) {
@@ -600,6 +858,44 @@
     return trigger;
   }
 
+  /**
+   * How `now` differs from `preferred`, the color the palette gives, in words: lighter or darker,
+   * more vivid or grayer, and the hue turn. Lightness runs 0 to 1 and chroma 0 to about 0.3; a
+   * difference too small to see is left out.
+   */
+  function shiftWords(preferred, now) {
+    const a = GBO(preferred.slice(0, 7));
+    const b = GBO(now.slice(0, 7));
+    const parts = [];
+    const dl = b.l - a.l;
+    const dc = b.c - a.c;
+    if (Math.abs(dl) >= 0.005) parts.push(`${dl > 0 ? 'lighter' : 'darker'} by ${Math.abs(dl).toFixed(2)}`);
+    if (Math.abs(dc) >= 0.003) parts.push(`${dc > 0 ? 'more vivid' : 'grayer'} by ${Math.abs(dc).toFixed(3)}`);
+    if (a.c >= 0.02 && b.c >= 0.02) {
+      const dh = ((((b.h - a.h) % 360) + 540) % 360) - 180;
+      if (Math.abs(dh) >= 1) parts.push(`hue ${dh > 0 ? '+' : '-'}${Math.round(Math.abs(dh))}°`);
+    }
+    const alphaOf = hex => (hex.length === 9 ? Math.round(parseInt(hex.slice(7), 16) / 2.55) : 100);
+    if (alphaOf(now) !== alphaOf(preferred)) parts.push(`${alphaOf(now)}% opacity`);
+    return parts.length ? parts.join(', ') : 'no visible change';
+  }
+
+  /**
+   * The line under an edited color (D5 in the walkthrough log): the color the palette gives with
+   * a dot, how far the edit moves it, and whether the readability lift raised it. `edit` is the
+   * stored value; null when there is no edit, so nothing is drawn.
+   */
+  function shiftNote(preferred, now, edit) {
+    if (!edit || edit === Builder().DEFAULT_COLOR || typeof preferred !== 'string' || !/^#[0-9a-f]{6}/i.test(preferred) || !/^#[0-9a-f]{6}/i.test(now || '')) return null;
+    const B = Builder();
+    const raised = B.isShift(edit) && now.length === 7 && B.applyShift(edit, preferred).slice(0, 7) !== now.slice(0, 7);
+    return h('p', {
+      class: 'gb-shift muted',
+      title: 'The edit is kept as this difference, so it moves with the palette when the base color or rule changes. Lightness runs from 0 (black) to 1 (white); chroma from 0 (gray) to about 0.3 (most vivid); hue is degrees around the color wheel.',
+    }, dot(preferred), h('span', null, `Palette gives ${preferred.slice(0, 7)}; this edit: ${shiftWords(preferred, now)}.`),
+    raised ? h('span', { class: 'gb-shift-raised' }, ' Raised to stay readable on the editor background.') : null);
+  }
+
   /** The Lab's edits as a copy that later edits cannot change. */
   const copyEdits = edits => ({ swatches: { ...edits.swatches }, keys: { ...edits.keys } });
 
@@ -617,19 +913,21 @@
     if (!part) return '';
     const region = part.region && REGION_NAMES[part.region];
     if (!part.label && region) return `The whole of ${region}`;
-    return `${part.label ? `"${part.label}"` : 'The selected part'}${region ? ` in ${region}` : ''}`;
+    // The widget family it is in leads, 'Buttons: Commit'; a Workbench part names its region instead.
+    const g = Gallery();
+    const card = g && Array.isArray(g.cards) && part.card !== 'workbench' ? g.cards.find(c => c.id === part.card) : null;
+    return `${card ? `${card.title}: ` : ''}${part.label || 'The selected part'}${region ? `, in ${region}` : ''}`;
   }
 
   /**
-   * The Edit dock (CONTRACT-v4 section 1, "Wide, a part picked"): a labelled region with the
-   * heading '5 Edit' and the part, an Edits (n) list, Reset all and a close button; then one
+   * The Edit dock (CONTRACT-v4 section 1, "Wide, a part picked"): a labelled region headed by
+   * the part (step 5's heading above it says '5 Edit'), an Edits (n) list, Reset all and a close button; then one
    * line per key of the pick and of the box around it, each a button that opens the one edit
    * strip (the role's color for every key in it, and this key alone). With no pick, a line
    * points to the preview window and to step 4, Roles. `act.close` closes it.
-   * With the dock at 'min', only its heading line is drawn. `lead`, when given, is step 3's
-   * Frame or Editor row, moved here as the dock's first row (narrow, a Frame or Editor pick).
+   * With the dock at 'min', only its heading line is drawn.
    */
-  function editDock(theme, ctx, info, edit, act, lead = null) {
+  function editDock(theme, ctx, info, edit, act) {
     const s = stateOf(ctx);
     const B = Builder();
     const keyCount = swatch => (B.KEY_GROUPS[swatch] || []).length;
@@ -644,9 +942,8 @@
     const count = editCount(edits);
     const id = `gb-dock-h-${++dockCount}`;
 
-    const heading = h('h3', { class: 'gb-step-h gb-dock-h', id },
-      h('span', { class: 'gb-step-n', 'aria-hidden': 'true' }, '5'), h('span', { class: 'gb-step-t' }, 'Edit'),
-      h('span', { class: 'gb-dock-what' }, pickedWhat(picked)));
+    // Step 5's own heading, above the dock, says '5 Edit'; the dock's names the part.
+    const heading = h('h4', { class: 'gb-dock-h', id }, h('span', { class: 'gb-dock-what' }, pickedWhat(picked) || 'No part picked'));
     const section = h('section', {
       class: 'gb-pl-edit gb-dock', role: 'region', 'aria-labelledby': id,
       onkeydown: ev => { if (ev.key === 'Escape') { ev.preventDefault(); act.close(); } },
@@ -654,23 +951,25 @@
     if (dock.state === 'min') {
       // One line: the part and the edit count; clicking it opens the dock again where it was.
       section.setAttribute('data-min', '');
-      if (!picked) heading.querySelector('.gb-dock-what').textContent = '';
+      if (!picked) heading.querySelector('.gb-dock-what').textContent = 'Open the Edit panel';
       section.append(h('div', { class: 'gb-dock-head' },
         h('button', { class: 'gb-dock-reopen secondary', 'aria-expanded': 'false', onclick: act.reopen }, heading, h('span', { class: 'gb-dock-count muted' }, editsWord(count)))));
       return section;
     }
 
-    // Edits (n): one line per edit with Reset, under the heading.
+    // Edits (n): one line per edit with Reset, under the heading. An edit is stored as a shift,
+    // so each line shows the color it gives now.
     const editRow = (label, value, clear) => h('li', null,
       value === B.DEFAULT_COLOR ? h('span', { class: 'gb-pl-dot gb-pl-dot-none' }) : dot(value),
-      h('span', { class: 'gb-dock-edit-name' }, value === B.DEFAULT_COLOR ? `${label} (VS Code default)` : label),
+      h('span', { class: 'gb-dock-edit-name' }, value === B.DEFAULT_COLOR ? `${label}, VS Code default` : label),
       reset(`Undo the edit to ${label}`, clear));
+    const keyNow = (k, v) => (v === B.DEFAULT_COLOR ? v : theme.colors[k] || modernDefaults[k] || (B.isShift(v) ? '#000000' : v));
     const editList = h('div', { class: 'gb-dock-edits gb-pl-edits', id: `${id}-edits` },
-      count ? h('ul', null,
-        ...Object.entries(edits.swatches).map(([sw, v]) => editRow(`${roleName(sw)} (role)`, v, e => { delete e.swatches[sw]; })),
-        ...Object.entries(edits.keys).map(([k, v]) => editRow(k, v, e => { delete e.keys[k]; })))
-        : h('p', { class: 'muted' }, 'No edits yet. Try in VS Code applies them with the palette.'));
-    editList.hidden = !dock.edits;
+      h('ul', null,
+        ...Object.keys(edits.swatches).map(sw => editRow(`${roleName(sw)} (role)`, theme.sw[sw], e => { delete e.swatches[sw]; })),
+        ...Object.entries(edits.keys).map(([k, v]) => editRow(`${plainKey(k)} (${k})`, keyNow(k, v), e => { delete e.keys[k]; }))));
+    // With no edits there is no list, and no Edits button: the step heading already says 0 edits.
+    editList.hidden = !dock.edits || !count;
     const editsToggle = h('button', {
       class: 'secondary gb-dock-edits-toggle', 'aria-expanded': String(dock.edits), 'aria-controls': editList.id,
       onclick: () => {
@@ -680,10 +979,25 @@
       },
     }, `Edits (${count})`);
     section.append(h('div', { class: 'gb-dock-head' }, heading,
-      editsToggle,
+      count ? editsToggle : null,
       count ? h('button', { class: 'secondary', onclick: () => edit(e => { e.swatches = {}; e.keys = {}; }, true) }, 'Reset all') : null,
       h('button', { class: 'secondary gb-dock-close', 'aria-label': 'Close the Edit panel', title: 'Close (Esc)', onclick: act.close }, '×')),
     editList);
+
+    /** A fully transparent color reads 'transparent' rather than '#rrggbb00'. */
+    const valueWord = v => (/^#[0-9a-f]{6}00$/i.test(v || '') ? 'transparent' : v);
+    /**
+     * A key's sample, as in Roles: its role's kind of sample in the key's own color, or for a key
+     * with no role, text for a foreground, a line for a border and a fill for anything else.
+     */
+    const keySample = (key, swatch, value) => {
+      const own = swatch || '__key';
+      const names = sw => (sw === own ? plainKey(key) : roleName(sw));
+      const kind = swatch ? sampleKind(swatch)
+        : /foreground$/i.test(key) ? { kind: 'text', on: 'bg' }
+          : /border$/i.test(key) ? { kind: 'line', on: 'bg' } : { kind: 'fill', on: 'bg', ink: 'text' };
+      return roleSample(own, value, theme.sw, names, 'gb-pl-key-sample', kind);
+    };
 
     // One line per key; the row opens its edit strip, and only one strip is open.
     const rows = [];
@@ -706,9 +1020,9 @@
           }
         },
       },
-      value || fallback ? dot(value || fallback) : h('span', { class: 'gb-pl-dot gb-pl-dot-none' }),
-      h('code', null, key),
-      h('span', { class: 'gb-pl-key-hex muted' }, value || fallback || 'unset'),
+      value || fallback ? keySample(key, swatch, value || fallback) : h('span', { class: 'gb-pl-dot gb-pl-dot-none' }),
+      h('span', { class: 'gb-pl-key-label' }, h('span', { class: 'gb-pl-key-name' }, plainKey(key)), h('code', null, key)),
+      h('span', { class: 'gb-pl-key-hex muted' }, valueWord(value || fallback) || 'unset'),
       pair ? (() => {
         const [cls] = contrastGrade(pair.ratio);
         return h('span', { class: `badge ${cls}`, title: ratioTitle(pair.ratio, `On ${pair.bg}, the color behind it`) }, `${pair.ratio.toFixed(1)}:1`);
@@ -730,13 +1044,16 @@
     function keyEditor(key, swatch, value, fallback, badge) {
       const own = s.edits.keys[key];
       const isDefault = own === B.DEFAULT_COLOR;
-      const shown = isDefault ? fallback : own || value || fallback;
+      // value already carries this key's own edit (a shift is resolved by the builder).
+      const shown = isDefault ? fallback : value || fallback;
       const hex7 = v => (/^#[0-9a-f]{6}/i.test(v || '') ? v.slice(0, 7).toLowerCase() : '#000000');
       const alphaOf = v => (/^#[0-9a-f]{8}$/i.test(v || '') ? Math.round(parseInt(v.slice(7), 16) / 2.55) : 100);
       const withAlpha = (c, a) => (a >= 100 ? c : c + Math.round((a * 255) / 100).toString(16).padStart(2, '0'));
       const keyColor = hex7(shown);
       const roleColor = swatch ? hex7(theme.sw[swatch]) : keyColor;
-      let scope = !swatch ? 'key' : dock.scope && dock.scope.key === key ? dock.scope.value : own ? 'key' : 'role';
+      // A key opens on This key only: a click on one part should change that part. Whole role is a
+      // click away, and says how many colors it changes.
+      let scope = swatch && dock.scope && dock.scope.key === key ? dock.scope.value : 'key';
       // What the editor shows; the inputs change it as they move, before the redraw.
       const view = { color: scope === 'role' ? roleColor : keyColor, alpha: scope === 'role' ? 100 : alphaOf(shown), unset: scope === 'key' && isDefault };
       const choose = next => { scope = next; dock.scope = { key, value: next }; };
@@ -785,7 +1102,7 @@
       const segKey = h('button', { type: 'button', class: 'gb-ke-seg', 'data-scope': 'key', onclick: () => { choose('key'); Object.assign(view, { color: keyColor, alpha: alphaOf(shown), unset: isDefault }); paint(); } }, 'This key only');
       const segRole = h('button', {
         type: 'button', class: 'gb-ke-seg', 'data-scope': 'role', disabled: !swatch,
-        title: swatch ? `Changes every key in ${roleName(swatch)}` : 'This key has no role; it is colored on its own',
+        title: swatch ? `Changes all ${keyCount(swatch)} colors in ${roleName(swatch)}, everywhere they are used` : 'This key has no role; it is colored on its own',
         onclick: () => { choose('role'); Object.assign(view, { color: roleColor, alpha: 100, unset: false }); paint(); },
       }, swatch ? `Whole role: ${roleName(swatch)} (${keyCount(swatch)})` : 'Whole role');
       const transparent = h('button', {
@@ -842,12 +1159,15 @@
         else if (key in B.UNSET_KEYS) lines.push(`Not set by the theme: ${B.UNSET_KEYS[key]}`);
         else if (fallback) lines.push('Not set by the theme: VS Code works it out from the theme\'s other colors for the modern UI.');
         if (scope === 'role' && own) lines.push('This key has its own edit, which wins over the role. Reset it under This key only.');
-        notes.replaceChildren(...lines.map(t => h('p', { class: 'muted gb-ke-note' }, t)));
+        const shift = scope === 'role'
+          ? shiftNote(B.preferredSwatch(theme.entry, theme.chrome, s.edits, swatch), theme.sw[swatch], s.edits.swatches[swatch])
+          : shiftNote(B.preferredKey(theme.entry, theme.chrome, s.edits, theme.groups, key) || fallback, shown, own);
+        notes.replaceChildren(...(shift ? [shift] : []), ...lines.map(t => h('p', { class: 'muted gb-ke-note' }, t)));
       }
 
       const field = (label, ...kids) => h('div', { class: 'gb-ke-row' }, h('span', { class: 'gb-ke-l' }, label), h('div', { class: 'gb-ke-ctl' }, ...kids));
       const editor = h('div', { class: 'gb-ke', role: 'group', 'aria-label': `Edit ${key}` },
-        h('div', { class: 'gb-ke-top' }, chip, h('div', { class: 'gb-ke-name' }, h('code', null, key), sub), badge ? badge.cloneNode(true) : null),
+        h('div', { class: 'gb-ke-top' }, chip, h('div', { class: 'gb-ke-name' }, h('span', { class: 'gb-ke-plain' }, plainKey(key), ' ', h('code', null, key)), sub), badge ? badge.cloneNode(true) : null),
         field('Change', h('div', { class: 'gb-ke-segs', role: 'group', 'aria-label': 'What to change' }, segKey, segRole)),
         field('Color', picker, hexField),
         field('Opacity', alpha, pct),
@@ -861,13 +1181,12 @@
     // part, and the box around it, each with a title and column headings.
     const keysWord = n => `${n} ${n === 1 ? 'key' : 'keys'}`;
     const columns = () => h('div', { class: 'gb-dock-cols', 'aria-hidden': 'true' },
-      h('span'), h('span', null, 'Key'), h('span', null, 'Value'),
+      h('span'), h('span', null, 'Color'), h('span', null, 'Value'),
       h('span', { title: 'For a text or icon key: its contrast with the color behind it. 4.5:1 or more suits text, 3:1 suits icons and lines.' }, 'Contrast'),
       h('span', null, 'Role'));
     const group = (cls, title, hint, ...kids) => h('div', { class: `gb-dock-group ${cls}`, role: 'group', 'aria-label': title },
       h('div', { class: 'gb-dock-group-h' }, h('span', null, title), hint ? h('span', { class: 'gb-dock-group-hint' }, hint) : null), ...kids);
     const body = h('div', { class: 'gb-dock-body' });
-    if (lead) body.append(group('gb-dock-lead', `Step 3: ${lead.getAttribute('aria-label') || ''}`, 'while step 3 is folded', h('div', { class: 'gb-dock-lead-row' }, lead)));
     if (picked) {
       if (picked.fixed) {
         body.append(h('p', { class: 'muted gb-pl-key-note' }, `Its border is ${picked.fixed}, set by the extension itself. No theme key changes it.`));
@@ -905,13 +1224,16 @@
    * stays open; a finished change redraws everything. `onLayout` runs after each draw so the
    * page can match its layout to the dock's state.
    */
-  function stages(candidate, ctx, redrawAll, dockHost, onLayout = () => {}, lead = null) {
+  function stages(candidate, ctx, redrawAll, dockHost, onLayout = () => {}) {
     const s = stateOf(ctx);
 
+    // The editors set colors; each new color is kept as a shift from the color it replaces, so
+    // it follows the palette when the base color or rule changes (media/themeBuilder.js toShifts).
     function edit(apply, done) {
       const next = { swatches: { ...s.edits.swatches }, keys: { ...s.edits.keys } };
       apply(next);
-      s.edits = next;
+      const { chrome, entry } = inputsOf(candidateOf(s), s);
+      s.edits = Builder().toShifts(entry, chrome, next, previewGroups(ctx, s));
       markChanged();
       save(ctx);
       if (done) redrawAll();
@@ -933,7 +1255,6 @@
       },
       reopen() {
         dock.state = 'open';
-        dock.step = 0;
         redrawAll();
       },
       /** Redraws everything without marking the candidate changed, as a cancelled pick does. */
@@ -950,7 +1271,7 @@
       if (dock.state === 'closed') dockHost.replaceChildren();
       else {
         const info = pickedInfo(galleryContext(theme.colors, theme.tokens, ctx.modernUI));
-        dockHost.replaceChildren(editDock(theme, ctx, info, edit, act, dock.state === 'open' ? lead : null));
+        dockHost.replaceChildren(editDock(theme, ctx, info, edit, act));
         const body = dockHost.querySelector('.gb-dock-body');
         if (body) body.scrollTop = dock.scroll;
       }
@@ -970,6 +1291,163 @@
   const FOLDED_FAMILIES = ['status', 'terminal', 'frame'];
   /** Numbers each Roles step's ids, so two Lab roots never share one. */
   let rolesCount = 0;
+
+  /**
+   * The parts of the window a VS Code color belongs to, matched by its prefix, first match wins;
+   * anything else is 'Text and general'. The Roles step groups a role's colors by these (R4-1).
+   */
+  const KEY_AREAS = [
+    [/^(editorSuggestWidget|editorHoverWidget|editorWidget|widget|simpleFindWidget|editorStickyScroll|peekView|editorMarkerNavigation|parameterHints|debugExceptionWidget)/, 'Popups and widgets'],
+    [/^(menu|menubar|quickInput|pickerGroup|keybindingLabel)/, 'Menus and pickers'],
+    [/^notification/, 'Notifications'],
+    [/^(tab|editorGroupHeader|breadcrumb)/, 'Tabs and breadcrumbs'],
+    [/^(editorGroup|sash)/, 'Splits'],
+    [/^(editor|minimap|scrollbar|diffEditor|merge)/, 'Editor'],
+    [/^(list|tree)/, 'Lists and trees'],
+    [/^(input|checkbox|dropdown|radio|toolbar|actionBar)/, 'Inputs and controls'],
+    [/^button/, 'Buttons'],
+    [/^(badge|progressBar)/, 'Badges and progress'],
+    [/^sideBar/, 'Side bar'],
+    [/^(panel|outputView|terminal)/, 'Panel and terminal'],
+    [/^statusBar/, 'Status bar'],
+    [/^(titleBar|activityBar|window|commandCenter)/, 'Frame'],
+    [/^(chat|interactive|inlineChat)/, 'Chat'],
+  ];
+  const keyArea = key => (KEY_AREAS.find(([re]) => re.test(key)) || [null, 'Text and general'])[1];
+
+  /** keys grouped by part of the window, as [area, keys] pairs, the largest part first. */
+  function keysByArea(keys) {
+    const groups = new Map();
+    for (const k of keys) {
+      const area = keyArea(k);
+      if (!groups.has(area)) groups.set(area, []);
+      groups.get(area).push(k);
+    }
+    return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+  }
+
+  /**
+   * A VS Code color in plain words, made from its name: 'editorSuggestWidget.border' reads
+   * 'Suggest widget border', 'sideBar.foreground' reads 'Side bar text'. The setting name shows
+   * beside it, so a reading that comes out stiff still leads to the exact color.
+   */
+  function plainKey(key) {
+    const words = s => s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([a-z])([0-9])/g, '$1 $2').toLowerCase();
+    const [prefix, prop = ''] = key.split('.');
+    const what = words(prefix).replace(/^editor (?=\w)/, '');
+    const how = words(prop).split(' ').map(w => (w === 'foreground' ? 'text' : w)).join(' ');
+    const text = `${what} ${how}`.trim();
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  /** The keys last sent to the Theme Preview to outline, so the same list is not sent twice. */
+  let highlighted = '';
+  /** Asks the Theme Preview window to outline the parts that use `keys` (R4-2); [] clears them. */
+  function highlightRole(ctx, keys) {
+    const sig = keys.join(' ');
+    if (sig === highlighted || typeof ctx.post !== 'function') return;
+    highlighted = sig;
+    ctx.post({ type: 'previewHighlight', keys: keys.slice() });
+  }
+
+  // ------------------------------------------------------------- role samples
+
+  /** Roles drawn as text, with the role they sit on. Terminal colors sit on the editor background too. */
+  const SAMPLE_TEXT_ON = {
+    kw: 'bg', fn: 'bg', str: 'bg', type: 'bg', num: 'bg', bright: 'bg', text: 'bg', muted: 'bg', faint: 'bg',
+    error: 'bg', warning: 'bg', success: 'bg', info: 'bg', conflict: 'bg',
+    accentText: 'accent', accentTextFaint: 'accent', errorText: 'error', warningText: 'warning',
+    frameFg: 'frameBg', frameMuted: 'frameBg', frameCcFg: 'frameBg', frameBadgeText: 'frameBadge', frameHoverText: 'frameHover', frameRemoteText: 'frameRemote',
+  };
+  /** Roles drawn as lines, with the role they run along. */
+  const SAMPLE_LINE_ON = {
+    divider: 'bg', border: 'bg', inputBorder: 'bg', frameLineAccent: 'bg', frameLineBg: 'bg', frameLineDivider: 'bg',
+    frameBorder: 'frameBg', frameCcBorder: 'frameBg', frameActive: 'frameBg', frameWindow: 'frameBg',
+  };
+  /** Fills with their own text color; any other fill gets the plain text (frame fills, the frame text). */
+  const SAMPLE_INK = {
+    accent: 'accentText', accentHover: 'accentText', frameBg: 'frameFg', frameCcBg: 'frameCcFg',
+    frameBadge: 'frameBadgeText', frameHover: 'frameHoverText', frameRemote: 'frameRemoteText',
+  };
+
+  /**
+   * How a role shows in use: text on what it sits on ('text'), a line along it ('line'), or a
+   * fill with text on it ('fill'). `on` is the role underneath, `ink` the text on a fill.
+   * @returns {{ kind: 'text' | 'line' | 'fill', on: string, ink?: string }}
+   */
+  function sampleKind(sw) {
+    if (sw.startsWith('ansi')) return { kind: 'text', on: 'bg' };
+    if (SAMPLE_TEXT_ON[sw]) return { kind: 'text', on: SAMPLE_TEXT_ON[sw] };
+    if (SAMPLE_LINE_ON[sw]) return { kind: 'line', on: SAMPLE_LINE_ON[sw] };
+    const frame = sw.startsWith('frame');
+    return { kind: 'fill', on: frame ? 'frameBg' : 'bg', ink: SAMPLE_INK[sw] || (frame ? 'frameFg' : 'text') };
+  }
+
+  /** What a role name reads as in a sample's title: 'the editor background', 'the accent'. */
+  const sampleOnName = (sw, names) => (sw === 'bg' ? 'the editor background' : `${names(sw).toLowerCase()}`);
+
+  /**
+   * Paints `el`, a role sample, for `value` against the theme's swatches `sws`: "Aa" in the color
+   * on what it sits on, a line of the color along it, or a fill of the color with its text on it.
+   * A see-through color is drawn over what it sits on, as VS Code draws it. The title says what
+   * it shows and, for text, its contrast. `names(sw)` gives a role's name.
+   */
+  function paintSample(el, sw, value, sws, names, k = sampleKind(sw)) {
+    const back = String(sws[k.on] || sws.bg).slice(0, 7);
+    el.setAttribute('data-color', value);
+    el.setAttribute('data-kind', k.kind);
+    el.style.boxShadow = '';
+    el.style.color = '';
+    el.textContent = k.kind === 'line' ? '' : 'Aa';
+    const what = `${names(sw)} on ${sampleOnName(k.on, names)}`;
+    if (k.kind === 'text') {
+      el.style.background = back;
+      el.style.color = value;
+      const ratio = contrastRatio(window.GB.over(parseColor(value), parseColor(back)), parseColor(back));
+      el.title = ratioTitle(ratio, `${what}, as text`);
+    } else if (k.kind === 'line') {
+      el.style.background = back;
+      el.style.boxShadow = `inset 0 0 0 2px ${value}`;
+      el.title = `${what}, as a line`;
+    } else {
+      // The fill over what it sits on, so a see-through fill shows as VS Code draws it.
+      el.style.background = `linear-gradient(${value}, ${value}), ${back}`;
+      const fill = window.GB.over(parseColor(value), parseColor(back));
+      const ink = sws[k.ink] || sws.text;
+      el.style.color = ink;
+      const ratio = contrastRatio(window.GB.over(parseColor(ink), fill), fill);
+      el.title = ratioTitle(ratio, `${names(k.ink)} on ${names(sw)}, as a fill on ${sampleOnName(k.on, names)}`);
+    }
+  }
+
+  /** A role sample element of class `cls` (see paintSample); `kind` overrides sampleKind(sw). */
+  function roleSample(sw, value, sws, names, cls, kind = undefined) {
+    const el = h('span', { class: `gb-role-sample ${cls}`, 'aria-hidden': 'true' });
+    paintSample(el, sw, value, sws, names, kind || sampleKind(sw));
+    return el;
+  }
+
+  /**
+   * Three lines of code in the syntax colors on the editor background, so a Colors change
+   * shows as code before the preview window is looked at.
+   */
+  function codeSample(sws) {
+    const tok = (sw, text) => {
+      const el = h('span', { 'data-swatch': sw }, text);
+      el.style.color = sws[sw];
+      return el;
+    };
+    const lines = [
+      [tok('kw', 'export'), ' ', tok('kw', 'class'), ' ', tok('type', 'Greeter'), ' {'],
+      ['  ', tok('fn', 'greet'), '(name: ', tok('type', 'string'), ') { ', tok('kw', 'return'), ' ', tok('str', '"Hello, "'), ' + name.', tok('fn', 'repeat'), '(', tok('num', '2'), '); }'],
+      ['}'],
+    ];
+    const el = h('pre', { class: 'gb-rf-code', title: 'Keywords, Functions, Strings, Types and Numbers as code on the editor background' },
+      lines.map(line => h('div', null, ...line)));
+    el.style.background = String(sws.bg).slice(0, 7);
+    el.style.color = String(sws.text).slice(0, 7);
+    return el;
+  }
 
   /**
    * Step 4, Roles: one row per builder family (themeBuilder.js ROLE_FAMILIES) with how the
@@ -1018,7 +1496,7 @@
       const last = candidate.colors.length - 1;
       if (id === 'syntax') {
         const order = roles.syntax || [0, 1, 2, 3, 4];
-        return settingRow(label('Colors'), ...['kw', 'fn', 'str', 'type', 'num'].map((sw, i) => {
+        const picks = settingRow(label('Colors'), ...['kw', 'fn', 'str', 'type', 'num'].map((sw, i) => {
           const current = order[i] % candidate.colors.length;
           const select = h('select', {
             class: 'gb-rf-syntax', 'data-swatch': sw, 'aria-label': `${roleName(sw)}: palette color`,
@@ -1028,8 +1506,11 @@
               setting(() => { s.syntax = next; }, `.gb-rf-syntax[data-swatch="${sw}"]`);
             },
           }, candidate.colors.map((hex, j) => h('option', { value: String(j), selected: j === current }, `${j + 1}`)));
-          return h('span', { class: 'gb-rf-pick' }, h('span', { class: 'gb-rf-pick-l' }, roleName(sw)), select, dot(candidate.colors[current]));
+          // The color as the theme draws it, lifted for readability, as text on the editor background.
+          return h('span', { class: 'gb-rf-pick' }, h('span', { class: 'gb-rf-pick-l' }, roleName(sw)), select,
+            roleSample(sw, theme.sw[sw], theme.sw, roleName, 'gb-rf-pick-sample'));
         }));
+        return h('div', { class: 'gb-rf-syntax-set' }, picks, codeSample(theme.sw));
       }
       if (id === 'surfaces') {
         const word = v => (v === 1 ? 'Standard' : `${v.toFixed(1)}x`);
@@ -1058,8 +1539,8 @@
       }
       if (id === 'accent') {
         const index = Math.min(Number(s.chromeIndex) || 0, last);
-        return settingRow(label('Accent'), dot(candidate.colors[index]), h('span', null, `color ${index + 1}`),
-          step3Link('Editor accent', '.gb-s3 .gb-ch-pick[aria-checked="true"]'));
+        return settingRow(label('Accent'), dot(accentHexOf(candidate, s)), h('span', null, s.accentColor ? 'custom color' : `color ${index + 1}`),
+          step3Link('accent color', '.gb-s3 .gb-ch-pick[aria-checked="true"]'));
       }
       if (id === 'frame') {
         const f = s.frame;
@@ -1070,29 +1551,50 @@
       return null;
     }
 
-    function chip(sw) {
+    /**
+     * One role as a row (R4-1): one line, a heading button with its color, name, what it is for and
+     * how many VS Code colors use it, so a family scans as an even list (R4-3). The parts of the
+     * window it colors, with a count each, are in the button's tooltip; the open row lists every
+     * color it draws, grouped by those parts, under the role's editor (roleEditor). Hovering or focusing a row
+     * outlines its parts in the Theme Preview window (R4-2); leaving it goes back to the open role.
+     */
+    function roleRow(sw) {
       const count = keyCount(sw);
       const open = rolesUi.open === sw;
       const edited = Boolean(s.edits.swatches[sw]);
-      return h('button', {
-        type: 'button', class: edited ? 'secondary gb-role-chip gb-role-edited' : 'secondary gb-role-chip', 'data-swatch': sw,
+      const about = B.SWATCHES[sw] ? B.SWATCHES[sw][1] : '';
+      const areas = keysByArea(B.KEY_GROUPS[sw] || []);
+      const tip = [about, areas.length ? `Colors: ${areas.map(([area, list]) => `${area} ${list.length}`).join(', ')}` : 'Used by code highlighting only',
+        open ? 'Click to close' : 'Click to change it and see every color it draws'].filter(Boolean).join('\n');
+      const head = h('button', {
+        type: 'button', class: edited ? 'gb-role-chip gb-role-edited' : 'gb-role-chip', 'data-swatch': sw, title: tip,
         'aria-expanded': String(open), 'aria-controls': open ? `gb-role-ed-${n}` : null,
-        'aria-label': `${roleName(sw)}, ${count ? `${count} ${count === 1 ? 'key' : 'keys'}` : 'code only'}${edited ? ', edited' : ''}`,
-        title: B.SWATCHES[sw] ? B.SWATCHES[sw][1] : '',
+        'aria-label': `${roleName(sw)}, ${count ? `${count} ${count === 1 ? 'color' : 'colors'}` : 'code only'}${edited ? ', edited' : ''}. ${about}`,
         onclick: () => {
           rolesUi.open = open ? null : sw;
           redraw();
           focusIn(open ? chipAt(sw) : '.gb-role-ed .gb-cp-trigger');
         },
-      }, swatchOf(theme.sw[sw], 'gb-role-dot'), h('span', { class: 'gb-role-name' }, roleName(sw)),
-      h('span', { class: 'gb-role-n' }, count ? String(count) : 'code'));
+      }, h('span', { class: 'gb-role-chev codicon codicon-chevron-right', 'aria-hidden': 'true' }),
+      roleSample(sw, theme.sw[sw], theme.sw, roleName, 'gb-role-dot'), h('span', { class: 'gb-role-name' }, roleName(sw)),
+      h('span', { class: 'gb-role-about' }, about),
+      h('span', { class: 'gb-role-count' },
+        h('span', { class: 'gb-role-n' }, count ? String(count) : 'code'), count ? ` ${count === 1 ? 'color' : 'colors'}` : ' only'));
+      const keys = B.KEY_GROUPS[sw] || [];
+      const pointAt = () => highlightRole(ctx, keys);
+      const pointBack = () => highlightRole(ctx, rolesUi.open ? B.KEY_GROUPS[rolesUi.open] || [] : []);
+      return h('div', {
+        class: open ? 'gb-role-row gb-role-open' : 'gb-role-row', 'data-swatch': sw,
+        onmouseenter: pointAt, onmouseleave: pointBack,
+        onfocusin: pointAt, onfocusout: ev => { if (!ev.currentTarget.contains(ev.relatedTarget)) pointBack(); },
+      }, head, open ? roleEditor(sw) : null);
     }
 
     /** The open role's editor: its color, Reset when edited, and Show where. Escape closes it. */
     function roleEditor(sw) {
       const name = roleName(sw);
       const count = keyCount(sw);
-      const big = swatchOf(theme.sw[sw], 'gb-role-big');
+      const big = roleSample(sw, theme.sw[sw], theme.sw, roleName, 'gb-role-big');
       const close = () => {
         rolesUi.open = null;
         redraw();
@@ -1103,7 +1605,7 @@
         label: `${name}: every key in this role`, value: theme.sw[sw], className: 'gb-role-pick',
         snapshot: () => copyEdits(s.edits),
         input: v => {
-          big.style.background = v;
+          paintSample(big, sw, v, theme.sw, roleName);
           edit(e => { e.swatches[sw] = v; }, false);
         },
         change: v => {
@@ -1124,16 +1626,26 @@
           focusIn('.gb-role-ed .gb-cp-trigger');
         },
       }, 'Reset') : null;
+      const shift = shiftNote(B.preferredSwatch(theme.entry, theme.chrome, s.edits, sw), theme.sw[sw], s.edits.swatches[sw]);
       // Keywords has no workbench key, so there is nothing in the preview to show.
       const showWhere = count ? h('button', {
         type: 'button', class: 'secondary gb-role-where', title: `Opens Edit on ${B.KEY_GROUPS[sw][0]}, the first key in this role`,
         onclick: () => {
-          openDockOn({ card: '', index: -1, keys: [B.KEY_GROUPS[sw][0]], around: [], label: name, region: null, fixed: null });
+          openDockOn({ card: '', index: -1, keys: [B.KEY_GROUPS[sw][0]], around: [], label: name, region: null, fixed: null }, s);
+          save(ctx);
           redraw();
           focusIn('.gb-dock .gb-pl-key-head');
         },
       }, 'Show where') : null;
-      const used = count ? `Used by ${count} ${count === 1 ? 'key' : 'keys'}.` : 'Used by code highlighting only, not by any workbench key.';
+      const used = count
+        ? `Changing it recolors all ${count} ${count === 1 ? 'color' : 'colors'} below, in every part of the window listed.`
+        : 'Used by code highlighting only, not by any VS Code color.';
+      // Every color the role draws, in plain words, grouped by part of the window, with the
+      // VS Code setting name beside it.
+      const list = count ? h('div', { class: 'gb-role-keys' }, keysByArea(B.KEY_GROUPS[sw]).map(([area, keys]) =>
+        h('div', { class: 'gb-role-keygroup', role: 'group', 'aria-label': area },
+          h('h5', null, area, ' ', h('span', { class: 'muted' }, String(keys.length))),
+          h('ul', null, keys.map(k => h('li', null, h('span', null, plainKey(k)), h('code', null, k))))))) : null;
       return h('div', {
         class: 'gb-role-ed', id: `gb-role-ed-${n}`, role: 'group', 'aria-label': `Edit ${name}`, 'data-swatch': sw,
         onkeydown: ev => {
@@ -1142,10 +1654,10 @@
           ev.stopPropagation();
           close();
         },
-      }, big,
-      h('div', { class: 'gb-role-ed-text' }, h('b', null, name), ' ', h('span', null, B.SWATCHES[sw] ? B.SWATCHES[sw][1] : ''),
-        h('div', { class: 'muted' }, used)),
-      h('div', { class: 'gb-role-ed-actions' }, input, reset, showWhere));
+      }, h('div', { class: 'gb-role-ed-top' }, big,
+        h('div', { class: 'gb-role-ed-actions' }, input, reset, showWhere),
+        h('div', { class: 'gb-role-ed-text muted' }, used, shift)),
+      list);
     }
 
     const rows = B.ROLE_FAMILIES.map(fam => {
@@ -1178,12 +1690,13 @@
       row.append(h('p', { class: 'gb-rf-how muted' }, fam.how));
       const own = familySetting(fam.id);
       if (own) row.append(own);
-      row.append(h('div', { class: 'gb-rf-chips' }, fam.roles.map(chip)));
-      if (rolesUi.open && fam.roles.includes(rolesUi.open)) row.append(roleEditor(rolesUi.open));
+      row.append(h('div', { class: 'gb-rf-roles' }, fam.roles.map(roleRow)));
       return row;
     });
+    // The open role stays outlined in the preview; with none open, nothing is.
+    highlightRole(ctx, rolesUi.open ? B.KEY_GROUPS[rolesUi.open] || [] : []);
     return [
-      h('p', { class: 'gb-rf-intro muted' }, 'Every color in the theme belongs to a role. Each family below is made from your palette in one way; change the family, or open a role and change it alone. The number on a role is how many VS Code colors use it.'),
+      h('p', { class: 'gb-rf-intro muted' }, 'Every color in the theme belongs to a role. Each family below is made from your palette in one way; change the family, or open a role and change it alone. Point at a role to see which parts of the window it colors, outlined in the preview window too; open it to change it and see every color it draws.'),
       ...rows,
     ];
   }
@@ -1198,13 +1711,63 @@
 
   /** The frame's hex color: its custom color, or the palette color its index picks. */
   function frameColor(candidate, frame) {
+    if (frame.color && Builder().isShift(frame.color)) return Builder().applyShift(frame.color, baseHexOf(candidate));
     if (frame.color) return frame.color;
     return candidate.colors[Math.min(Number(frame.index) || 0, candidate.colors.length - 1)];
   }
 
+  /** A custom frame color as the shift from the base color it is kept as, so it follows the base (D4). */
+  const frameShift = (candidate, hex) => Builder().shiftFor(hex.toLowerCase(), baseHexOf(candidate));
+
+  /** What each Surfaces choice does, under its name in step 3. */
+  const SURFACE_ABOUT = {
+    neutral: 'Gray, a trace of the accent',
+    tinted: 'A light wash of the accent',
+    rich: 'Strongly the accent\'s hue',
+  };
+
+  /** What each frame style does, under its name in step 3. */
+  const FRAME_STYLES = [
+    ['filled', 'Filled', 'Bars in the frame color'],
+    ['dark', 'Dark', 'Dark bars, color on markers'],
+  ];
+
   /**
-   * Step 3: the Frame and Editor rows, as { frameRow, editorRow }. Each is a labelled row of
-   * palette color choices and a select; the row label's title says what the row colors.
+   * A small drawing of a VS Code window in the swatches `sw`: title bar, activity bar with its
+   * active marker, side bar with a selected row, tabs, editor with three lines of code, status
+   * bar. Step 3's example chips use it so a choice shows what it changes before it is made.
+   */
+  function miniWindow(sw) {
+    const op = hex => String(hex).slice(0, 7);
+    const part = (cls, color, ...kids) => {
+      const el = h('span', { class: cls }, ...kids);
+      el.style.background = op(color);
+      return el;
+    };
+    const tab = part('gb-mini-tab', sw.bg);
+    tab.style.borderTopColor = op(sw.accent);
+    const side = part('gb-mini-side', sw.deep, part('gb-mini-sel', sw.select));
+    side.style.borderRightColor = op(sw.divider);
+    return h('span', { class: 'gb-mini', 'aria-hidden': 'true' },
+      part('gb-mini-title', sw.frameBg),
+      part('gb-mini-act', sw.frameBg, part('gb-mini-mark', sw.frameActive)),
+      side,
+      part('gb-mini-tabs', sw.deep, tab),
+      part('gb-mini-code', sw.bg, part('gb-mini-ln', sw.kw), part('gb-mini-ln', sw.fn), part('gb-mini-ln', sw.str)),
+      part('gb-mini-status', sw.frameBg));
+  }
+
+  /** The color the editor accent comes from: the custom accent, or the palette color picked. */
+  function accentHexOf(candidate, s) {
+    const { chrome, entry } = inputsOf(candidate, s);
+    return Builder().accentSource(entry, chrome).toLowerCase();
+  }
+
+  /**
+   * Step 3's rows, as { frameRow, styleRow, accentRow, surfacesRow, groupsBox }. Each row has a
+   * label with a short line under it naming what it colors (the label's title says more), then
+   * its choices. Frame style and Surfaces are example chips: each draws a small window in the
+   * colors it would give, so the difference shows before the choice is made.
    */
   function frameEditorRows(candidate, ctx, redrawAll) {
     const s = stateOf(ctx);
@@ -1221,70 +1784,144 @@
       b.classList.toggle('gb-ch-picked', picked);
       return b;
     };
+    /**
+     * A custom color picker: it previews as it is dragged (saved without a redraw, so the picker
+     * stays open), redraws once kept, and puts back what `snapshot` took when cancelled.
+     */
+    const customPicker = (label, className, value, snapshot, set, restore) => {
+      const at = `.${className}`;
+      const el = colorPicker({
+        label, value, className, snapshot,
+        input: hex => { set(hex); markChanged(); save(ctx); },
+        change: hex => { const refocus = refocusNear(el, at); set(hex); markChanged(); save(ctx); redrawAll(); refocus(); },
+        cancel: snap => { const refocus = refocusNear(el, at); if (snap) restore(snap); save(ctx); redrawAll(); refocus(); },
+      });
+      return el;
+    };
+    const { chrome, entry } = inputsOf(candidate, s);
+    const swFor = over => Builder().swatches(entry, { ...chrome, ...over }, s.edits);
+    const example = (cls, name, about, id, picked, onclick, sw) => radio(`${cls} gb-ex-pick`, `${name}: ${about}`, id, picked, onclick,
+      miniWindow(sw), h('span', { class: 'gb-ex-text' }, h('span', { class: 'gb-ex-name' }, name), h('small', { class: 'gb-ex-about muted' }, about)));
 
-    // Frame: one palette color, or a custom one, and a style. The custom color previews as it
-    // is dragged (saved without a redraw, so the picker stays open) and redraws once kept.
+    // Frame color: one palette color, or a custom one kept as a shift from the base (D4).
     let customColor = color;
-    const customAt = '.gb-fr-custom';
-    const customInput = colorPicker({
-      label: 'Custom frame color', value: color, className: 'gb-fr-custom',
-      snapshot: () => ({ ...s.frame }),
-      input: hex => {
-        customColor = hex;
-        s.frame = { color: hex, style: frame.style };
-        markChanged();
-        save(ctx);
-      },
-      change: hex => {
-        const refocus = refocusNear(customInput, customAt);
-        customColor = hex;
-        s.frame = { color: hex, style: frame.style };
-        markChanged();
-        save(ctx);
-        redrawAll();
-        refocus();
-      },
-      cancel: snap => {
-        const refocus = refocusNear(customInput, customAt);
-        if (snap) s.frame = snap;
-        save(ctx);
-        redrawAll();
-        refocus();
-      },
-    });
+    const customInput = customPicker('Custom frame color', 'gb-fr-custom', color, () => ({ ...s.frame }),
+      hex => { customColor = hex; s.frame = { color: frameShift(candidate, hex), style: frame.style }; },
+      snap => { s.frame = snap; });
     const framePicks = h('div', { class: 'gb-ch-picks', role: 'radiogroup', 'aria-label': 'Frame color' },
       candidate.colors.map((hex, i) => radio('gb-fr-pick', `Frame color ${i + 1} ${hex}`, i, i === frameIndex,
         change(() => { s.frame = { index: i, style: frame.style }; }), dot(hex), ` ${i + 1}`)),
       radio('gb-fr-pick', 'Custom frame color', 'custom', custom,
-        change(() => { s.frame = { color: customColor.toLowerCase(), style: frame.style }; }), 'Custom'),
+        change(() => { s.frame = { color: frameShift(candidate, customColor), style: frame.style }; }), 'Custom'),
       customInput);
-    const style = h('select', { class: 'gb-fr-style', 'aria-label': 'Frame style', onchange: change(ev => { s.frame = { ...frame, style: ev.target.value }; }) },
-      h('option', { value: 'filled', selected: frame.style === 'filled' }, 'Filled'),
-      h('option', { value: 'dark', selected: frame.style === 'dark' }, 'Dark'));
-    // Editor: the accent color and the surface tint.
-    const accentPicks = h('div', { class: 'gb-ch-picks', role: 'radiogroup', 'aria-label': 'Editor accent' },
-      candidate.colors.map((hex, i) => radio('gb-ch-pick', `Editor accent ${i + 1} ${hex}`, i, i === index,
-        change(() => { s.chromeIndex = i; }), dot(hex), ` ${i + 1}`)));
-    const surfaces = h('select', { class: 'gb-ch-surfaces', 'aria-label': 'Surfaces', onchange: change(ev => { s.surfaces = ev.target.value; }) },
-      Object.entries(CHROME_SURFACES).map(([id, def]) => h('option', { value: id, selected: s.surfaces === id }, def.name)));
+    const styles = h('div', { class: 'gb-ex-picks', role: 'radiogroup', 'aria-label': 'Frame style' },
+      FRAME_STYLES.map(([id, name, about]) => example('gb-fr-style-pick', name, about, id, frame.style === id,
+        change(() => { s.frame = { ...frame, style: id }; }), swFor({ frame: { ...frame, style: id } }))));
 
-    const row = (cls, label, title, ...kids) => h('div', { class: `gb-fe-row ${cls}`, role: 'group', 'aria-label': label },
-      h('span', { class: 'gb-fe-l', title }, label), ...kids);
-    const frameRow = row('gb-fr-box', 'Frame', 'Title bar, activity bar, status bar and window border.', framePicks, style,
+    // Accent: one palette color, or a custom one kept as a shift from the base, like the frame's.
+    const accentCustom = Boolean(s.accentColor);
+    let accentColor = accentHexOf(candidate, s);
+    const accentInput = customPicker('Custom accent color', 'gb-ac-custom', accentColor, () => ({ v: s.accentColor }),
+      hex => { accentColor = hex; s.accentColor = frameShift(candidate, hex); },
+      snap => { if (snap.v) s.accentColor = snap.v; else delete s.accentColor; });
+    const accentPicks = h('div', { class: 'gb-ch-picks', role: 'radiogroup', 'aria-label': 'Accent color' },
+      candidate.colors.map((hex, i) => radio('gb-ch-pick', `Accent color ${i + 1} ${hex}`, i, !accentCustom && i === index,
+        change(() => { s.chromeIndex = i; delete s.accentColor; }), dot(hex), ` ${i + 1}`)),
+      radio('gb-ch-pick', 'Custom accent color', 'custom', accentCustom,
+        change(() => { s.accentColor = frameShift(candidate, accentColor); }), 'Custom'),
+      accentInput);
+    const surfaces = h('div', { class: 'gb-ex-picks', role: 'radiogroup', 'aria-label': 'Surfaces' },
+      Object.entries(CHROME_SURFACES).map(([id, def]) => example('gb-ch-surface-pick', def.name, SURFACE_ABOUT[id] || '', id, s.surfaces === id,
+        change(() => { s.surfaces = id; }), swFor({ surfaces: id }))));
+
+    const row = (cls, label, hint, title, ...kids) => h('div', { class: `gb-fe-row ${cls}`, role: 'group', 'aria-label': label },
+      h('span', { class: 'gb-fe-l', title }, label, h('small', { class: 'muted' }, hint)), ...kids);
+    const frameRow = row('gb-fr-box', 'Frame color', 'Title, activity and status bars',
+      'The title bar, activity bar, status bar and window border. Text on them is picked to stay readable.', framePicks,
       ctx.identityFill
         ? h('p', { class: 'muted gb-fr-note' }, `This folder's settings still hold the old GigglyBits folder color (${ctx.identityFill}), which VS Code draws over every GigglyBits theme's frame. Use in this project with a saved theme removes it.`)
         : null);
-    const editorRow = row('gb-ed-box', 'Editor', 'Everything else: editor, side bar, tabs, panel, inputs and widgets.', accentPicks, surfaces);
-    return { frameRow, editorRow };
+    const styleRow = row('gb-fs-box', 'Frame style', 'How the frame uses its color',
+      'Filled paints the bars in the frame color. Dark keeps them dark and puts the color on the active marker and badges.', styles);
+    const accentRow = row('gb-ed-box', 'Accent', 'Buttons, links, badges, focus',
+      'The color of buttons, links, badges, selections and focus outlines, lifted to read 4.5:1 on the editor. It also gives the surfaces their hue.', accentPicks);
+    const surfacesRow = row('gb-sf-box', 'Surfaces', 'Side bar, tabs, panels',
+      'How strongly the side bar, tabs, panels and widgets take the accent\'s hue. The editor background stays #1e1e1e.', surfaces);
+    return { frameRow, styleRow, accentRow, surfacesRow, groupsBox: accentGroupRows(candidate, ctx, redrawAll, radio, change) };
   }
 
-  /** Step 3's state line: the frame and the editor accent, as 'Frame 1 Filled · Accent 1 Neutral'. */
+  /**
+   * Step 3's accent groups (walkthrough decision G1): a row per group in themeBuilder.js
+   * ACCENT_GROUPS, each taking its colors from the accent (the default), a palette color or a
+   * custom color kept as a shift from the base, then what the group gets: the color, hovered,
+   * text on it, a selection tint and a wash. While the Accent role has an edit, the edit wins
+   * over every group (G2), and the box says so.
+   */
+  function accentGroupRows(candidate, ctx, redrawAll, radio, change) {
+    const s = stateOf(ctx);
+    const B = Builder();
+    const groups = B.cleanAccentGroups(s.accentGroups);
+    const last = candidate.colors.length - 1;
+    const setGroup = (id, src) => {
+      const next = { ...groups };
+      if (src) next[id] = src;
+      else delete next[id];
+      s.accentGroups = next;
+    };
+    const accentEdited = Boolean(s.edits.swatches.accent);
+    const accentHex = accentHexOf(candidate, s);
+    const rows = Object.entries(B.ACCENT_GROUPS).map(([id, def]) => {
+      const src = groups[id];
+      const own = src && Number.isInteger(src.index) ? Math.min(src.index, last) : -1;
+      const customOn = Boolean(src && src.color);
+      const sourceHex = !src ? accentHex : customOn ? (B.isShift(src.color) ? B.applyShift(src.color, baseHexOf(candidate)) : src.color) : candidate.colors[own];
+      let customColor = sourceHex;
+      const at = `.gb-ag-row[data-group="${id}"] .gb-ag-custom`;
+      const custom = colorPicker({
+        label: `${def.label}: custom color`, value: sourceHex, className: 'gb-ag-custom',
+        snapshot: () => ({ ...B.cleanAccentGroups(s.accentGroups) }),
+        input: hex => { customColor = hex; setGroup(id, { color: frameShift(candidate, hex) }); markChanged(); save(ctx); },
+        change: hex => { const refocus = refocusNear(custom, at); customColor = hex; setGroup(id, { color: frameShift(candidate, hex) }); markChanged(); save(ctx); redrawAll(); refocus(); },
+        cancel: snap => { const refocus = refocusNear(custom, at); if (snap) s.accentGroups = snap; save(ctx); redrawAll(); refocus(); },
+      });
+      const picks = h('div', { class: 'gb-ch-picks', role: 'radiogroup', 'aria-label': `${def.label} color` },
+        radio('gb-ag-pick', `${def.label}: follow the accent`, 'accent', !src, change(() => setGroup(id, null)), 'Accent'),
+        candidate.colors.map((hex, i) => radio('gb-ag-pick', `${def.label}: color ${i + 1} ${hex}`, i, i === own,
+          change(() => setGroup(id, { index: i })), dot(hex), ` ${i + 1}`)),
+        radio('gb-ag-pick', `${def.label}: custom color`, 'custom', customOn, change(() => setGroup(id, { color: frameShift(candidate, customColor) })), 'Custom'),
+        custom);
+      const set = B.accentSet(sourceHex);
+      const sample = h('span', { class: 'gb-ag-sample' }, 'Aa');
+      sample.style.background = set.accent;
+      sample.style.color = set.accentText;
+      const preview = h('span', {
+        class: 'gb-ag-preview', title: 'What the group gets: its color, the color hovered, text on it, a selection tint and a wash, worked out by the accent\'s rules (lifted to 4.5:1 on the editor background)',
+      }, dot(set.accent), dot(set.accentHover), sample, dot(set.accentSel), dot(set.accentWash));
+      return h('div', { class: 'gb-fe-row gb-ag-row', role: 'group', 'aria-label': def.label, 'data-group': id },
+        h('span', { class: 'gb-fe-l gb-ag-l', title: def.about }, def.label, h('small', { class: 'muted' }, `${def.keys.length} colors`)),
+        picks, preview);
+    });
+    return h('div', { class: 'gb-ag', role: 'group', 'aria-label': 'Accent groups' },
+      h('div', { class: 'gb-ag-head' }, h('span', { class: 'gb-ag-title' }, 'Accent groups'),
+        h('span', { class: 'muted gb-ag-key', title: 'Each row ends with what the group gets: its color, the color hovered, text on it, a selection tint and a wash' }, 'Preview: color, hover, text, selection, wash')),
+      h('p', { class: 'muted gb-ag-note' }, 'Give a set of controls its own color. On Accent a group follows the accent above. Whichever color it takes, its hover, text and selection shades are worked out from it.'),
+      accentEdited ? h('p', { class: 'gb-ag-overridden' }, 'The Accent role in step 4, Roles, has an edit of its own. It wins over these choices until you reset it there.') : null,
+      rows);
+  }
+
+  /**
+   * Step 3's state line, short enough for the heading: 'Frame 1 Filled · Accent 1 · Neutral
+   * surfaces', then how many accent groups have a color of their own. The step names them.
+   */
   function frameEditorState(candidate, s) {
     const last = candidate.colors.length - 1;
     const f = s.frame;
     const frame = f.color ? 'Frame Custom' : `Frame ${Math.min(Number(f.index) || 0, last) + 1}`;
+    const accent = s.accentColor ? 'Accent Custom' : `Accent ${Math.min(Number(s.chromeIndex) || 0, last) + 1}`;
     const surfaces = CHROME_SURFACES[s.surfaces] ? CHROME_SURFACES[s.surfaces].name : s.surfaces;
-    return `${frame} ${f.style === 'dark' ? 'Dark' : 'Filled'} · Accent ${Math.min(Number(s.chromeIndex) || 0, last) + 1} ${surfaces}`;
+    const own = Object.keys(Builder().cleanAccentGroups(s.accentGroups)).length;
+    const groups = own ? ` · ${own} ${own === 1 ? 'group' : 'groups'} with own color` : '';
+    return `${frame} ${f.style === 'dark' ? 'Dark' : 'Filled'} · ${accent} · ${surfaces} surfaces${groups}`;
   }
 
   /**
@@ -1298,6 +1935,7 @@
     if (c.syntax && c.syntax.some((v, i) => v !== i)) out.syntax = c.syntax;
     if (c.depth !== 1) out.depth = c.depth;
     if (c.text !== 'standard') out.text = c.text;
+    if (Object.keys(c.accentGroups).length) out.accentGroups = c.accentGroups;
     return out;
   }
 
@@ -1310,6 +1948,7 @@
     delete ui.syntax;
     delete ui.depth;
     delete ui.text;
+    delete ui.accentGroups;
     Object.assign(ui, c);
   }
 
@@ -1327,6 +1966,7 @@
         : { pasted: candidate.colors.slice() }),
       colors: candidate.colors.slice(),
       chromeIndex,
+      ...(s.accentColor ? { accentColor: s.accentColor } : {}),
       surfaces: s.surfaces,
       frame: { ...s.frame },
       edits: Builder().cleanEdits(s.edits),
@@ -1348,10 +1988,34 @@
       draft = named ? { ...draft, id, auto } : { id, name: auto, note: '', auto };
     }
     const SAVE_TITLE = 'Saves this design under its name to your saved themes, which every VS Code window can use';
+    const library = Array.isArray(ctx.library) ? ctx.library : [];
+    /**
+     * The saved theme this design is, when Name is the name it was saved or loaded under and
+     * nothing has changed since; Use in this project and Use everywhere act on it.
+     */
+    const savedAs = () => {
+      const n = draft.name.trim();
+      if (!n || !result.ownName || !sameName(n, result.ownName) || result.text === 'Unsaved changes') return null;
+      return library.find(t => t && sameName(t.name, n)) || null;
+    };
+    const use = (where, label, title) => h('button', {
+      class: 'secondary gb-bar-use', 'data-action': where, title,
+      onclick: () => {
+        const t = savedAs();
+        if (t) ctx.post({ type: 'useTheme', id: t.id, where });
+      },
+    }, label);
+    const useProject = ctx.hasFolder
+      ? use('project', 'Use in this project', 'Gives this project its own frame and Editor colors from the saved theme; other projects keep theirs')
+      : null;
+    const useEverywhere = use('everywhere', 'Use everywhere', 'Applies the saved theme\'s Editor colors to every window; each project keeps its own frame');
     const syncSave = () => {
       const empty = !draft.name.trim();
       saveTheme.disabled = empty;
       saveTheme.title = empty ? 'Name the design to save it' : SAVE_TITLE;
+      // Once saved, the theme can be put to use from here, not only from Start > Saved themes.
+      const saved = Boolean(savedAs());
+      for (const b of [useProject, useEverywhere]) if (b) b.hidden = !saved;
     };
     const name = h('input', {
       type: 'text', class: 'gb-pl-name', value: draft.name,
@@ -1369,14 +2033,14 @@
         // this Try (src/labStart.ts TryRecord).
         const settings = {
           mode: s.mode, rule: s.rule, hue: s.hue, lightness: s.lightness, chroma: s.chroma, pasted: s.pasted,
-          chromeIndex, surfaces: s.surfaces, frame: { ...s.frame },
+          chromeIndex, ...(s.accentColor ? { accentColor: s.accentColor } : {}), surfaces: s.surfaces, frame: { ...s.frame },
           ...(editCount(s.edits) ? { edits: s.edits } : {}),
           ...roleSettingsOf(s),
         };
         ctx.post({
           type: 'applyPalette',
-          entry: { name: draft.name.trim() || defaultName(candidate), colors: candidate.colors.slice() },
-          chrome: { index: chromeIndex, surfaces: s.surfaces, frame: { ...s.frame }, ...roleSettingsOf(s) },
+          entry: { name: draft.name.trim() || defaultName(candidate), colors: candidate.colors.slice(), base: baseHexOf(candidate) },
+          chrome: { index: chromeIndex, ...(s.accentColor ? { color: s.accentColor } : {}), surfaces: s.surfaces, frame: { ...s.frame }, ...roleSettingsOf(s) },
           edits: s.edits,
           settings,
           // The groups the preview draws, so the Try looks like the preview.
@@ -1403,7 +2067,7 @@
     return [
       h('span', { class: 'gb-step-n', 'aria-hidden': 'true' }, '6'),
       h('label', { class: 'gb-bar-name' }, h('span', { class: 'gb-bar-l' }, 'Name'), name),
-      h('div', { class: 'gb-pl-buttons' }, apply, saveTheme),
+      h('div', { class: 'gb-pl-buttons' }, apply, saveTheme, useProject, useEverywhere),
     ];
   }
 
@@ -1592,7 +2256,7 @@
   /** One numbered step: its heading with its state line, then its body. */
   function step(n, title, state, ...body) {
     return h('div', { class: `gb-step gb-s${n}`, 'data-step': String(n), role: 'group', 'aria-labelledby': `gb-step-${n}-h` },
-      stepHead(n, title, state), h('div', { class: 'gb-step-body' }, ...body));
+      stepHead(n, title, state), h('div', { class: 'gb-step-body', id: `gb-step-${n}-b` }, ...body));
   }
 
   /** Step 1's state line: where the palette came from. */
@@ -1637,16 +2301,15 @@
       const el = /** @type {HTMLElement | null} */ (root.querySelector(selector));
       if (el) el.focus();
     };
-    // Roles on the step 5 line opens step 4 if it is folded, scrolls to it and focuses its first
-    // chip: the keyboard path to any color without a pick (CONTRACT-v4 section 7).
+    // Roles on the step 5 line opens step 4 if it is collapsed, scrolls to it and focuses its
+    // first chip: the keyboard path to any color without a pick (CONTRACT-v4 section 7).
     const rolesGo = h('button', {
       class: 'secondary gb-roles-go', title: 'Moves to step 4, Roles, where any color in the theme can be changed',
       onclick: () => {
-        const body = /** @type {HTMLElement | null} */ (root.querySelector('.gb-roles > .gb-step-body'));
-        if (body && body.hidden) {
-          if (dock.state === 'open') dock.state = 'min';
-          dock.step = 4;
-          drawCandidate();
+        if (!s.sections.includes(4)) {
+          openSection(s, 4);
+          save(ctx);
+          syncSteps();
         }
         const chip = /** @type {HTMLElement | null} */ (root.querySelector('.gb-roles .gb-role-chip'));
         if (!chip) return;
@@ -1654,7 +2317,7 @@
         chip.focus();
       },
     }, 'Roles');
-    const s4Line = h('div', { class: 'gb-s4-line' }, stepHead(5, 'Edit', states[4]),
+    const s4Line = h('div', { class: 'gb-s4-line' },
       h('span', { class: 'gb-s4-text muted' }, 'Click any part of the preview window to fine-tune its colors.'), rolesGo);
     const editHost = h('div', { class: 'gb-s4-edit' });
     const barSlot = h('div', { class: 'gb-bar-main' });
@@ -1663,9 +2326,14 @@
     // each color with its weakest grade, then a sentence on how readable the palette is.
     const chipsEl = h('div', { class: 'gb-bar-chips', role: 'list', 'aria-label': 'Palette colors and their weakest grade' });
     const lowEl = h('span', { class: 'gb-bar-low' });
-    const readEl = h('p', { class: 'gb-bar-read' });
+    // The readability sentence is for screen readers and the palette's tooltip; the bar stays one
+    // line shorter for it, since step 2 shows the same grades in full.
+    const readEl = h('p', { class: 'gb-bar-read gb-sr' });
+    const palEl = h('div', { class: 'gb-bar-pal' }, h('span', { class: 'gb-bar-l' }, 'Palette'), chipsEl);
+    const hintEl = h('p', { class: 'gb-bar-hint muted' },
+      'Try in VS Code switches to it as GigglyBits Dark (Lab). Save theme adds it to your saved themes.');
     const resultEl = h('span', { class: 'gb-step-state gb-bar-result', role: 'status', 'aria-live': 'polite' });
-    const bar2 = h('div', { class: 'gb-bar2' }, h('span', { class: 'gb-bar-l' }, 'Palette'), chipsEl, readEl);
+    const bar2 = h('div', { class: 'gb-bar2' }, hintEl, palEl, readEl);
     function showResult() {
       const name = draft.name.trim();
       const other = name ? library.find(t => t && sameName(t.name, name)) : null;
@@ -1673,50 +2341,59 @@
       resultEl.textContent = over ? `Overwrites '${other.name}'` : result.text;
       resultEl.classList.toggle('gb-bar-overwrites', Boolean(over));
     }
-    /** Steps 1 to 4 as built for the current width: [{ n, el, sel }], filled by build(). */
+    /** Steps 1 to 5 as built for the current width: [{ n, el }], filled by build(). */
     let stepEls = [];
     /**
-     * Narrow, with the dock open or at one line, steps 1 to 4 fold to their headings, each a
-     * button. Opening one shrinks the dock to one line; the dock's line opens it again. Wide,
-     * step 4 (Roles, in the stage above the dock) folds the same way while the dock is open.
+     * Each of steps 1 to 5 collapses to its heading, a button that opens or closes it. Which are
+     * open is the user's choice, kept in s.sections; a pick in the preview opens step 5 and
+     * changes no other step (D3 in the walkthrough log).
      */
     function syncSteps() {
-      for (const { n, el, sel } of stepEls) {
-        const fold = wide ? n === 4 && dock.state === 'open' : dock.state !== 'closed';
+      for (const { n, el } of stepEls) {
         const head = /** @type {HTMLElement} */ (el.querySelector(':scope > .gb-step-h'));
         const body = /** @type {HTMLElement} */ (el.querySelector(':scope > .gb-step-body'));
         const parts = [...head.querySelectorAll('.gb-step-n, .gb-step-t, .gb-step-state')];
-        const open = !fold || (dock.state === 'min' && dock.step === n);
+        const open = s.sections.includes(n);
         body.hidden = !open;
-        if (!fold) {
-          head.replaceChildren(...parts);
+        el.toggleAttribute('data-collapsed', !open);
+        el.toggleAttribute('data-open', open);
+        const button = /** @type {HTMLElement | null} */ (head.querySelector(':scope > .gb-step-btn'));
+        if (button) {
+          button.setAttribute('aria-expanded', String(open));
           continue;
         }
         head.replaceChildren(h('button', {
-          class: 'gb-step-btn', 'aria-expanded': String(open),
+          type: 'button', class: 'gb-step-btn', 'aria-expanded': String(open), 'aria-controls': body.id,
           onclick: () => {
-            if (dock.state === 'open') {
-              const dockBody = editHost.querySelector('.gb-dock-body');
-              if (dockBody) dock.scroll = dockBody.scrollTop;
-              dock.state = 'min';
-              dock.step = n;
-            } else dock.step = dock.step === n ? 0 : n;
-            drawCandidate();
-            const again = /** @type {HTMLElement | null} */ (root.querySelector(`${sel} .gb-step-btn`));
-            if (again) again.focus();
+            s.sections = s.sections.includes(n) ? s.sections.filter(x => x !== n) : [...s.sections, n].sort();
+            save(ctx);
+            syncSteps();
           },
-        }, ...parts));
+        }, h('span', { class: 'gb-step-chev codicon codicon-chevron-right', 'aria-hidden': 'true' }), ...parts));
+      }
+      if (allToggle) {
+        const allOpen = SECTIONS.every(n => s.sections.includes(n));
+        allToggle.textContent = allOpen ? 'Collapse all' : 'Expand all';
+        allToggle.setAttribute('aria-label', allOpen ? 'Collapse every step' : 'Expand every step');
       }
     }
-    /** Matches the page to the dock: the step 5 line gives way to it, the stage rows change, and steps fold. */
+    /** Expand all / Collapse all, at the top of the page: opens every step, or closes them all once all are open. */
+    const allToggle = h('button', {
+      type: 'button', class: 'secondary gb-all-toggle',
+      onclick: () => {
+        s.sections = SECTIONS.every(n => s.sections.includes(n)) ? [] : SECTIONS.slice();
+        save(ctx);
+        syncSteps();
+      },
+    });
+    root.prepend(h('div', { class: 'gb-lab-top' }, allToggle));
+    /** Matches the page to the dock: the step 5 line gives way to it, and the stage rows change. */
     function layout() {
       root.toggleAttribute('data-docked', dock.state === 'open');
       root.toggleAttribute('data-dock-min', dock.state === 'min');
       s4Line.hidden = dock.state !== 'closed';
       syncSteps();
     }
-    const FRAME_REGIONS = ['titleBar', 'activityBar', 'statusBar'];
-    const EDITOR_REGIONS = ['tabs', 'editorGroup'];
     function drawCandidate() {
       const candidate = candidateOf(s);
       const columns = columnsOf(ctx);
@@ -1724,7 +2401,8 @@
       states[1].textContent = sourceLine(candidate, s);
       const [lowCls] = contrastGrade(low.ratio);
       const lowTitle = ratioTitle(low.ratio, `${low.hex} on ${low.bg}`, 'The weakest pair in the palette.');
-      states[2].textContent = `weakest contrast ${low.ratio.toFixed(1)}:1 (${GRADE_TAGS[lowCls]}), ${low.hex} on ${low.bg}`;
+      const lowCol = columns.find(c => c.hex === low.bg);
+      states[2].textContent = `Weakest pair ${low.ratio.toFixed(1)}:1 (${GRADE_TAGS[lowCls]}): ${low.hex} on ${lowCol ? lowCol.label : low.bg}`;
       states[2].title = lowTitle;
       states[3].textContent = frameEditorState(candidate, s);
       states[4].textContent = editsWord(editCount(s.edits));
@@ -1733,14 +2411,10 @@
         contrastIntro(),
         contrastTable(candidate.colors, candidate.details, columns, ctx),
         contrastLegend(),
-        h('p', { class: 'gb-pl-adjusted muted' }, 'A color used for code text is lifted to at least 4.5:1 when the theme is built, and the input box outline to 3:1, so those stay readable whatever the table shows.'));
+        h('p', { class: 'gb-pl-adjusted muted' }, 'The table rates the colors as picked. When the theme is built, each color used for code text, and the accent, is raised to at least 4.5:1 and the input outline to 3:1, so a Fail here does not mean unreadable code.'));
       const rows = frameEditorRows(candidate, ctx, drawCandidate);
-      // Narrow, a pick in the Frame or the Editor makes that step 3 row the dock's first row:
-      // the same control, drawn there instead of in step 3.
-      const region = picked && !wide && dock.state === 'open' ? picked.region : null;
-      const lead = FRAME_REGIONS.includes(region) ? rows.frameRow : EDITOR_REGIONS.includes(region) ? rows.editorRow : null;
-      feSlot.replaceChildren(...[rows.frameRow, rows.editorRow].filter(row => row !== lead));
-      const stage = stages(candidate, ctx, drawCandidate, editHost, layout, lead);
+      feSlot.replaceChildren(rows.frameRow, rows.styleRow, rows.accentRow, rows.surfacesRow, rows.groupsBox);
+      const stage = stages(candidate, ctx, drawCandidate, editHost, layout);
       const theme = stage.draw();
       rolesSlot.replaceChildren(...rolesStep(candidate, theme, ctx, stage.edit, drawCandidate, focusIn));
       // decisionControls' first item is a step number, which the heading carries here.
@@ -1756,6 +2430,7 @@
       lowEl.title = lowTitle;
       lowEl.replaceChildren('Weakest contrast ', h('span', { class: `badge ${lowCls}` }, `${low.ratio.toFixed(1)}:1`), '.');
       readEl.replaceChildren(readabilitySummary(worst), ' ', lowEl);
+      palEl.title = `${readabilitySummary(worst)} Weakest contrast ${low.ratio.toFixed(1)}:1.`;
       showResult();
     }
 
@@ -1776,8 +2451,8 @@
       };
     }
 
-    const ruleSelect = h('select', { 'aria-label': 'Harmony rule', class: 'gb-pl-rule', onchange: generatedChange(v => { s.rule = v; }) },
-      Object.entries(HARMONY_RULES).map(([id, def]) => h('option', { value: id, selected: s.rule === id }, def.name)));
+    const ruleSelect = rulePicker(() => ({ hue: Number(s.hue), lightness: Number(s.lightness), chroma: Number(s.chroma) }), () => s.rule,
+      generatedChange(v => { s.rule = v; }));
     const hueRange = h('input', { type: 'range', min: 0, max: 359, step: 1, value: s.hue, 'aria-label': 'Base hue', class: 'gb-pl-hue', oninput: generatedChange(v => { s.hue = Number(v); }) });
     const hueNumber = h('input', { type: 'number', min: 0, max: 359, step: 1, value: s.hue, 'aria-label': 'Base hue value', class: 'gb-pl-hue-number', onchange: generatedChange(v => { s.hue = ((Math.round(Number(v)) % 360) + 360) % 360; }) });
     const lightRange = h('input', { type: 'range', min: 0.3, max: 0.95, step: 0.01, value: s.lightness, 'aria-label': 'Lightness', class: 'gb-pl-lightness', oninput: generatedChange(v => { s.lightness = Number(v); }) });
@@ -1823,24 +2498,50 @@
       },
     });
 
+    const baseHex = h('code', { class: 'gb-pl-base-hex muted' });
+
     function syncControls() {
-      picker.setValue(window.GB.oklchToHex({ l: Number(s.lightness), c: Number(s.chroma), h: Number(s.hue) }));
-      ruleSelect.value = s.rule;
+      const l = Number(s.lightness);
+      const c = Number(s.chroma);
+      const hue = Number(s.hue);
+      const base = window.GB.oklchToHex({ l, c, h: hue });
+      picker.setValue(base);
+      baseHex.textContent = base;
+      ruleSelect.sync();
       lightRange.value = String(s.lightness);
       chromaRange.value = String(s.chroma);
       hueRange.value = String(s.hue);
       hueNumber.value = String(s.hue);
-      lightValue.textContent = Number(s.lightness).toFixed(2);
-      chromaValue.textContent = Number(s.chroma).toFixed(3);
+      lightValue.textContent = l.toFixed(2);
+      chromaValue.textContent = c.toFixed(3);
+      // Each track shows what moving its slider does, at the other two values (S3).
+      const ramp = (fn, from, to, n) => `linear-gradient(90deg, ${Array.from({ length: n + 1 }, (_, i) => fn(from + ((to - from) * i) / n)).join(', ')})`;
+      hueRange.style.setProperty('--gb-track', ramp(x => window.GB.oklchToHex({ l, c, h: x }), 0, 360, 24));
+      lightRange.style.setProperty('--gb-track', ramp(x => window.GB.oklchToHex({ l: x, c, h: hue }), 0.3, 0.95, 12));
+      chromaRange.style.setProperty('--gb-track', ramp(x => window.GB.oklchToHex({ l, c: x, h: hue }), 0, 0.3, 12));
     }
 
-    const controls = h('div', { class: 'gb-pl-controls' },
-      // A div, not a label: a label forwards a click on the picker's ring or panel to the trigger.
-      fieldRow('Base color', [picker], 'div'),
-      fieldRow('Rule', [ruleSelect]),
-      fieldRow('Hue', [hueRange, hueNumber]),
-      fieldRow('Lightness', [lightRange, lightValue]),
-      fieldRow('Chroma', [chromaRange, chromaValue]));
+    /**
+     * One slider row on a shared grid, so the three tracks start, end and sit at the same height:
+     * the label, the track, then the value in a column of one width (the Hue number box's), and
+     * under the track the words for its two ends.
+     */
+    const sliderRow = (name, range, value, from, to, title) => h('div', { class: 'gb-pl-slider', title },
+      h('label', { class: 'gb-pl-field-name', for: range.id }, name), range, value,
+      h('div', { class: 'gb-pl-ends', 'aria-hidden': 'true' }, h('span', null, from), h('span', null, to)));
+    hueRange.id = `gb-pl-hue-${++sliderCount}`;
+    lightRange.id = `gb-pl-light-${sliderCount}`;
+    chromaRange.id = `gb-pl-chroma-${sliderCount}`;
+    // Two columns where there is room (S1): Base color and Rule, then the three sliders.
+    const controls = h('div', { class: 'gb-pl-controls gb-pl-wheel' },
+      h('div', { class: 'gb-pl-col' },
+        // A div, not a label: a label forwards a click on the picker's ring or panel to the trigger.
+        fieldRow('Base color', [picker, baseHex], 'div', 'The color the palette is built around. Pick it here or move the sliders; every color in the theme follows it.'),
+        fieldRow('Color rule', [ruleSelect.el], 'div', 'How the other four palette colors relate to the base. Open the list to see each rule\'s colors at your base.')),
+      h('div', { class: 'gb-pl-col gb-pl-sliders' },
+        sliderRow('Hue', hueRange, hueNumber, '0°', '359°', 'Where the base sits around the color wheel, in degrees: about 30 is red, 140 green and 265 blue.'),
+        sliderRow('Lightness', lightRange, lightValue, 'darker', 'lighter', 'How light the base is: OKLCH lightness, where 0 is black and 1 is white. The slider runs from 0.30 to 0.95.'),
+        sliderRow('Chroma', chromaRange, chromaValue, 'grayer', 'more vivid', 'How vivid the base is: OKLCH chroma, where 0 is gray and about 0.3 is as vivid as a screen shows.')));
 
     /** Rebuilds the regions, for a new width or a change of mode. */
     function rebuild() {
@@ -1883,6 +2584,7 @@
       root.removeAttribute('data-docked');
       root.removeAttribute('data-dock-min');
       stepEls = [];
+      allToggle.hidden = true;
       watch(stage, bar);
       return wide ? [tasks, stage] : [stage, tasks];
     }
@@ -1908,8 +2610,8 @@
         selected: s.startTab,
         onSelect: id => { s.startTab = id; save(ctx); },
         tabs: [
-          { id: 'wheel', label: 'Wheel', panel: controls },
-          { id: 'saved', label: h('span', null, 'Saved', h('span', { class: 'count' }, String(library.length))), panel: h('div', { class: 'gb-pl-saved' }, libraryList(ctx, rerender), groupsFoot) },
+          { id: 'wheel', label: 'Color wheel', panel: controls },
+          { id: 'saved', label: h('span', null, 'Saved themes', h('span', { class: 'count' }, String(library.length))), panel: h('div', { class: 'gb-pl-saved' }, libraryList(ctx, rerender), groupsFoot) },
         ],
       });
       // startNote: why a fresh Theme Lab opened on the defaults (src/labStart.ts startConfig).
@@ -1929,16 +2631,23 @@
             onclick: () => ctx.post({ type: 'openPreviewWindow' }),
           }, 'Open Preview')));
 
-      const s1 = step(1, 'Start', states[1], note, startTabs);
+      const s1 = step(1, 'Start', states[1], note,
+        h('p', { class: 'gb-step-lead muted' }, 'Pick a base color and a rule. The rule makes five related colors, and every color in the theme is worked out from those five, readability included. Or start from a theme you saved.'),
+        startTabs);
       const s2 = step(2, 'Palette', states[2], paletteSlot);
-      const s3 = step(3, 'Frame and Editor', states[3], feSlot);
+      const s3 = step(3, 'Frame and accent', states[3],
+        h('p', { class: 'gb-step-lead muted' }, 'Choose which palette colors the window uses. Text and hover shades on each color are worked out for you and stay readable.'),
+        feSlot);
       // Step 4, Roles, has a class of its own: gb-s4 is step 5 (Edit), which kept its class.
       const sRoles = h('div', { class: 'gb-step gb-roles', 'data-step': '4', role: 'group', 'aria-labelledby': 'gb-step-4-h' },
-        stepHead(4, 'Roles', states.roles), h('div', { class: 'gb-step-body' }, rolesSlot));
-      const s4 = h('div', { class: 'gb-step gb-s4', 'data-step': '5' }, s4Line, editHost);
+        stepHead(4, 'Roles', states.roles), h('div', { class: 'gb-step-body', id: 'gb-step-4-b' }, rolesSlot));
+      // Step 5 keeps the class gb-s4; its body is the line pointing to the preview, or the dock.
+      const s4 = h('div', { class: 'gb-step gb-s4', 'data-step': '5', role: 'group', 'aria-labelledby': 'gb-step-5-h' },
+        stepHead(5, 'Edit', states[4]), h('div', { class: 'gb-step-body', id: 'gb-step-5-b' }, s4Line, editHost));
       const bar = h('div', { class: 'gb-step gb-bar', 'data-step': '6', role: 'group', 'aria-labelledby': 'gb-step-6-h' },
         stepHead(6, 'Try and save', resultEl), h('div', { class: 'gb-step-body' }, barSlot, bar2));
-      stepEls = [...[s1, s2, s3].map((el, i) => ({ n: i + 1, el, sel: `.gb-s${i + 1}` })), { n: 4, el: sRoles, sel: '.gb-roles' }];
+      stepEls = [...[s1, s2, s3].map((el, i) => ({ n: i + 1, el })), { n: 4, el: sRoles }, { n: 5, el: s4 }];
+      allToggle.hidden = false;
       // Wide, the Preview card, step 4 (Roles) and step 5 with its Edit dock have the second pane.
       const tasks = h('section', { class: 'gb-tasks', 'aria-label': 'Design steps' }, ...(wide ? [s1, s2, s3, bar] : [previewCard, s1, s2, s3, sRoles, s4, bar]));
       root.toggleAttribute('data-wide', wide);
@@ -2038,7 +2747,7 @@
       label: typeof part.label === 'string' ? part.label : '',
       region: typeof part.region === 'string' ? part.region : null,
       fixed: typeof part.fixed === 'string' ? part.fixed : null,
-    });
+    }, ui);
   }
 
   /** A new candidate clears the pick, and the dock with it. */
@@ -2053,7 +2762,7 @@
    * existed gets the Dark frame it was tried with. An older record's baseId and baseName,
    * from when a Lab could start from a shipped theme, are not carried into the state.
    * @param {any} ui
-   * @param {{ mode: 'generated' | 'pasted', rule?: string, hue?: number, lightness?: number, chroma?: number, pasted?: string[], chromeIndex: number, surfaces: string, baseId?: string, baseName?: string }} record
+   * @param {{ mode: 'generated' | 'pasted', rule?: string, hue?: number, lightness?: number, chroma?: number, pasted?: string[], chromeIndex: number, accentColor?: string, surfaces: string, baseId?: string, baseName?: string }} record
    */
   function restoreTry(ui, record) {
     if (record.mode === 'pasted' && Array.isArray(record.pasted)) {
@@ -2062,6 +2771,8 @@
       Object.assign(ui, { mode: 'generated', rule: record.rule, hue: record.hue, lightness: record.lightness, chroma: record.chroma });
     }
     ui.chromeIndex = record.chromeIndex;
+    if (record.accentColor) ui.accentColor = record.accentColor;
+    else delete ui.accentColor;
     ui.surfaces = record.surfaces;
     ui.frame = record.frame ? { ...record.frame } : darkFrame(record.chromeIndex);
     ui.edits = record.edits ? Builder().cleanEdits(record.edits) : noEdits();
@@ -2087,6 +2798,8 @@
       Object.assign(ui, { mode: 'generated', rule: d.rule, hue: d.hue, lightness: d.lightness, chroma: d.chroma });
     }
     ui.chromeIndex = d.chromeIndex;
+    if (d.accentColor) ui.accentColor = d.accentColor;
+    else delete ui.accentColor;
     ui.surfaces = d.surfaces;
     ui.frame = { ...d.frame };
     ui.edits = Builder().cleanEdits(d.edits);

@@ -1,6 +1,6 @@
 // src/labSettings.ts and labSettings() in scripts/theme-builder.js: what Try in VS Code
 // writes to user settings. It writes nothing to the workspace.
-import { LAB_SCOPE, withLabScope } from '../src/labSettings';
+import { LAB_SCOPE, withLabScope, withoutLabScope } from '../src/labSettings';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TB = require('../scripts/theme-builder.js');
 
@@ -18,6 +18,16 @@ describe('labSettings', () => {
     const lab = TB.labSettings(CANDY, { index: 2, surfaces: 'tinted' });
     expect(lab.colors).toEqual(TB.buildTheme(CANDY, { index: 2, surfaces: 'tinted' }).colors);
     expect(lab.colors['button.background']).not.toBe(TB.buildTheme(CANDY).colors['button.background']);
+  });
+});
+
+describe('withoutLabScope', () => {
+  it('{#without-lab-scope} drops a workspace copy of the Lab block and keeps every other key; with no copy it gives undefined', () => {
+    const frame = { 'titleBar.activeBackground': '#81509e' };
+    expect(withoutLabScope({ [LAB_SCOPE]: { 'button.background': '#b27934' }, '[GigglyBits Theme 7]': frame })).toEqual({ '[GigglyBits Theme 7]': frame });
+    expect(withoutLabScope({ [LAB_SCOPE]: { textMateRules: [] } })).toEqual({});
+    expect(withoutLabScope({ '[GigglyBits Theme 7]': frame })).toBeUndefined();
+    expect(withoutLabScope(undefined)).toBeUndefined();
   });
 });
 

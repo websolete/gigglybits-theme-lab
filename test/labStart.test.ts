@@ -91,3 +91,19 @@ describe('parseTryRecord and the Roles step settings', () => {
     expect(bad).toMatchObject({ rule: 'square', hue: 12, chromeIndex: 1, surfaces: 'neutral', depth: 1.5 });
   });
 });
+
+describe('parseTryRecord and the accent groups', () => {
+  it('{#try-accent-groups} keeps valid accent groups, drops invalid ones, and leaves the field out when none remain', () => {
+    expect(parseTryRecord({ ...GENERATED, accentGroups: { buttons: { index: 2 }, links: { color: '~0.1,0,20' }, nope: { index: 1 } } })?.accentGroups)
+      .toEqual({ buttons: { index: 2 }, links: { color: '~0.1,0,20' } });
+    expect(parseTryRecord({ ...GENERATED, accentGroups: { nope: { index: 1 } } })).not.toHaveProperty('accentGroups');
+  });
+});
+
+describe('parseTryRecord and the custom accent', () => {
+  it('{#try-accent-color} keeps a shift or a hex accentColor, lowercased, and drops anything else', () => {
+    expect(parseTryRecord({ ...GENERATED, accentColor: '~0.1,0,20' })?.accentColor).toBe('~0.1,0,20');
+    expect(parseTryRecord({ ...GENERATED, accentColor: '#2F9E44' })?.accentColor).toBe('#2f9e44');
+    expect(parseTryRecord({ ...GENERATED, accentColor: 'green' })).not.toHaveProperty('accentColor');
+  });
+});

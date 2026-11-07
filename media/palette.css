@@ -20,7 +20,8 @@
 .gb-palette h4 { margin: var(--gb-space-3) 0 var(--gb-space-1); }
 .gb-lab-grid { display: flex; flex-direction: column; min-width: 0; }
 .gb-tasks, .gb-stage { min-width: 0; }
-.gb-tasks { gap: var(--gb-space-2); padding-top: var(--gb-space-2); }
+/* Space between steps: enough that each card reads as its own block when scanning. */
+.gb-tasks { gap: var(--gb-space-3); padding-top: var(--gb-space-2); }
 
 /* Steps: each a bounded card. Its numbered heading, carrying the step's state, is a band across
    the card's top (--gb-py is the card's vertical padding, which the band spans), and a hairline
@@ -35,16 +36,17 @@
   border-radius: calc(var(--gb-card-r) - 1px) calc(var(--gb-card-r) - 1px) 0 0;
 }
 .gb-step:has(> .gb-step-body[hidden]) { padding-bottom: 0; }
-.gb-step > .gb-step-body:not([hidden]) { margin: 0 -12px; padding: 10px 12px 0; border-top: 1px solid var(--gb-card-line); }
+.gb-step > .gb-step-body:not([hidden]) { margin: 0 -12px; padding: 12px 12px 2px; border-top: 1px solid var(--gb-card-line); }
+/* An open step gets a little more room at its foot than a collapsed heading needs. */
+.gb-step[data-open] { padding-bottom: 14px; }
 .gb-step-h { display: flex; align-items: center; gap: var(--gb-space-2); margin: 0; min-width: 0; min-height: 24px; font-size: var(--gb-heading-size); font-weight: 600; }
-/* An open step stands out while the steps are folded (narrow, the Edit panel open or at one
-   line): the step opened from its heading, and the Edit panel itself while it is open. */
-.gb-palette:not([data-wide]):is([data-docked], [data-dock-min]) .gb-tasks > .gb-step:is(.gb-s1, .gb-s2, .gb-s3, .gb-roles):has(> .gb-step-body:not([hidden])),
-.gb-palette[data-docked] .gb-s4 { border-color: var(--gb-hl); }
-.gb-palette:not([data-wide]):is([data-docked], [data-dock-min]) .gb-tasks > .gb-step:is(.gb-s1, .gb-s2, .gb-s3, .gb-roles):has(> .gb-step-body:not([hidden])) > .gb-step-h,
-.gb-palette[data-docked] .gb-s4 .gb-dock-head { background: var(--gb-hl-band); }
-.gb-palette:not([data-wide]):is([data-docked], [data-dock-min]) .gb-tasks > .gb-step:is(.gb-s1, .gb-s2, .gb-s3, .gb-roles) > .gb-step-body:not([hidden]),
-.gb-palette[data-docked] .gb-s4 .gb-dock-head { border-color: var(--gb-hl-line); }
+/* An open step stands out: its border, its heading band and the line under the heading take the
+   highlight (data-open, set by palette.js syncSteps on steps 1 to 5). */
+.gb-step[data-open] { border-color: var(--gb-hl); }
+.gb-step[data-open] > .gb-step-h { background: var(--gb-hl-band); }
+.gb-step[data-open] > .gb-step-body:not([hidden]) { border-top-color: var(--gb-hl-line); }
+/* The Edit panel's own heading line is highlighted too while it is open. */
+.gb-palette[data-docked] .gb-s4 .gb-dock-head { background: var(--gb-hl-band); border-color: var(--gb-hl-line); }
 .gb-step-n {
   flex: none; display: inline-grid; place-items: center; inline-size: 20px; block-size: 20px;
   border: 1px solid var(--gb-border); border-radius: 50%; background: var(--gb-inset); font-size: var(--gb-text-sm); font-weight: 600;
@@ -54,33 +56,87 @@
   margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-weight: normal; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground);
 }
-.gb-step-body { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+.gb-step-body { display: flex; flex-direction: column; gap: var(--gb-space-3); min-width: 0; }
 .gb-step-body[hidden] { display: none; }
-/* Narrow with the dock open: a folded step is its heading line, a button that opens it. */
+/* Steps 1 to 5: the heading line is a button that opens or collapses the step; the chevron turns
+   down while it is open. */
+/* The button fills the whole heading band, so hover and click cover all of it: the band's padding
+   moves from the heading onto the button, and the button takes the band's corners (all four
+   while the step is collapsed). */
+.gb-step > .gb-step-h:has(> .gb-step-btn) { padding: 0; }
+.gb-step[data-collapsed] > .gb-step-h { border-radius: calc(var(--gb-card-r) - 1px); }
 .gb-step-btn {
   display: flex; align-items: center; gap: var(--gb-space-2); inline-size: 100%; min-width: 0; min-height: 24px;
-  padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  padding: var(--gb-py) 12px; border: 0; border-radius: inherit; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
 .gb-step-btn:hover { background: var(--vscode-list-hoverBackground); }
-.gb-step-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-.gb-palette:not([data-wide])[data-docked] .gb-tasks > .gb-step:not(.gb-s4):not(.gb-bar),
-.gb-palette:not([data-wide])[data-dock-min] .gb-tasks > .gb-step:not(.gb-s4):not(.gb-bar) { --gb-py: var(--gb-space-1); }
+.gb-step-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.gb-step-chev { flex: none; transition: transform 0.1s; }
+.gb-step-btn[aria-expanded="true"] .gb-step-chev { transform: rotate(90deg); }
+
+/* The line above the steps: Expand all / Collapse all. */
+.gb-lab-top { display: flex; justify-content: flex-end; align-items: center; block-size: 2rem; }
+.gb-lab-top > button { min-height: 22px; padding: 1px var(--gb-space-2); }
+.gb-lab-top > button[hidden] { display: none; }
 .gb-pl-summary { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
 
-/* Step 3: two labelled rows, the palette choices then the select; they wrap past five colors. */
+/* A step's opening line: what the step is for, in a sentence. */
+.gb-step-lead { margin: 0; font-size: var(--gb-text-sm); }
+
+/* Step 3: labelled rows (Frame color, Frame style, Accent, Surfaces) on the same label column
+   as the accent groups below, each label with a line under it naming what the row colors. */
 .gb-fe { display: flex; flex-direction: column; gap: var(--gb-space-2); }
-.gb-fe-row { display: grid; grid-template-columns: 3.6rem minmax(0, 1fr) auto; align-items: start; gap: var(--gb-space-1) var(--gb-space-2); }
-.gb-fe-l { line-height: 26px; color: var(--vscode-descriptionForeground); cursor: help; }
+.gb-fe-row { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--gb-space-1) var(--gb-space-2); }
+.gb-fe-l { display: flex; flex-direction: column; line-height: 1.2; color: var(--vscode-descriptionForeground); cursor: help; }
+.gb-fe-l > small { font-size: 0.85em; }
+/* Example chips: a small window drawn in the colors the choice gives, its name and a line on it. */
+.gb-ex-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: 6px; }
+.gb-ex-pick { display: inline-flex; align-items: center; gap: var(--gb-space-2); padding: 4px 10px 4px 4px; text-align: start; }
+.gb-ex-text { display: flex; flex-direction: column; line-height: 1.25; }
+.gb-ex-about { font-size: 0.85em; }
+.gb-mini {
+  display: inline-grid; flex: none; inline-size: 84px; block-size: 52px; border-radius: 3px; overflow: hidden;
+  grid-template-columns: 7px 26px minmax(0, 1fr); grid-template-rows: 6px 8px minmax(0, 1fr) 5px;
+  outline: 1px solid rgba(128, 128, 128, 0.45);
+}
+.gb-mini-title { grid-column: 1 / -1; grid-row: 1; }
+.gb-mini-act { grid-column: 1; grid-row: 2 / 4; position: relative; }
+.gb-mini-mark { position: absolute; inset-inline-start: 0; inset-block-start: 3px; inline-size: 2px; block-size: 5px; }
+.gb-mini-side { grid-column: 2; grid-row: 2 / 4; padding-top: 10px; border-right: 1px solid transparent; }
+.gb-mini-sel { display: block; block-size: 5px; }
+.gb-mini-tabs { grid-column: 3; grid-row: 2; display: flex; padding-inline-start: 2px; }
+.gb-mini-tab { display: block; inline-size: 18px; border-top: 1px solid transparent; }
+.gb-mini-code { grid-column: 3; grid-row: 3; display: flex; flex-direction: column; gap: 4px; padding: 6px 5px; }
+.gb-mini-ln { display: block; block-size: 2px; inline-size: 70%; }
+.gb-mini-ln:nth-child(2) { inline-size: 50%; margin-inline-start: 4px; }
+.gb-mini-ln:nth-child(3) { inline-size: 85%; }
+.gb-mini-status { grid-column: 1 / -1; grid-row: 4; }
+/* Narrow: each step 3 label goes above its choices, its line beside it, so the choices get the width. */
+@media (max-width: 36rem) {
+  .gb-fe-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .gb-fe-l { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 var(--gb-space-2); }
+}
 .gb-fe-row .gb-ch-picks { display: inline-flex; flex-wrap: wrap; gap: 3px; }
 .gb-fe-row .gb-fr-note { grid-column: 1 / -1; margin: 0; font-size: var(--gb-text-sm); }
+/* Step 3's accent groups (G1): a heading line, then a row per group: its name and color count,
+   Accent / palette colors / Custom, and what the group gets. */
+.gb-ag { display: flex; flex-direction: column; gap: 6px; margin-top: var(--gb-space-2); padding-top: var(--gb-space-3); border-top: 1px solid var(--gb-card-line); }
+.gb-ag-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--gb-space-2); margin-bottom: 2px; }
+.gb-ag-title { font-weight: 600; }
+.gb-ag-note { margin: 0; font-size: var(--gb-text-sm); }
+.gb-ag-key { margin-inline-start: auto; font-size: 0.85em; cursor: help; }
+.gb-ag-overridden { margin: 0; font-size: var(--gb-text-sm); color: var(--vscode-editorWarning-foreground); }
+.gb-ag-preview { display: inline-flex; align-items: center; gap: 2px; cursor: help; }
+.gb-ag-sample { display: inline-grid; place-items: center; min-inline-size: 22px; block-size: 16px; padding: 0 3px; border-radius: 3px; font-size: 0.8em; font-weight: 600; }
 
 /* Step 4, Roles: a row per family, each an inset box with its name, counts and how it is made,
-   its setting, and its roles as chips (swatch, name, key count); a chip opens one editor under
-   its family. A folded family is its head line with a strip of its colors and Show. */
+   its setting, and its roles as rows (R4-1): a heading button (chevron, color, name, what it is
+   for, how many colors), the parts of the window it colors, and when open its editor and every
+   color it draws. A folded family is its head line with a strip of its colors and Show. */
 .gb-rfs { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
 .gb-rf-intro { margin: 0; }
 .gb-rf {
-  display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; padding: 10px 12px;
   border: 1px solid var(--gb-card-line); border-radius: 4px; background: var(--gb-inset);
 }
 .gb-rf-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--gb-space-2); min-width: 0; }
@@ -99,35 +155,70 @@
 button.gb-rf-link { padding: 0; border: 0; background: none; color: var(--vscode-textLink-foreground); font: inherit; cursor: pointer; }
 button.gb-rf-link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
 .gb-rf-link:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-.gb-rf-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.gb-rf-roles { display: flex; flex-direction: column; min-width: 0; }
+.gb-role-row { padding: 2px 0; border-top: 1px solid var(--gb-card-line); min-width: 0; }
+.gb-role-row.gb-role-open { margin: 2px -4px; padding: 4px 4px 8px; border: 1px solid var(--vscode-focusBorder); border-radius: 4px; background: var(--gb-card); }
 button.gb-role-chip {
-  display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 5px 2px 3px;
-  border: 1px solid var(--gb-card-line); border-radius: 3px; background: var(--gb-card);
-  color: var(--vscode-foreground); font: inherit; font-size: var(--gb-text-sm); cursor: pointer;
+  display: grid; grid-template-columns: 16px 30px minmax(7rem, 9.5rem) minmax(0, 1fr) auto; align-items: center; gap: var(--gb-space-2);
+  inline-size: 100%; min-height: 26px; padding: 1px 4px; border: 0; border-radius: 3px; background: transparent;
+  color: var(--vscode-foreground); font: inherit; text-align: left; cursor: pointer;
 }
 button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
-.gb-role-chip[aria-expanded="true"] { border-color: var(--vscode-focusBorder); }
-.gb-role-chip:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
-.gb-role-edited { box-shadow: inset 2px 0 0 var(--vscode-editorWarning-foreground); }
-.gb-role-dot { flex: none; inline-size: 16px; block-size: 16px; border: 1px solid var(--gb-border); border-radius: 2px; box-sizing: border-box; }
-.gb-role-n { padding-left: 5px; border-left: 1px solid var(--gb-card-line); color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
-.gb-role-ed {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 6px var(--gb-space-2);
-  padding: 8px; border: 1px solid var(--vscode-focusBorder); border-radius: 4px; background: var(--gb-card);
+.gb-role-chip:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.gb-role-chev { color: var(--vscode-descriptionForeground); transition: transform 0.1s; }
+.gb-role-chip[aria-expanded="true"] .gb-role-chev { transform: rotate(90deg); }
+.gb-role-edited .gb-role-name::after { content: ' edited'; font-weight: normal; font-size: var(--gb-text-sm); color: var(--vscode-editorWarning-foreground); }
+/* A role sample: "Aa" in the color on what it sits on, a line of it, or a fill with its text. */
+.gb-role-sample {
+  display: inline-grid; place-items: center; flex: none; box-sizing: border-box; border-radius: 3px;
+  outline: 1px solid var(--gb-border); outline-offset: -1px;
+  font-family: var(--vscode-editor-font-family, monospace); font-weight: 600; line-height: 1; cursor: help;
 }
-.gb-role-big { grid-row: span 2; inline-size: 40px; block-size: 40px; border: 1px solid var(--gb-border); border-radius: 4px; box-sizing: border-box; }
+.gb-role-dot { inline-size: 30px; block-size: 18px; font-size: 11px; }
+.gb-rf-pick-sample { inline-size: 28px; block-size: 20px; font-size: 11px; }
+/* The syntax colors as three lines of code on the editor background. */
+.gb-rf-syntax-set { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+.gb-palette pre.gb-rf-code {
+  margin: 0; padding: 6px 10px; border: 1px solid var(--gb-card-line); border-radius: 4px; overflow-x: auto;
+  font-family: var(--vscode-editor-font-family, monospace); font-size: var(--vscode-editor-font-size, 12px); line-height: 1.5; white-space: pre;
+}
+.gb-role-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-role-about { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground); }
+.gb-role-count { min-inline-size: 5.5em; text-align: end; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gb-role-ed { margin: 8px 0 0 calc(32px + 2 * var(--gb-space-2)); display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+.gb-role-ed-top { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px var(--gb-space-2); }
+.gb-role-big { grid-row: span 2; inline-size: 56px; block-size: 40px; border-radius: 4px; font-size: 18px; }
 .gb-role-ed-text { min-width: 0; font-size: var(--gb-text-sm); }
 .gb-role-ed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-2); }
+/* Every color the open role draws, grouped by part of the window, in columns where there is room. */
+/* Every color an open role draws, one boxed group per part of the window, headed like the Edit
+   panel's groups: the part's name and its count on a band, then a line per color. */
+.gb-role-keys { columns: 2 20rem; column-gap: var(--gb-space-3); margin-top: var(--gb-space-1); }
+.gb-role-keygroup { break-inside: avoid; margin: 0 0 var(--gb-space-3); border: 1px solid var(--gb-card-line); border-radius: 4px; overflow: hidden; }
+.gb-palette .gb-role-keygroup h5 {
+  display: flex; align-items: baseline; gap: var(--gb-space-2); margin: 0; padding: 4px 8px;
+  background: var(--gb-inset); border-bottom: 1px solid var(--gb-card-line);
+  font-size: 0.8em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--vscode-descriptionForeground);
+}
+.gb-palette .gb-role-keygroup h5 > .muted { margin-left: auto; font-weight: normal; letter-spacing: 0; }
+.gb-role-keygroup ul { margin: 0; padding: 0; list-style: none; }
+.gb-role-keygroup li { display: flex; justify-content: space-between; align-items: baseline; gap: var(--gb-space-2); padding: 3px 8px; font-size: var(--gb-text-sm); }
+.gb-role-keygroup li + li { border-top: 1px solid color-mix(in srgb, var(--vscode-foreground) 6%, transparent); }
+.gb-role-keygroup code { flex: none; max-inline-size: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; background: none; font-size: 0.85em; color: var(--vscode-descriptionForeground); }
 
-/* Step 5 line: the heading and the hint, or the Edit dock. */
+/* Step 5's body: the hint pointing to the preview, or the Edit dock. */
 .gb-s4-line { display: flex; align-items: center; gap: var(--gb-space-2); min-width: 0; }
-.gb-s4-line > .gb-step-h { flex: none; }
 .gb-s4-text { flex: 1 1 auto; min-width: 0; }
 
+/* Under an edited color: the color the palette gives, and how far the edit moves it. */
+.gb-shift { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0 0; font-size: var(--gb-text-sm); cursor: help; }
+.gb-shift-raised { color: var(--vscode-editorWarning-foreground); }
+
 /* Step 6, Try and save: a card stuck to the bottom. The heading band carries the last result;
-   the body is Name with Try in VS Code (the one filled button) and Save theme, then the palette
-   summary: one pill per color with its weakest grade, and the readability sentence. The card
-   color is opaque, so the steps scroll under it unseen. */
+   the body is Name with Try in VS Code (the one filled button), Save theme and, once saved, the
+   two Use buttons; then one line: what Try and Save do, and the palette, one pill per color with
+   its weakest grade (the readability sentence is in its tooltip). The card color is opaque, so
+   the steps scroll under it unseen. */
 .gb-bar { position: sticky; bottom: 0; z-index: 5; }
 .gb-bar > .gb-step-body { gap: var(--gb-space-2); }
 .gb-bar-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-1) var(--gb-space-2); min-width: 0; }
@@ -136,10 +227,12 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-bar-name > input { flex: 1 1 auto; min-width: 0; min-height: 26px; box-sizing: border-box; }
 .gb-bar .gb-pl-apply { min-height: 28px; font-weight: 600; white-space: nowrap; }
 .gb-bar .gb-pl-save-theme { min-height: 28px; white-space: nowrap; }
-.gb-bar2 {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--gb-space-1) var(--gb-space-2);
-  min-width: 0; font-size: var(--gb-text-sm);
-}
+.gb-bar2 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-1) var(--gb-space-3); min-width: 0; font-size: var(--gb-text-sm); }
+.gb-bar-hint { flex: 1 1 20rem; margin: 0; min-width: 0; }
+.gb-bar-pal { display: flex; align-items: center; gap: var(--gb-space-2); margin-left: auto; cursor: help; }
+.gb-bar-pal > .gb-bar-l { inline-size: auto; }
+.gb-pl-buttons button[hidden] { display: none; }
+.gb-bar .gb-bar-use { min-height: 28px; white-space: nowrap; }
 .gb-bar-chips { display: flex; flex-wrap: wrap; gap: var(--gb-space-1); min-width: 0; }
 .gb-bar-pill {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 2px; cursor: help;
@@ -147,7 +240,7 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 }
 .gb-bar-pill .badge { font-size: 0.9em; }
 .gb-bar-chip { inline-size: 16px; block-size: 16px; border-radius: 50%; border: 1px solid var(--gb-border); box-sizing: border-box; }
-.gb-bar-read { grid-column: 2; margin: 0; color: var(--vscode-descriptionForeground); }
+.gb-bar-read { margin: 0; color: var(--vscode-descriptionForeground); }
 .gb-bar-low { white-space: nowrap; cursor: help; }
 .gb-bar-low .badge { font-size: 1em; }
 .gb-bar-result.gb-bar-overwrites { color: var(--vscode-editorWarning-foreground); }
@@ -173,29 +266,23 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 @container lab (min-width: 75rem) {
   .gb-lab-grid {
     display: grid; grid-template-columns: 28rem minmax(0, 1fr); grid-template-areas: "tasks stage";
-    column-gap: var(--gb-space-5); block-size: 100vh;
+    column-gap: var(--gb-space-5); block-size: calc(100vh - 2rem);
   }
   .gb-tasks {
     grid-area: tasks; display: flex; flex-direction: column; min-height: 0;
     overflow: auto; overscroll-behavior: contain; padding-right: var(--gb-space-1);
   }
-  .gb-stage > .gb-s4 { margin: var(--gb-space-2) 0; }
-  .gb-stage > .gb-roles { margin-top: var(--gb-space-2); }
+  .gb-stage > .gb-s4 { margin: var(--gb-space-3) 0; }
+  .gb-stage > .gb-roles { margin-top: var(--gb-space-3); }
   .gb-tasks > .gb-bar { margin-top: auto; }
-  /* The second pane: the Preview card, step 4 (Roles), then step 5, which fills the rest while its
-     dock is open and Roles is folded to its heading (in the Style groups mode, the group's card
-     view fills it). With the dock closed or at one line, the pane scrolls through Roles. */
+  /* The second pane: the Preview card, step 4 (Roles), then step 5, scrolling on its own; each
+     step is as tall as the user leaves it open (in the Style groups mode, the group's card view).
+     The dock's key list scrolls inside it past most of the pane's height. */
   .gb-stage {
-    grid-area: stage; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
-    min-height: 0; overflow: hidden; padding-top: var(--gb-space-2);
+    grid-area: stage; display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; align-content: start;
+    min-height: 0; overflow: auto; overscroll-behavior: contain; padding-top: var(--gb-space-2);
   }
-  .gb-palette:not([data-docked]) .gb-stage > .gb-s4 { align-self: start; }
-  .gb-palette[data-docked] .gb-stage:has(> .gb-roles) { grid-template-rows: auto auto minmax(0, 1fr); }
-  .gb-palette:not([data-docked]) .gb-stage:has(> .gb-roles) {
-    grid-template-rows: auto auto auto; align-content: start; overflow: auto; overscroll-behavior: contain;
-  }
-  .gb-palette[data-docked] .gb-s4, .gb-palette[data-docked] .gb-s4-edit { display: flex; flex-direction: column; min-height: 0; }
-  .gb-palette[data-docked] .gb-s4-edit { flex: 1 1 auto; }
+  .gb-palette[data-docked] .gb-dock-body { max-block-size: calc(100vh - 12rem); }
 }
 
 @container lab (max-width: 74.99rem) {
@@ -206,12 +293,9 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
     border-bottom: 1px solid var(--gb-border);
   }
   .gb-preview { flex: 1 1 auto; }
-  .gb-tasks { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--gb-space-2); row-gap: var(--gb-space-2); }
+  .gb-tasks { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--gb-space-2); row-gap: var(--gb-space-3); }
   .gb-tasks > * { grid-column: 1 / -1; }
-  /* Tighter steps, so the band, steps 1 to 3, the step 5 line and the bar fit a 900px tab. */
-  .gb-tasks > .gb-step { --gb-py: var(--gb-space-2); }
-  .gb-tasks > .gb-step > .gb-step-body:not([hidden]) { padding-top: var(--gb-space-2); }
-  .gb-s3 > .gb-step-body, .gb-fe { gap: var(--gb-space-1); }
+  /* The Try and save bar's summary sits close under its buttons. */
   .gb-bar2 { margin-top: 2px; }
   /* With the dock open, the folded step headings, the dock and the bar share the height under
      the band, so the dock's body scrolls inside it instead of pushing the page. */
@@ -227,6 +311,62 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 
 /* Labelled rows (fieldRow in palette.js): a label column, then the control column. */
 .gb-pl-controls { display: flex; flex-direction: column; gap: var(--gb-space-2); }
+/* The Wheel tab (S1): Base color and Rule, then the sliders, side by side where there is room. */
+.gb-pl-controls.gb-pl-wheel { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: var(--gb-space-2) var(--gb-space-5); }
+.gb-pl-col { display: flex; flex-direction: column; gap: var(--gb-space-2); min-width: 0; }
+.gb-pl-wheel .gb-pl-field { --gb-pl-label: 5.5em; gap: var(--gb-space-3); }
+.gb-pl-base-hex { font-family: var(--vscode-editor-font-family); font-size: var(--gb-text-sm); }
+/* Slider tracks show their own scale (S3), painted from palette.js syncControls. */
+.gb-pl-wheel input[type="range"] {
+  -webkit-appearance: none; appearance: none; block-size: 12px; margin: 0; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--gb-card-line); background: var(--gb-track, var(--vscode-input-background));
+}
+.gb-pl-wheel input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; inline-size: 16px; block-size: 16px; border-radius: 50%;
+  background: #ffffff; border: 2px solid var(--vscode-editor-background); box-shadow: 0 0 0 1px var(--vscode-foreground);
+}
+.gb-pl-wheel input[type="range"]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+/* The three sliders share one grid: label, track, a value column as wide as the Hue box, then
+   the end words under the track. Every track starts, ends and sits at the same height. */
+.gb-pl-sliders { gap: var(--gb-space-1); }
+.gb-pl-slider {
+  display: grid; grid-template-columns: 5.5em minmax(0, 1fr) 4.5em; grid-template-rows: 24px auto;
+  column-gap: var(--gb-space-3); align-items: center;
+}
+.gb-pl-slider > .gb-pl-field-name { grid-row: 1; }
+.gb-pl-slider > input[type="range"] { grid-row: 1; inline-size: 100%; min-width: 0; }
+.gb-pl-slider > .gb-pl-value, .gb-pl-slider > .gb-pl-hue-number { grid-row: 1; inline-size: 100%; }
+.gb-pl-slider > .gb-pl-value { padding-inline-start: 5px; box-sizing: border-box; }
+.gb-pl-ends { grid-row: 2; grid-column: 2; display: flex; justify-content: space-between; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground); line-height: 1.2; }
+
+/* The Rule picker (S2): the button shows the rule; the list shows every rule at the current base. */
+.gb-rule { position: relative; flex: 1 1 auto; min-width: 0; }
+.gb-rule-btn {
+  display: flex; align-items: center; gap: var(--gb-space-2); inline-size: 100%; min-height: 28px; padding: 1px 6px;
+  border: 1px solid var(--vscode-dropdown-border, var(--gb-card-line)); border-radius: 2px;
+  background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); font: inherit; text-align: left; cursor: pointer;
+}
+.gb-rule-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.gb-rule-btn > .gb-rule-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-rule-chev { flex: none; color: var(--vscode-descriptionForeground); }
+.gb-rule-wheel { flex: none; }
+.gb-rule-strip { display: inline-flex; flex: none; overflow: hidden; border: 1px solid var(--gb-card-line); border-radius: 2px; }
+.gb-rule-strip > span { inline-size: 16px; block-size: 14px; }
+.gb-rule-list {
+  position: absolute; z-index: 30; inset-inline-start: 0; inset-block-start: calc(100% + 2px);
+  inline-size: max(100%, 30rem); max-inline-size: calc(100vw - 1rem); max-block-size: 24rem; overflow: auto; padding: 3px; box-sizing: border-box;
+  border: 1px solid var(--vscode-dropdown-border, var(--gb-card-line)); border-radius: 4px;
+  background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); box-shadow: 0 4px 14px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+}
+.gb-rule-list[hidden] { display: none; }
+.gb-rule-list:focus { outline: none; }
+.gb-rule-opt { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: var(--gb-space-2); padding: 4px 6px; border-radius: 3px; cursor: pointer; }
+.gb-rule-opt:hover { background: var(--vscode-list-hoverBackground); }
+.gb-rule-opt.gb-rule-active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-focusBorder); }
+.gb-rule-opt[aria-selected="true"] .gb-rule-name { font-weight: 600; }
+.gb-rule-text { display: flex; flex-direction: column; min-width: 0; }
+.gb-rule-note { font-size: var(--gb-text-sm); opacity: 0.8; }
+.gb-rule-opt .gb-rule-strip > span { inline-size: 20px; block-size: 18px; }
 .gb-pl-field { display: grid; grid-template-columns: var(--gb-pl-label, 6.5em) minmax(0, 1fr); gap: var(--gb-space-3); align-items: center; }
 .gb-pl-field-name { color: var(--vscode-descriptionForeground); }
 .gb-sr {
@@ -235,7 +375,12 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 }
 .gb-pl-field-control { display: flex; gap: var(--gb-space-2); align-items: center; min-width: 0; }
 .gb-pl-field-control input[type="range"] { flex: 1; min-width: 0; }
-.gb-pl-hue-number { width: 4.5em; }
+.gb-pl-hue-number {
+  inline-size: 4.5em; min-height: 24px; box-sizing: border-box; padding: 1px 4px; font: inherit; font-family: var(--vscode-editor-font-family);
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--gb-card-line)); border-radius: 2px;
+}
+.gb-pl-hue-number:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .gb-pl-value { flex: none; width: 5ch; font-family: var(--vscode-editor-font-family); }
 
 /* Step 2: the palette table. A 24px chip and the hex over L C H, then four ratio columns in
@@ -270,12 +415,13 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
   display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 1px 6px;
   border: 1px solid rgba(128, 128, 128, 0.45); border-radius: var(--gb-radius);
 }
-.gb-pl-ratio .badge { font-size: 0.9em; white-space: nowrap; }
+/* The ratio and its grade at one size, the grade's: the number no longer towers over the word. */
+.gb-pl-ratio .badge { font-size: 0.78em; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @container gbpal (max-width: 46rem) {
   .gb-pl-ratio-cell { flex-direction: column; align-items: center; gap: 1px; padding: 2px 4px; }
   .gb-pl-table-wrap { max-block-size: calc(3.6rem + 5 * 52px); }
 }
-.gb-pl-grade { font-size: 0.85em; }
+.gb-pl-grade { font-size: 1em; }
 /* The sample: "Aa" in the row's color (set inline), small as normal text, then large and bold
    as the Large grade means. */
 .gb-pl-sample { display: inline-flex; align-items: baseline; gap: 5px; line-height: 1.2; }
@@ -284,14 +430,16 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 /* The weakest cell: its swatch outlined, never color alone; its text also says "weakest". */
 .gb-pl-weakest .gb-pl-ratio-cell { outline: 2px solid var(--vscode-foreground); outline-offset: 1px; }
 
-/* Step 2's intro line, and the grade legend: one row per grade, its badge then what it means. */
+/* Step 2's intro line, and the grade legend: one line, each grade's badge then its range; what
+   each grade means is in its tooltip. */
 .gb-pl-intro { margin: 0; font-size: var(--gb-text-sm); }
 .gb-pl-legend {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 3px var(--gb-space-3);
-  margin: 0; padding: 6px var(--gb-space-2); border-radius: var(--gb-card-r); background: var(--gb-inset); font-size: 0.8em;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 3px var(--gb-space-3);
+  margin: 0; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground);
 }
-.gb-pl-legend-row { display: grid; grid-template-columns: 3.4em minmax(0, 1fr); align-items: baseline; gap: var(--gb-space-2); }
-.gb-pl-legend .badge { font-size: 1em; justify-self: start; }
+.gb-pl-legend-l { font-weight: 600; }
+.gb-pl-legend-row { display: inline-flex; align-items: center; gap: 4px; cursor: help; }
+.gb-pl-legend .badge { font-size: 1em; }
 .gb-pl-adjusted { margin: 0; font-size: 0.8em; }
 /* Column headings: the background's name over its hex. */
 .gb-pl-contrast thead th:not(:first-child) { white-space: normal; vertical-align: bottom; line-height: 1.2; cursor: help; }
@@ -303,9 +451,9 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
   vertical-align: middle; border: 1px solid rgba(128, 128, 128, 0.5);
 }
 
-/* Frame and Editor choices. */
+/* Step 3's palette color choices. */
 .gb-ch-picks { flex-wrap: wrap; align-items: center; }
-.gb-fr-pick { min-height: 24px; padding: 1px 5px; }
+.gb-fr-pick, .gb-ag-pick { min-height: 24px; padding: 1px 5px; }
 .gb-ch-controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
 .gb-ch-controls label { display: inline-flex; gap: 4px; align-items: center; }
 .gb-ch-picks { display: inline-flex; gap: 4px; }
@@ -324,6 +472,9 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 .gb-palette, .gb-tp { --gb-pl-pick: var(--vscode-focusBorder); --gb-pl-pick-hover: var(--vscode-editorWarning-foreground); }
 .gb-pl-scope .gb-pl-hover { outline: 1px dashed var(--gb-pl-pick-hover); outline-offset: -1px; }
 .gb-pl-scope .gb-pl-picked { outline: 2px dashed var(--gb-pl-pick) !important; outline-offset: 1px; }
+/* Every part the Roles step's pointed-at role colors (themePreview.js applyHighlight): a solid
+   outline in the warning color with a dark halo, so it shows on any candidate color. */
+.gb-pl-scope .gb-pl-role-hl { outline: 2px solid var(--gb-pl-pick-hover); outline-offset: -2px; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55); }
 
 .gb-pl-widget-list { gap: var(--gb-space-4); }
 .gb-pl-widget { display: flex; flex-direction: column; gap: var(--gb-space-1); min-width: 0; }
@@ -345,15 +496,18 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
   border-bottom: 1px solid var(--gb-card-line); border-radius: calc(var(--gb-card-r) - 1px) calc(var(--gb-card-r) - 1px) 0 0;
 }
 .gb-dock[data-min] .gb-dock-head { margin: 0; padding: 0; border-bottom: 0; }
-.gb-dock-head > .gb-step-h { flex: 1 1 auto; }
+.gb-dock-head > .gb-dock-h { flex: 1 1 auto; display: flex; align-items: center; min-width: 0; margin: 0; font-size: 1em; }
 .gb-dock-head button.secondary { min-height: 24px; padding: 2px var(--gb-space-2); }
+/* A secondary button keeps a faint edge, so it still reads as a button in a theme whose
+   secondary button background is see-through (VS Code's Dark Modern, for one). */
+.gb-palette button.secondary:not(.gb-rf-link):not(.gb-pl-swatch):not(.gb-cp-block) { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 22%, transparent); }
 .gb-dock-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; font-size: 0.95em; }
 .gb-dock-reopen {
   display: flex; align-items: center; gap: var(--gb-space-2); inline-size: 100%;
   border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer;
 }
 .gb-dock-reopen:hover { background: var(--vscode-list-hoverBackground); }
-.gb-dock-reopen > .gb-step-h { flex: 1 1 auto; }
+.gb-dock-reopen > .gb-dock-h { flex: 1 1 auto; display: flex; align-items: center; min-width: 0; margin: 0; font-size: 1em; }
 .gb-dock-edits {
   flex: none; max-block-size: 10rem; overflow: auto; margin-top: var(--gb-space-2); padding: var(--gb-space-1) var(--gb-space-2);
   border: 1px solid var(--gb-card-line); border-radius: var(--gb-card-r); background: var(--gb-inset); font-size: var(--gb-text-sm);
@@ -375,9 +529,8 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 }
 .gb-dock-group-h { border-bottom: 1px solid var(--gb-card-line); }
 .gb-dock-group-hint { margin-left: auto; font-weight: normal; text-transform: none; letter-spacing: 0; }
-.gb-dock-lead-row { padding: var(--gb-space-2) 10px; }
 .gb-dock-cols, .gb-pl-key-head {
-  display: grid; grid-template-columns: 14px minmax(0, 1fr) 6.5rem 4rem minmax(0, 11rem);
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) 6.5rem 4rem minmax(0, 11rem);
   align-items: center; column-gap: 10px;
 }
 .gb-dock-cols { padding: 3px 10px; font-size: 0.78em; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--gb-card-line); }
@@ -390,7 +543,12 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 }
 .gb-pl-key-head:hover { background: var(--vscode-list-hoverBackground); }
 .gb-pl-key-head:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-.gb-pl-key-head > code, .gb-pl-key-rolename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-pl-key-rolename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A key's plain name, then its setting name, small, on the same line. */
+.gb-pl-key-label { display: flex; align-items: baseline; gap: var(--gb-space-2); min-width: 0; overflow: hidden; white-space: nowrap; }
+.gb-pl-key-name { flex: none; }
+.gb-pl-key-label > code { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+.gb-pl-key-sample { inline-size: 30px; block-size: 18px; font-size: 11px; }
 .gb-pl-key-hex { font-family: var(--vscode-editor-font-family); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gb-pl-key-head > .badge { justify-self: start; }
 .gb-pl-key-strip[hidden] { display: none; }
@@ -413,7 +571,8 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
 }
 .gb-ke-chip.gb-ke-unset { display: grid; place-items: center; background: none; border-style: dashed; font-size: 0.75em; color: var(--vscode-descriptionForeground); }
 .gb-ke-name { display: flex; flex-direction: column; min-width: 0; }
-.gb-ke-name > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-ke-plain { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-ke-plain > code { font-size: 0.85em; color: var(--vscode-descriptionForeground); }
 .gb-ke-sub { font-size: 0.85em; }
 .gb-ke-row { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: center; gap: 10px; }
 .gb-ke-l { font-size: 0.85em; color: var(--vscode-descriptionForeground); }
@@ -572,7 +731,12 @@ button.gb-cp-trigger[aria-expanded="true"] { outline: 1px solid var(--vscode-foc
   font-size: var(--vscode-font-size); font-weight: normal; text-align: start;
 }
 .gb-cp-head { display: flex; align-items: baseline; gap: var(--gb-space-2); margin-bottom: var(--gb-space-2); font-size: var(--gb-text-sm); }
-.gb-cp-keys { margin-inline-start: auto; white-space: nowrap; }
+.gb-cp-keys { white-space: nowrap; }
+/* Smooth / Facets: how the ring and the panel are drawn, and whether a press lands on a tile. */
+.gb-cp-modes { display: inline-flex; align-self: center; margin-inline-start: auto; border: 1px solid rgba(128, 128, 128, .5); border-radius: 4px; overflow: hidden; }
+.gb-cp-modes button.gb-cp-mode { border: 0; border-radius: 0; padding: 1px 8px; font-size: 11px; min-height: 0; }
+.gb-cp-modes button.gb-cp-mode + button.gb-cp-mode { border-inline-start: 1px solid rgba(128, 128, 128, .5); }
+.gb-cp-modes button.gb-cp-mode[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .gb-cp-top { display: flex; gap: var(--gb-space-3); }
 .gb-cp-wheel { position: relative; inline-size: 200px; block-size: 200px; flex: none; }
 .gb-cp-ring { position: absolute; inset: 0; border-radius: 50%; cursor: crosshair; touch-action: none; }

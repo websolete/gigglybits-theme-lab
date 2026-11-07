@@ -125,3 +125,17 @@ describe('Theme Preview page', () => {
     expect(document.querySelector('.gb-pl-chrome .wb')!.classList.contains('wb-modern')).toBe(true);
   });
 });
+
+describe('Theme Preview role outlines', () => {
+  const lit = () => [...document.querySelectorAll('.gb-pl-role-hl')];
+  it('{#role-outline} outlines every drawn part that uses a highlighted key, keeps the outline through a redraw, and clears it on an empty list', () => {
+    sendState({ rule: 'square', hue: 12 });
+    send({ type: 'highlight', keys: ['sideBar.background'] });
+    expect(lit().length).toBeGreaterThan(0);
+    expect(lit().every(el => (el.getAttribute('data-keys') || '').split(' ').includes('sideBar.background'))).toBe(true);
+    sendState({ rule: 'square', hue: 40 });
+    expect(lit().length).toBeGreaterThan(0);
+    send({ type: 'highlight', keys: [] });
+    expect(lit()).toEqual([]);
+  });
+});

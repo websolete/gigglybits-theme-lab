@@ -25,6 +25,8 @@ const configListeners: Array<(e: any) => void> = [];
 /** Full key -> what inspect() returns for it, and every update() made, in order. */
 const inspected: Record<string, unknown> = {};
 const updates: Array<{ key: string; value: unknown; target: unknown }> = [];
+/** Every status bar message shown, in order. */
+const statusMessages: string[] = [];
 
 jest.mock('vscode', () => {
   const disposable = { dispose: () => undefined };
@@ -63,7 +65,7 @@ jest.mock('vscode', () => {
       showWarningMessage: () => undefined,
       showErrorMessage: () => undefined,
       showInformationMessage: async () => undefined,
-      setStatusBarMessage: () => disposable,
+      setStatusBarMessage: (text: string) => { statusMessages.push(text); return disposable; },
     },
     workspace: {
       workspaceFolders: undefined,
@@ -82,7 +84,7 @@ jest.mock('vscode', () => {
 
 // jest hoists the jest.mock call above, so this import already sees the mocked vscode.
 import { ThemeLabPanel, tryThemeTarget } from '../src/themeLabPanel';
-import { ThemePreviewPanel } from '../src/themePreviewPanel';
+import { hasWebviewTab, ThemePreviewPanel } from '../src/themePreviewPanel';
 import { deactivate } from '../src/extension';
 
 const identity: any = { pin: async () => undefined, current: async () => undefined, onDidChange: () => ({ dispose: () => undefined }) };
@@ -251,48 +253,85 @@ describe('Try in VS Code, where the theme switch goes', () => {
     expect(updates.filter(u => u.key === 'workbench.colorTheme')).toEqual([{ key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 }]);
     expect(updates.find(u => u.key === 'workbench.colorCustomizations')!.target).toBe(1);
   });
+
+  it('{#try-removes-shadow} a Try removes a workspace copy of the Lab block, which would hide it, keeps the rest, and says so', async () => {
+    const frame = { 'titleBar.activeBackground': '#81509e' };
+    inspected['workbench.colorCustomizations'] = { globalValue: {}, workspaceValue: { '[GigglyBits Dark (Lab)]': { 'button.background': '#b27934' }, '[GigglyBits Theme 7]': frame } };
+    inspected['editor.tokenColorCustomizations'] = { globalValue: {}, workspaceValue: { '[GigglyBits Dark (Lab)]': { textMateRules: [] } } };
+    updates.length = 0;
+    statusMessages.length = 0;
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    await lab.receive!({ type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null, groups: [] });
+    delete inspected['workbench.colorCustomizations'];
+    delete inspected['editor.tokenColorCustomizations'];
+    const workspaceWrites = updates.filter(u => u.target === 2 && u.key !== 'workbench.colorTheme');
+    expect(workspaceWrites).toEqual([
+      { key: 'workbench.colorCustomizations', value: { '[GigglyBits Theme 7]': frame }, target: 2 },
+      { key: 'editor.tokenColorCustomizations', value: undefined, target: 2 },
+    ]);
+    expect(statusMessages).toEqual(["Removed an old copy of the Lab theme's colors from .vscode/settings.json; it was hiding your Try."]);
+    // The user settings still get the Try's colors.
+    expect(updates.filter(u => u.target === 1).map(u => u.key)).toEqual(['workbench.colorCustomizations', 'editor.tokenColorCustomizations', 'workbench.colorTheme']);
+  });
 });
 
-describe('Theme Preview cleanup on reload and shutdown', () => {
-  /** Fake tab groups: each tab is { label, input }, and close() records what it was given. */
-  function tabGroups(tabs: Array<{ label: string; input: unknown }>) {
-    const closed: string[] = [];
-    const group: any = { tabs: [] };
-    group.tabs = tabs.map(t => ({ ...t, group }));
-    return {
-      closed,
-      groups: { all: [group], close: async (list: any[]) => { closed.push(...list.map(t => t.label)); return true; } },
-    };
-  }
-  const TABS = [
-    { label: 'Theme Preview', input: { viewType: 'mainThreadWebview-gigglybits.themePreview' } },
-    { label: 'Theme Lab', input: { viewType: 'mainThreadWebview-gigglybits.themeLab' } },
-    { label: 'extension.ts', input: { uri: { path: '/src/extension.ts' } } },
-  ];
+describe('Theme Preview across a reload', () => {
+  /** Fake tab groups holding tabs of the given webview view types. */
+  const tabGroups = (...viewTypes: string[]) => ({ all: [{ tabs: viewTypes.map(viewType => ({ input: { viewType } })) }] }) as any;
+  /** A panel as VS Code hands a serializer one, recording whether it was disposed. */
+  const restored = async () => {
+    const panel = (await import('vscode') as any).window.createWebviewPanel('gigglybits.themePreview');
+    const dispose = panel.dispose;
+    panel.disposed = false;
+    panel.dispose = () => { panel.disposed = true; dispose(); };
+    return panel;
+  };
+  const closeAll = () => { for (const p of [...panels]) { p.dispose(); } };
 
-  it('{#leftover-closed} closes only the leftover Theme Preview tab, and its window with it', async () => {
-    for (const p of [...panels]) { p.dispose(); }
-    const t = tabGroups(TABS);
-    expect(await ThemePreviewPanel.closeLeftovers(t.groups as any)).toBe(1);
-    expect(t.closed).toEqual(['Theme Preview']);
+  it('{#lab-tab} finds a Theme Lab tab by the end of its webview view type, and nothing else', () => {
+    expect(hasWebviewTab(tabGroups('mainThreadWebview-gigglybits.themeLab'), ThemeLabPanel.viewType)).toBe(true);
+    expect(hasWebviewTab(tabGroups('mainThreadWebview-gigglybits.themePreview'), ThemeLabPanel.viewType)).toBe(false);
+    expect(hasWebviewTab(undefined, ThemeLabPanel.viewType)).toBe(false);
   });
 
-  it('leaves the tabs alone while this window has a live Theme Preview', async () => {
-    for (const p of [...panels]) { p.dispose(); }
+  it('{#revive-keep} with a Lab, a restored preview is the live preview again, in its window as it was, and its picks reach the Lab', async () => {
+    closeAll();
+    executed.length = 0;
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    const panel = await restored();
+    ThemePreviewPanel.revive(panel, extensionUri, true, { palette: { hue: 7 }, groups: [] }, ThemeLabPanel.pickFromPreview, ThemeLabPanel.previewClosed);
+    expect([panel.disposed, ThemePreviewPanel.isOpen()]).toEqual([false, true]);
+    // Already in its own window: no move, no compact command.
+    expect(executed).toEqual([]);
+    await panel.receive!({ type: 'ready' });
+    expect(panel.posted.filter((m: any) => m.type === 'state')).toEqual([{ type: 'state', palette: { hue: 7 }, groups: [] }]);
+    const part = { card: 'workbench', index: 1, keys: ['button.background'], around: [], label: 'OK', region: null, fixed: null };
+    await panel.receive!({ type: 'pickPart', part });
+    expect(lab.posted.filter(m => m.type === 'pickPart')).toEqual([{ type: 'pickPart', part }]);
+    closeAll();
+  });
+
+  it('{#revive-close} without a Lab, or with a preview already open, a restored preview is closed', async () => {
+    closeAll();
+    const alone = await restored();
+    ThemePreviewPanel.revive(alone, extensionUri, false, undefined, () => undefined);
+    expect([alone.disposed, ThemePreviewPanel.isOpen()]).toEqual([true, false]);
     await ThemePreviewPanel.open(extensionUri, undefined, () => undefined);
-    const t = tabGroups(TABS);
-    expect(await ThemePreviewPanel.closeLeftovers(t.groups as any)).toBe(0);
-    expect(t.closed).toEqual([]);
-    ThemePreviewPanel.close();
+    const second = await restored();
+    ThemePreviewPanel.revive(second, extensionUri, true, undefined, () => undefined);
+    expect(second.disposed).toBe(true);
+    expect(ThemePreviewPanel.isOpen()).toBe(true);
+    closeAll();
   });
 
-  it('{#close-on-deactivate} deactivate closes the open Theme Preview', async () => {
-    for (const p of [...panels]) { p.dispose(); }
-    let closed = 0;
-    await ThemePreviewPanel.open(extensionUri, undefined, () => undefined, () => { closed++; });
-    expect(ThemePreviewPanel.isOpen()).toBe(true);
+  it('{#deactivate-keeps} deactivate leaves the Theme Preview open, for its serializer to bring back or close', async () => {
+    closeAll();
+    await ThemePreviewPanel.open(extensionUri, undefined, () => undefined);
     deactivate();
-    expect(ThemePreviewPanel.isOpen()).toBe(false);
-    expect(closed).toBe(1);
+    expect(ThemePreviewPanel.isOpen()).toBe(true);
+    closeAll();
   });
 });

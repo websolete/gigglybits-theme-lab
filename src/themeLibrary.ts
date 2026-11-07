@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { parse, ParseError } from 'jsonc-parser';
 import {
-  ChromeChoice, FRAME_KEYS, GROUP_FAMILIES, GroupFamily, LabSettings, labSettings, SLOT_COUNT, slotLabel, StyleGroup as BuilderGroup, TextLevel,
+  AccentGroups, baseColor, ChromeChoice, FRAME_KEYS, GROUP_FAMILIES, GroupFamily, LabSettings, labSettings, SLOT_COUNT, slotLabel, StyleGroup as BuilderGroup, TextLevel,
 } from '../scripts/theme-builder';
 import { parseTryRecord, TryFrame } from './labStart';
 import { withoutIdentity } from './identity';
@@ -26,6 +26,8 @@ export interface Design {
   /** The resolved palette colors, 1 to 10 '#rrggbb'. */
   colors: string[];
   chromeIndex: number;
+  /** A custom editor accent (step 3), in place of palette color chromeIndex. */
+  accentColor?: string;
   surfaces: string;
   frame: TryFrame;
   edits: { swatches: Record<string, string>; keys: Record<string, string> };
@@ -33,13 +35,17 @@ export interface Design {
   syntax?: number[];
   depth?: number;
   text?: TextLevel;
+  /** Accent groups with their own color (step 3), present only when any has one. */
+  accentGroups?: AccentGroups;
 }
 
-/** The Roles step's settings of a design, for the chrome choice the builder reads. */
-const roleChrome = (d: Design): Pick<ChromeChoice, 'syntax' | 'depth' | 'text'> => ({
+/** The Roles step's settings and the accent groups of a design, for the chrome choice the builder reads. */
+const roleChrome = (d: Design): Pick<ChromeChoice, 'color' | 'syntax' | 'depth' | 'text' | 'accentGroups'> => ({
+  ...(d.accentColor ? { color: d.accentColor } : {}),
   ...(d.syntax ? { syntax: d.syntax } : {}),
   ...(d.depth !== undefined ? { depth: d.depth } : {}),
   ...(d.text ? { text: d.text } : {}),
+  ...(d.accentGroups ? { accentGroups: d.accentGroups } : {}),
 });
 
 export interface SavedTheme {
@@ -80,12 +86,14 @@ export function parseDesign(value: unknown): Design | undefined {
     mode: record.mode,
     colors: colors.map(c => (c as string).toLowerCase()),
     chromeIndex: record.chromeIndex,
+    ...(record.accentColor ? { accentColor: record.accentColor } : {}),
     surfaces: record.surfaces,
     frame: record.frame,
     edits: record.edits ?? { swatches: {}, keys: {} },
     ...(record.syntax ? { syntax: record.syntax } : {}),
     ...(record.depth !== undefined ? { depth: record.depth } : {}),
     ...(record.text ? { text: record.text } : {}),
+    ...(record.accentGroups ? { accentGroups: record.accentGroups } : {}),
   };
   if (record.mode === 'generated') {
     Object.assign(design, { rule: record.rule, hue: record.hue, lightness: record.lightness, chroma: record.chroma });
@@ -199,7 +207,7 @@ export function deleteTheme(library: SavedTheme[], id: string): { library: Saved
 /** The settings a theme's slot carries: the same colors and token rules the Lab builds, with groups applied. */
 export function slotSettings(theme: SavedTheme, groups: readonly BuilderGroup[] = []): LabSettings {
   const d = theme.design;
-  return labSettings({ name: theme.name, colors: d.colors }, { index: d.chromeIndex, surfaces: d.surfaces, frame: d.frame, ...roleChrome(d) }, d.edits, groups);
+  return labSettings({ name: theme.name, colors: d.colors, base: baseColor(d) }, { index: d.chromeIndex, surfaces: d.surfaces, frame: d.frame, ...roleChrome(d) }, d.edits, groups);
 }
 
 // ------------------------------------------------------------------ style groups
@@ -359,8 +367,8 @@ function editorEdits(edits: Design['edits']): Design['edits'] {
 export function everywhereSettings(theme: SavedTheme, groups: readonly BuilderGroup[] = []): LabSettings {
   const d = theme.design;
   return labSettings(
-    { name: theme.name, colors: d.colors },
-    { index: d.chromeIndex, surfaces: d.surfaces, frame: { index: d.chromeIndex, style: 'dark' }, ...roleChrome(d) },
+    { name: theme.name, colors: d.colors, base: baseColor(d) },
+    { index: d.chromeIndex, surfaces: d.surfaces, frame: d.accentColor ? { color: d.accentColor, style: 'dark' } : { index: d.chromeIndex, style: 'dark' }, ...roleChrome(d) },
     editorEdits(d.edits),
     groups);
 }

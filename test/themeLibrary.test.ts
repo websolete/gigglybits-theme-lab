@@ -349,3 +349,20 @@ describe('slot settings and the Roles step settings', () => {
     expect(actual.tokenColors).toEqual(expected.tokenColors);
   });
 });
+
+describe('a saved custom accent', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const GB = require('../media/shared.js');
+  const theme = (design: Design): SavedTheme => ({ id: 't', name: 'T', slot: 1, design, groups: [], savedAt: '2026-11-06T00:00:00.000Z' });
+
+  it('{#saved-accent-color} builds the slot and Use everywhere from the custom accent, with the Dark frame following it', () => {
+    const base = GB.oklchToHex({ l: 0.75, c: 0.13, h: 210 });
+    const accentColor = TB.shiftFor('#2f9e44', base);
+    const plain = { ...DESIGN, edits: { swatches: {}, keys: {} } };
+    const custom = theme({ ...plain, accentColor });
+    const lifted = GB.liftTo('#2f9e44', '#1e1e1e', 4.5);
+    expect(slotSettings(custom).colors['focusBorder']).toBe(lifted);
+    expect(slotSettings(theme(plain)).colors['focusBorder']).not.toBe(lifted);
+    expect(everywhereSettings(custom).colors['activityBarBadge.background']).toBe(lifted);
+  });
+});

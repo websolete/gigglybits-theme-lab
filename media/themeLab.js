@@ -190,11 +190,12 @@
       detached = msg.detached === true;
       renderPalette();
     } else if (msg.type === 'pickPart') {
-      // A part clicked in the Theme Preview window: open its colors in Edit colors.
+      // A part clicked in the Theme Preview window: open its colors in step 5, Edit. Only step 5
+      // opens; the other steps stay as the user left them.
       PaletteLab.setPicked(ui.palette, msg.part);
       saveState();
       renderPalette();
-      // In one column the Edit panel sits under the steps: bring it into view.
+      // Bring step 5 into view, in whichever column or pane it sits.
       const edit = document.querySelector('.gb-s4');
       if (edit && typeof edit.scrollIntoView === 'function') edit.scrollIntoView({ block: 'nearest' });
     }

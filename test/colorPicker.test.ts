@@ -230,3 +230,57 @@ describe('color picker', () => {
     expect(GB.oklchInGamut(GB.hexToOklch('#ffffff'))).toBe(true);
   });
 });
+
+describe('color picker Facets mode', () => {
+  const mode = (p: Opened, m: 'smooth' | 'facets') => p.dialog.querySelector<HTMLButtonElement>(`.gb-cp-mode[data-mode="${m}"]`)!;
+  afterEach(() => {
+    // The mode carries to the next picker, so put it back for the other tests.
+    const p = openPicker();
+    mode(p, 'smooth').click();
+    document.body.replaceChildren();
+  });
+
+  it('{#facets-toggle} switching to Facets leaves the color as it is, and the next picker opens in Facets', () => {
+    const p = openPicker('#336699');
+    expect(mode(p, 'smooth').getAttribute('aria-pressed')).toBe('true');
+    mode(p, 'facets').click();
+    expect(mode(p, 'facets').getAttribute('aria-pressed')).toBe('true');
+    expect(p.dialog.hasAttribute('data-facets')).toBe(true);
+    expect(p.field('hex').value).toBe('#336699');
+    expect(p.onInput).not.toHaveBeenCalled();
+    key(p.dialog, 'Escape');
+    const again = openPicker('#336699');
+    expect(again.dialog.hasAttribute('data-facets')).toBe(true);
+  });
+
+  it('{#facets-keys} arrow keys move one tile at a time: 15 degrees of hue, 0.1 lightness, 0.03 chroma', () => {
+    const p = openPicker('#336699');
+    mode(p, 'facets').click();
+    const ring = p.dialog.querySelector<HTMLElement>('.gb-cp-ring')!;
+    const panel = p.dialog.querySelector<HTMLElement>('.gb-cp-panel')!;
+    const h0 = Number(p.field('h').value);
+    key(ring, 'ArrowRight');
+    expect(Number(p.field('h').value)).toBe((Math.round(h0 / 15) * 15 + 15) % 360);
+    const l0 = Number(p.field('l').value);
+    key(panel, 'ArrowUp');
+    expect(Number(p.field('l').value)).toBeCloseTo(Math.round(l0 / 0.1) * 0.1 + 0.1, 5);
+    const c = Number(p.field('c').value);
+    expect(Math.abs(c / 0.03 - Math.round(c / 0.03))).toBeLessThan(1e-6);
+  });
+
+  it('{#facets-pointer} a press on the panel takes the tile under the pointer, and on the ring the nearest 15 degrees', () => {
+    const p = openPicker('#336699');
+    mode(p, 'facets').click();
+    const panel = p.dialog.querySelector<HTMLElement>('.gb-cp-panel')!;
+    const ring = p.dialog.querySelector<HTMLElement>('.gb-cp-ring')!;
+    const box = (el: HTMLElement, size: number) => { el.getBoundingClientRect = () => ({ left: 0, top: 0, width: size, height: size, right: size, bottom: size, x: 0, y: 0, toJSON() {} }) as DOMRect; };
+    box(panel, 110);
+    // 11 rows (lightness 1 to 0) and 12 columns (chroma 0 to 0.33): row 3 is lightness 0.7, column 4 chroma 0.12.
+    panel.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: (110 / 12) * 4.5, clientY: (110 / 11) * 3.5 }));
+    expect([p.field('l').value, p.field('c').value]).toEqual(['0.70', '0.120']);
+    box(ring, 200);
+    // Straight right of the center is 90 degrees; a little below it still lands on 90.
+    ring.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 190, clientY: 105 }));
+    expect(p.field('h').value).toBe('90');
+  });
+});

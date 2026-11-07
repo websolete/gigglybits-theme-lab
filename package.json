@@ -2,7 +2,7 @@
   "name": "gigglybits-vscode-theme",
   "displayName": "GigglyBits Theme Laboratory",
   "description": "An easy-to-use and powerful theme customizer for VS Code.",
-  "version": "0.0.11",
+  "version": "0.0.22",
   "publisher": "Websolete",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -26,6 +26,7 @@
   "activationEvents": [
     "onWebviewPanel:gigglybits.themeLab",
     "onWebviewPanel:gigglybits.paletteInspector",
+    "onWebviewPanel:gigglybits.themePreview",
     "onStartupFinished"
   ],
   "contributes": {

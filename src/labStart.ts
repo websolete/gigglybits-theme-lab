@@ -1,7 +1,7 @@
 // What a freshly opened Theme Lab starts from, decided without VS Code so jest tests it
 // directly. src/themeLabPanel.ts sends the result as the 'start' message on 'ready'.
-import { cleanEdits, LAB_THEME_LABEL, SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
-import type { TextLevel } from '../scripts/theme-builder';
+import { cleanChrome, cleanEdits, isShift, LAB_THEME_LABEL, SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
+import type { AccentGroups, TextLevel } from '../scripts/theme-builder';
 import type { Design, SavedTheme } from './themeLibrary';
 
 /** What Try in VS Code records about the tried candidate, stored in globalState. */
@@ -13,6 +13,8 @@ export interface TryRecord {
   chroma?: number;
   pasted?: string[];
   chromeIndex: number;
+  /** A custom editor accent (step 3): a shift from the base color, or a fixed '#rrggbb'. Absent, the accent is palette color chromeIndex. */
+  accentColor?: string;
   surfaces: string;
   /** Recorded by a Try from when a Lab could start from a shipped theme; kept when read back. */
   baseId?: string;
@@ -25,6 +27,8 @@ export interface TryRecord {
   syntax?: number[];
   depth?: number;
   text?: TextLevel;
+  /** Accent groups with their own color (step 3), present only when any has one. */
+  accentGroups?: AccentGroups;
 }
 
 const TEXT_IDS: readonly TextLevel[] = ['soft', 'standard', 'high'];
@@ -33,8 +37,10 @@ const TEXT_IDS: readonly TextLevel[] = ['soft', 'standard', 'high'];
  * The Roles step's settings in value, each kept only when valid: syntax as five non-negative
  * integers, depth as a finite number, text as a level id. The builder cleans the values further.
  */
-export function parseRoleSettings(value: Record<string, unknown>): Pick<TryRecord, 'syntax' | 'depth' | 'text'> {
-  const out: Pick<TryRecord, 'syntax' | 'depth' | 'text'> = {};
+export function parseRoleSettings(value: Record<string, unknown>): Pick<TryRecord, 'syntax' | 'depth' | 'text' | 'accentGroups'> {
+  const out: Pick<TryRecord, 'syntax' | 'depth' | 'text' | 'accentGroups'> = {};
+  const groups = cleanChrome({ accentGroups: value.accentGroups }).accentGroups;
+  if (Object.keys(groups).length) { out.accentGroups = groups; }
   const syntax = value.syntax;
   if (Array.isArray(syntax) && syntax.length === 5 && syntax.every(i => Number.isInteger(i) && (i as number) >= 0)) {
     out.syntax = (syntax as number[]).slice();
@@ -46,11 +52,12 @@ export function parseRoleSettings(value: Record<string, unknown>): Pick<TryRecor
 
 export interface TryFrame {
   index?: number;
+  /** A custom color: a shift from the base color ('~dl,dc,dh'), or an older fixed '#rrggbb'. */
   color?: string;
   style: 'dark' | 'filled';
 }
 
-/** value as a TryFrame: a known style and a non-negative integer index or a '#rrggbb' color. */
+/** value as a TryFrame: a known style and a non-negative integer index, a '#rrggbb' color or a shift. */
 function parseFrame(value: unknown): TryFrame | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined;
@@ -59,7 +66,7 @@ function parseFrame(value: unknown): TryFrame | undefined {
   if (f.style !== 'dark' && f.style !== 'filled') {
     return undefined;
   }
-  if (typeof f.color === 'string' && HEX6.test(f.color)) {
+  if (typeof f.color === 'string' && (HEX6.test(f.color) || isShift(f.color))) {
     return { style: f.style, color: f.color.toLowerCase() };
   }
   if (Number.isInteger(f.index) && (f.index as number) >= 0) {
@@ -100,6 +107,7 @@ export function parseTryRecord(value: unknown): TryRecord | undefined {
   } else {
     record.pasted = (v.pasted as string[]).slice();
   }
+  if (typeof v.accentColor === 'string' && (HEX6.test(v.accentColor) || isShift(v.accentColor))) { record.accentColor = v.accentColor.toLowerCase(); }
   if (typeof v.baseId === 'string') { record.baseId = v.baseId; }
   if (typeof v.baseName === 'string') { record.baseName = v.baseName; }
   const edits = cleanEdits(v.edits);

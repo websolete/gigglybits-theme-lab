@@ -26,6 +26,27 @@
   };
   const HINTS = { l: '0 black to 1 white', c: '0 gray to about 0.32 vivid', h: 'degrees around the ring' };
 
+  /**
+   * Facets mode: the ring and the panel drawn as flat tiles instead of smooth gradients, and a
+   * press or an arrow key lands on a tile's value. Hue in 15 degree tiles (24 around the ring),
+   * lightness in 0.1 rows (0 to 1) and chroma in 0.03 columns (0 to 0.33). Typed fields and the
+   * lightness blocks stay exact, so a value between tiles is still reachable.
+   */
+  const FACETS = { h: 15, l: 0.1, c: 0.03 };
+  const ROWS = Math.round(1 / FACETS.l) + 1;
+  const COLS = Math.round(PANEL_C / FACETS.c) + 1;
+  /** The nearest multiple of `step`, rounded to 4 places so 0.30000000000000004 reads 0.3. */
+  const snap = (v, step) => Number((Math.round(v / step) * step).toFixed(4));
+  const FACET_KEY = 'gb.colorPicker.facets';
+  /** Whether pickers open in Facets mode: the last choice, for this page and (where storage works) the next. */
+  let faceted = (() => {
+    try {
+      return window.localStorage.getItem(FACET_KEY) === '1';
+    } catch {
+      return false;
+    }
+  })();
+
   let count = 0;
   /** The open picker's close function, so opening another closes it first. */
   let openClose = null;
@@ -160,6 +181,17 @@
       }, panelCanvas, panelMark);
       panel.style.width = panel.style.height = `${SIDE}px`;
 
+      const modeButtons = [['smooth', 'Smooth', 'Smooth gradients: any lightness, chroma and hue'], ['facets', 'Facets', 'Flat tiles: hue in 15 degree steps, lightness in 0.1 steps, chroma in 0.03 steps. Typed values and the lightness blocks stay exact.']]
+        .map(([m, label, title]) => h('button', {
+          type: 'button', class: 'secondary gb-cp-mode', 'data-mode': m, title,
+          onclick: () => {
+            faceted = m === 'facets';
+            try { window.localStorage.setItem(FACET_KEY, faceted ? '1' : '0'); } catch { /* no storage */ }
+            drawRing();
+            drawPanel();
+            sync();
+          },
+        }, label));
       const oldSw = h('div', { class: 'gb-cp-old', title: `Before: ${before}, the color when the picker opened` }, 'before');
       const newSw = h('div', { class: 'gb-cp-new' }, 'now');
       const stepButtons = STEPS.map(sz => h('button', {
@@ -187,7 +219,9 @@
           }
         },
       },
-      h('div', { class: 'gb-cp-head' }, h('b', null, opts.label), h('span', { class: 'gb-cp-keys muted' }, 'Enter keeps · Esc puts back')),
+      h('div', { class: 'gb-cp-head' }, h('b', null, opts.label),
+        h('span', { class: 'gb-cp-modes', role: 'group', 'aria-label': 'Wheel drawing' }, modeButtons),
+        h('span', { class: 'gb-cp-keys muted' }, 'Enter keeps · Esc puts back')),
       h('div', { class: 'gb-cp-top' },
         h('div', { class: 'gb-cp-wheel' }, ring, panel),
         h('div', { class: 'gb-cp-side' },
@@ -238,7 +272,18 @@
         const g = ctx2d(ringCanvas);
         if (!g) return;
         const r = RING / 2 - RING_W / 2;
+        g.clearRect(0, 0, RING, RING);
         g.lineWidth = RING_W;
+        if (faceted) {
+          // One flat tile per facet, centered on its hue, with a hairline gap between tiles.
+          for (let a = 0; a < 360; a += FACETS.h) {
+            g.strokeStyle = GB().oklchToHex({ l: 0.72, c: 0.15, h: a });
+            g.beginPath();
+            g.arc(RING / 2, RING / 2, r, ((a - 90 - FACETS.h / 2 + 0.9) * Math.PI) / 180, ((a - 90 + FACETS.h / 2 - 0.9) * Math.PI) / 180);
+            g.stroke();
+          }
+          return;
+        }
         for (let a = 0; a < 360; a += 1) {
           g.strokeStyle = GB().oklchToHex({ l: 0.72, c: 0.15, h: a });
           g.beginPath();
@@ -246,40 +291,61 @@
           g.stroke();
         }
       }
+      /** A panel color as drawn: itself, or mixed toward the panel background when the screen cannot show it or it is out of bounds. */
+      const panelFill = (l, c, x, y) => {
+        const hex = GB().oklchToHex({ l, c, h: state.h });
+        if (GB().oklchInGamut({ l, c, h: state.h }) && inBounds(l, c)) return hex;
+        const p = GB().parseColor(hex);
+        const k = faceted ? 0.3 : ((x + y) >> 2) & 1 ? 0.25 : 0.38;
+        return GB().toHex({ r: p.r * k + 31 * (1 - k), g: p.g * k + 31 * (1 - k), b: p.b * k + 31 * (1 - k), a: 1 });
+      };
       function drawPanel() {
         const g = ctx2d(panelCanvas);
         if (!g) return;
+        drawnHue = state.h;
+        g.clearRect(0, 0, SIDE, SIDE);
+        if (faceted) {
+          // A tile per lightness row and chroma column, each one flat color at its own value.
+          const w = SIDE / COLS;
+          const ht = SIDE / ROWS;
+          for (let i = 0; i < ROWS; i++) {
+            for (let j = 0; j < COLS; j++) {
+              g.fillStyle = panelFill(1 - i * FACETS.l, j * FACETS.c, i * 4, j * 4);
+              g.fillRect(Math.round(j * w), Math.round(i * ht), Math.round((j + 1) * w) - Math.round(j * w) - 1, Math.round((i + 1) * ht) - Math.round(i * ht) - 1);
+            }
+          }
+          return;
+        }
         const cell = 2;
         for (let y = 0; y < SIDE; y += cell) {
           const l = 1 - y / (SIDE - 1);
           for (let x = 0; x < SIDE; x += cell) {
             const c = (PANEL_C * x) / (SIDE - 1);
-            const hex = GB().oklchToHex({ l, c, h: state.h });
-            let fill = hex;
-            const out = !GB().oklchInGamut({ l, c, h: state.h });
-            if (out || !inBounds(l, c)) {
-              // Shaded: the reduced color mixed toward the panel background, in stripes.
-              const p = GB().parseColor(hex);
-              const k = ((x + y) >> 2) & 1 ? 0.25 : 0.38;
-              fill = GB().toHex({ r: p.r * k + 31 * (1 - k), g: p.g * k + 31 * (1 - k), b: p.b * k + 31 * (1 - k), a: 1 });
-            }
-            g.fillStyle = fill;
+            // Shaded colors, the screen cannot show them, are mixed toward the background in stripes.
+            g.fillStyle = panelFill(l, c, x, y);
             g.fillRect(x, y, cell, cell);
           }
         }
-        drawnHue = state.h;
       }
+
+      /** Where a lightness and chroma sit on the panel: on a tile's center in Facets mode. */
+      const panelAt = (l, c) => (faceted
+        ? { x: (clamp(Math.round(c / FACETS.c), 0, COLS - 1) + 0.5) * (SIDE / COLS), y: (clamp(Math.round((1 - l) / FACETS.l), 0, ROWS - 1) + 0.5) * (SIDE / ROWS) }
+        : { x: Math.min(1, c / PANEL_C) * SIDE, y: (1 - l) * SIDE });
 
       /** Draws everything that reads the state: marks, swatch, fields, blocks and the note. */
       function sync() {
         const hex = hexNow();
         if (Math.round(drawnHue) !== Math.round(state.h)) drawPanel();
-        const a = ((state.h - 90) * Math.PI) / 180;
+        const a = (((faceted ? snap(state.h, FACETS.h) : state.h) - 90) * Math.PI) / 180;
         const r = RING / 2 - RING_W / 2;
         ringMark.style.left = `${RING / 2 + Math.cos(a) * r}px`;
         ringMark.style.top = `${RING / 2 + Math.sin(a) * r}px`;
-        panelMark.style.left = `${(Math.min(1, state.c / PANEL_C)) * SIDE}px`;
-        panelMark.style.top = `${(1 - state.l) * SIDE}px`;
+        const at = panelAt(state.l, state.c);
+        panelMark.style.left = `${at.x}px`;
+        panelMark.style.top = `${at.y}px`;
+        dialog.toggleAttribute('data-facets', faceted);
+        for (const btn of modeButtons) btn.setAttribute('aria-pressed', String((btn.getAttribute('data-mode') === 'facets') === faceted));
         ring.setAttribute('aria-valuenow', String(Math.round(state.h) % 360));
         ring.setAttribute('aria-valuetext', `Hue ${Math.round(state.h) % 360} degrees`);
         panel.setAttribute('aria-valuenow', fixed(state.l, 2));
@@ -354,7 +420,8 @@
         const dx = ev.clientX - (box.left + box.width / 2);
         const dy = ev.clientY - (box.top + box.height / 2);
         if (!dx && !dy) return;
-        setState({ ...state, h: (Math.atan2(dx, -dy) * 180) / Math.PI });
+        const hue = (Math.atan2(dx, -dy) * 180) / Math.PI;
+        setState({ ...state, h: faceted ? snap(hue, FACETS.h) : hue });
         emit();
       });
       drag(panel, ev => {
@@ -362,22 +429,34 @@
         if (!box.width || !box.height) return;
         const x = clamp((ev.clientX - box.left) / box.width, 0, 1);
         const y = clamp((ev.clientY - box.top) / box.height, 0, 1);
-        setState({ l: 1 - y, c: x * PANEL_C, h: state.h });
+        if (faceted) {
+          // The tile under the pointer: its row's lightness and its column's chroma.
+          const i = clamp(Math.floor(y * ROWS), 0, ROWS - 1);
+          const j = clamp(Math.floor(x * COLS), 0, COLS - 1);
+          setState({ l: snap(1 - i * FACETS.l, FACETS.l), c: snap(j * FACETS.c, FACETS.c), h: state.h });
+        } else setState({ l: 1 - y, c: x * PANEL_C, h: state.h });
         emit();
       });
       ring.addEventListener('keydown', ev => {
-        const by = ev.shiftKey ? 10 : 1;
-        if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') setState({ ...state, h: state.h + by });
-        else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') setState({ ...state, h: state.h - by });
+        // Facets: one tile at a time, from the tile the hue is on.
+        const by = faceted ? FACETS.h : ev.shiftKey ? 10 : 1;
+        const from = faceted ? snap(state.h, FACETS.h) : state.h;
+        if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') setState({ ...state, h: from + by });
+        else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') setState({ ...state, h: from - by });
         else return;
         ev.preventDefault();
         emit();
       });
       panel.addEventListener('keydown', ev => {
-        if (ev.key === 'ArrowUp') setState({ ...state, l: state.l + 0.01 });
-        else if (ev.key === 'ArrowDown') setState({ ...state, l: state.l - 0.01 });
-        else if (ev.key === 'ArrowRight') setState({ ...state, c: state.c + 0.005 });
-        else if (ev.key === 'ArrowLeft') setState({ ...state, c: state.c - 0.005 });
+        // Facets: one tile at a time, from the tile the color is on.
+        const dl = faceted ? FACETS.l : 0.01;
+        const dc = faceted ? FACETS.c : 0.005;
+        const l = faceted ? snap(state.l, FACETS.l) : state.l;
+        const c = faceted ? snap(state.c, FACETS.c) : state.c;
+        if (ev.key === 'ArrowUp') setState({ ...state, l: snap(l + dl, faceted ? FACETS.l : 0.0001), c });
+        else if (ev.key === 'ArrowDown') setState({ ...state, l: snap(l - dl, faceted ? FACETS.l : 0.0001), c });
+        else if (ev.key === 'ArrowRight') setState({ ...state, l, c: snap(c + dc, faceted ? FACETS.c : 0.0001) });
+        else if (ev.key === 'ArrowLeft') setState({ ...state, l, c: snap(c - dc, faceted ? FACETS.c : 0.0001) });
         else return;
         ev.preventDefault();
         emit();
@@ -468,5 +547,5 @@
     return trigger;
   }
 
-  return { create, blocks, STEPS, PANEL_C };
+  return { create, blocks, STEPS, PANEL_C, FACETS };
 });

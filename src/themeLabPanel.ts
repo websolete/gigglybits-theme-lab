@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { labPageHtml, labWebviewOptions, PreviewState, ThemePreviewPanel } from './themePreviewPanel';
-import { withLabScope } from './labSettings';
+import { withLabScope, withoutLabScope } from './labSettings';
 import { captureThemeSnapshot } from './themeSource';
 import { BuilderEntry, ChromeChoice, cleanEdits, GROUP_FAMILIES, GroupFamily, LAB_THEME_LABEL, labSettings, StyleGroup } from '../scripts/theme-builder';
 import { parseTryRecord, startConfig } from './labStart';
@@ -20,6 +20,7 @@ type FromWebview =
   | { type: 'setGroupOn'; id: string; on: boolean }
   | { type: 'deleteGroup'; id: string }
   | { type: 'previewState'; palette: unknown; groups: unknown }
+  | { type: 'previewHighlight'; keys: unknown }
   | { type: 'openPreviewWindow' };
 
 const isGroupFamily = (v: unknown): v is GroupFamily => typeof v === 'string' && Object.prototype.hasOwnProperty.call(GROUP_FAMILIES, v);
@@ -270,6 +271,10 @@ export class ThemeLabPanel {
         this.previewState = { palette: msg.palette, groups: msg.groups };
         ThemePreviewPanel.update(this.previewState);
         break;
+      case 'previewHighlight':
+        // The Roles step's role under the pointer or open: outline its parts in the preview.
+        ThemePreviewPanel.highlight(Array.isArray(msg.keys) ? msg.keys.filter((k): k is string => typeof k === 'string').slice(0, 1000) : []);
+        break;
       case 'openPreviewWindow':
         await this.openPreviewWindow();
         await this.postDetached();
@@ -284,9 +289,27 @@ export class ThemeLabPanel {
    * Preview.
    */
   private async openPreviewWindow(): Promise<void> {
-    await ThemePreviewPanel.open(this.extensionUri, this.previewState,
-      part => ThemeLabPanel.current?.postPick(part),
-      () => void ThemeLabPanel.current?.postDetached());
+    await ThemePreviewPanel.open(this.extensionUri, this.previewState, ThemeLabPanel.pickFromPreview, ThemeLabPanel.previewClosed);
+  }
+
+  /** Whether a Theme Lab is open. */
+  static isOpen(): boolean {
+    return ThemeLabPanel.current !== undefined;
+  }
+
+  /** A part clicked in the Theme Preview, for whichever Theme Lab is open when it is clicked. */
+  static pickFromPreview(this: void, part: unknown): void {
+    ThemeLabPanel.current?.postPick(part);
+  }
+
+  /** The Theme Preview closed: the open Lab's Preview card says so and offers Open Preview. */
+  static previewClosed(this: void): void {
+    void ThemeLabPanel.current?.postDetached();
+  }
+
+  /** The open Lab's latest 'previewState', for a Theme Preview restored after a reload. */
+  static latestPreviewState(): PreviewState | undefined {
+    return ThemeLabPanel.current?.previewState;
   }
 
   /** Whether the Theme Preview window is open, which the page's Preview card says. */
@@ -324,6 +347,12 @@ export class ThemeLabPanel {
         withLabScope(cfg().inspect('workbench.colorCustomizations')?.globalValue, lab.colors), Global);
       await cfg().update('editor.tokenColorCustomizations',
         withLabScope(cfg().inspect('editor.tokenColorCustomizations')?.globalValue, { textMateRules: lab.tokenColors }), Global);
+      // A workspace or folder copy of the Lab block would hide these colors; it goes, and the
+      // status bar names where it was.
+      const cleaned = await this.removeShadowingLabColors();
+      if (cleaned.length) {
+        vscode.window.setStatusBarMessage(`Removed an old copy of the Lab theme's colors from ${cleaned.join(' and ')}; it was hiding your Try.`, 10000);
+      }
 
       // The theme switch goes where it shows in this window: the workspace when it sets its own
       // theme, else the user settings (tryThemeTarget). The colors stay in user settings.
@@ -350,6 +379,41 @@ export class ThemeLabPanel {
     } catch (err) {
       vscode.window.showErrorMessage(`Could not apply the palette: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Removes the Lab scope block from the workspace's and each folder's color and token settings.
+   * The Lab theme's colors belong in user settings only, so a copy at either level is stale and,
+   * outranking the user block key by key, hides every Try. Something outside this extension has
+   * written such a copy into a .code-workspace file more than once. Returns the files cleaned.
+   */
+  private async removeShadowingLabColors(): Promise<string[]> {
+    const KEYS = ['workbench.colorCustomizations', 'editor.tokenColorCustomizations'];
+    const cleaned = new Set<string>();
+    const workspaceFile = vscode.workspace.workspaceFile;
+    const workspaceName = workspaceFile ? workspaceFile.fsPath.split(/[\\/]/).pop() ?? 'the workspace file' : '.vscode/settings.json';
+    const root = vscode.workspace.getConfiguration();
+    for (const key of KEYS) {
+      const next = withoutLabScope(root.inspect(key)?.workspaceValue);
+      if (next) {
+        await root.update(key, Object.keys(next).length ? next : undefined, vscode.ConfigurationTarget.Workspace);
+        cleaned.add(workspaceName);
+      }
+    }
+    // In a multi-root workspace each folder's .vscode/settings.json is a layer of its own.
+    if (workspaceFile) {
+      for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        const scoped = vscode.workspace.getConfiguration(undefined, folder.uri);
+        for (const key of KEYS) {
+          const next = withoutLabScope(scoped.inspect(key)?.workspaceFolderValue);
+          if (next) {
+            await scoped.update(key, Object.keys(next).length ? next : undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+            cleaned.add(`${folder.name}/.vscode/settings.json`);
+          }
+        }
+      }
+    }
+    return [...cleaned];
   }
 
   private html(webview: vscode.Webview): string {

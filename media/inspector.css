@@ -55,7 +55,8 @@ body {
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
 }
 .controls .spacer { flex: 1; }
-input[type="search"], select {
+/* Every text field takes VS Code's input colors; without them a field draws white. */
+input[type="search"], input[type="text"], input[type="number"], select {
   font: inherit;
   padding: 4px 6px;
   color: var(--vscode-input-foreground);

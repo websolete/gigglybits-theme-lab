@@ -115,6 +115,12 @@ function pickColor(trigger: HTMLElement, hex: string, then: 'keep' | 'open' | 'c
 /** The color a picker trigger shows. */
 const triggerColor = (trigger: Element) => trigger.querySelector('.gb-cp-swatch')!.getAttribute('data-color');
 
+/** The default Lab's base color (Triad 210°, lightness 0.75, chroma 0.13), which a custom frame color is measured from. */
+const BASE: string = GB.oklchToHex({ l: 0.75, c: 0.13, h: 210 });
+/** The color a role has in the Lab's Roles step: its chip's dot, the edit (a shift) resolved. */
+const roleColor = (root: HTMLElement, swatch: string) =>
+  root.querySelector(`.gb-roles .gb-role-chip[data-swatch="${swatch}"] .gb-role-dot`)!.getAttribute('data-color');
+
 let lab: Lab;
 
 beforeAll(() => {
@@ -137,8 +143,8 @@ describe('Palette Lab', () => {
     const root = lab.render(ctx());
     expect(root.querySelectorAll('table.gb-pl-contrast .badge')).toHaveLength(20);
     const headers = [...root.querySelectorAll('table.gb-pl-contrast thead th')].map(th => th.textContent);
-    expect(headers).toEqual(['Color', 'Near black#121212', 'Dark editor#1e1e1e', 'Dark side bar#252526', 'Your editor#1f1f1f']);
-    expect(root.querySelector('.gb-s2 .gb-step-state')?.textContent).toMatch(/^weakest contrast \d+\.\d:1 \((AAA|AA|Large|Fail)\), /);
+    expect(headers).toEqual(['Palette color', 'Near black#121212', 'Dark editor#1e1e1e', 'Dark side bar#252526', 'Your editor#1f1f1f']);
+    expect(root.querySelector('.gb-s2 .gb-step-state')?.textContent).toMatch(/^Weakest pair \d+\.\d:1 \((AAA|AA|Large|Fail)\): /);
   });
 
   it('draws no Catalog: no Include, Maybe or Exclude, and no decided list', () => {
@@ -188,10 +194,6 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
   const TRIAD = GB.harmony('triad', { hue: 210, lightness: 0.75, chroma: 0.13 }).map((d: { hex: string }) => d.hex);
   const region = (page: HTMLElement, name: string) => page.querySelector<HTMLElement>(`.gb-pl-chrome [data-region="${name}"]`)!;
   const framePick = (root: HTMLElement, index: string) => root.querySelector<HTMLButtonElement>(`.gb-fr-box .gb-fr-pick[data-index="${index}"]`)!;
-  const setValue = (el: HTMLInputElement | HTMLSelectElement, value: string) => {
-    el.value = value;
-    el.dispatchEvent(new Event('change'));
-  };
 
   it('draws the whole theme Try in VS Code applies, a new design starting with a Filled frame in color 1', () => {
     const c = ctx();
@@ -224,10 +226,11 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
     const c = ctx();
     const root = lab.render(c);
     pickColor(root.querySelector<HTMLElement>('.gb-fr-custom')!, '#336699');
-    expect((c.ui as any).frame).toEqual({ color: '#336699', style: 'filled' });
+    // Kept as a shift from the base color, so it follows the base (D4); it draws as picked.
+    expect((c.ui as any).frame).toEqual({ color: TB.shiftFor('#336699', BASE), style: 'filled' });
     expect(drawnIn(c, 'titleBar.activeBackground')).toBe('#336699');
     expect(framePick(root, 'custom').getAttribute('aria-checked')).toBe('true');
-    setValue(root.querySelector<HTMLSelectElement>('.gb-fr-style')!, 'dark');
+    root.querySelector<HTMLButtonElement>('.gb-fr-style-pick[data-index="dark"]')!.click();
     expect(drawnIn(c, 'titleBar.activeBackground')).toBe(drawnIn(c, 'sideBar.background'));
   });
 
@@ -249,9 +252,12 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
     const msg = c.post.mock.calls[0][0];
     expect(Object.keys(msg).sort()).toEqual(['chrome', 'edits', 'entry', 'groups', 'settings', 'type']);
     expect(msg.groups).toEqual([]);
-    expect(msg.entry).toEqual({ name: 'Triad 210°', colors: TRIAD });
-    expect(msg.chrome).toEqual({ index: 1, surfaces: 'rich', frame: { color: '#336699', style: 'filled' } });
-    expect(msg.settings.frame).toEqual({ color: '#336699', style: 'filled' });
+    expect(msg.entry).toEqual({ name: 'Triad 210°', colors: TRIAD, base: BASE });
+    // An older fixed frame color comes in as a shift from the base, drawing the same color.
+    const shifted = { color: TB.shiftFor('#336699', BASE), style: 'filled' };
+    expect(msg.chrome).toEqual({ index: 1, surfaces: 'rich', frame: shifted });
+    expect(msg.settings.frame).toEqual(shifted);
+    expect(TB.applyShift(shifted.color, BASE)).toBe('#336699');
     expect(msg.edits).toEqual({ swatches: {}, keys: {} });
     expect(msg.settings).not.toHaveProperty('edits');
   });
@@ -270,7 +276,7 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
     const root = lab.render(ctx({ ui }));
     expect(framePick(root, 'custom').getAttribute('aria-checked')).toBe('true');
     expect(triggerColor(root.querySelector('.gb-fr-custom')!)).toBe('#336699');
-    expect(root.querySelector<HTMLSelectElement>('.gb-fr-style')!.value).toBe('filled');
+    expect(root.querySelector('.gb-fr-style-pick[aria-checked="true"]')!.getAttribute('data-index')).toBe('filled');
     expect(drawnIn({ ui }, 'titleBar.activeBackground')).toBe('#336699');
   });
 
@@ -341,7 +347,10 @@ describe('Palette Lab color editing', () => {
     const root = pickIn(c, CHAT_INPUT);
     keyRow(root, 'errorForeground').querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="role"]')!.click();
     pickColor(keyRow(root, 'errorForeground').querySelector<HTMLElement>('.gb-ke-pick')!, '#00ff00');
-    expect((c.ui as any).edits).toEqual({ swatches: { error: '#00ff00' }, keys: {} });
+    // The edit is kept as a shift from the role's own color (D1), and draws as picked.
+    const shift = (c.ui as any).edits.swatches.error;
+    expect(TB.isShift(shift)).toBe(true);
+    expect((c.ui as any).edits).toEqual({ swatches: { error: shift }, keys: {} });
     expect(drawnIn(c, 'errorForeground')).toBe('#00ff00');
     expect(drawnIn(c, 'editorError.foreground')).toBe('#00ff00');
     // The role's derived colors follow: the removed-text wash is the error color at 20%.
@@ -351,8 +360,8 @@ describe('Palette Lab color editing', () => {
     expect(chatInputIn(c).classList.contains('gb-pl-picked')).toBe(true);
     expect(buttonFor(root, 'Edits (1)')).toBeDefined();
     buttonFor(root, 'Try in VS Code').click();
-    expect(c.post.mock.calls[0][0].edits).toEqual({ swatches: { error: '#00ff00' }, keys: {} });
-    expect(c.post.mock.calls[0][0].settings.edits).toEqual({ swatches: { error: '#00ff00' }, keys: {} });
+    expect(c.post.mock.calls[0][0].edits).toEqual({ swatches: { error: shift }, keys: {} });
+    expect(c.post.mock.calls[0][0].settings.edits).toEqual({ swatches: { error: shift }, keys: {} });
   });
 
   it('editing one key leaves the rest of its role alone, and Reset all edits undoes it', () => {
@@ -379,7 +388,8 @@ describe('Palette Lab color editing', () => {
     const dock = root.querySelector('.gb-dock')!;
     save.mockClear();
     const picker = pickColor(input, '#ff00ff', 'open');
-    expect((c.ui as any).edits).toEqual({ swatches: { error: '#ff00ff' }, keys: {} });
+    expect(TB.isShift((c.ui as any).edits.swatches.error)).toBe(true);
+    expect((c.ui as any).edits.keys).toEqual({});
     expect(save).toHaveBeenCalled();
     expect(drawnIn(c, 'errorForeground')).toBe('#ff00ff');
     expect(root.contains(input)).toBe(true);
@@ -400,21 +410,24 @@ describe('Palette Lab color editing', () => {
       return { c, root, color: drawnIn(c, 'errorForeground').slice(0, 7) };
     };
 
-    it('starts on the whole role for a key with a role and no edit of its own, and says what each choice changes', () => {
+    it('starts on this key only, the part that was clicked, and says what each choice changes', () => {
       const { root } = opened();
       const ed = editor(root, 'errorForeground');
-      expect(ed.querySelector('.gb-ke-seg[aria-pressed="true"]')!.getAttribute('data-scope')).toBe('role');
-      expect(ed.querySelector('.gb-ke-sub')!.textContent).toBe('Changing every key in Error');
-      ed.querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
       expect(ed.querySelector('.gb-ke-seg[aria-pressed="true"]')!.getAttribute('data-scope')).toBe('key');
       expect(ed.querySelector('.gb-ke-sub')!.textContent).toBe('In Error; changing this key alone');
+      const whole = ed.querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="role"]')!;
+      expect(whole.title).toBe(`Changes all ${TB.KEY_GROUPS.error.length} colors in Error, everywhere they are used`);
+      whole.click();
+      expect(ed.querySelector('.gb-ke-seg[aria-pressed="true"]')!.getAttribute('data-scope')).toBe('role');
+      expect(ed.querySelector('.gb-ke-sub')!.textContent).toBe('Changing every key in Error');
     });
 
     it('Transparent sets this key alone to its color at 0% opacity, and the preview draws that', () => {
       const { c, root, color } = opened();
       const before = drawnIn(c, 'editorError.foreground');
       editor(root, 'errorForeground').querySelector<HTMLButtonElement>('.gb-ke-transparent')!.click();
-      expect((c.ui as any).edits).toEqual({ swatches: {}, keys: { errorForeground: `${color}00` } });
+      // No change of color, only of opacity: the shift is zero with a 00 alpha.
+      expect((c.ui as any).edits).toEqual({ swatches: {}, keys: { errorForeground: '~0,0,0/00' } });
       expect(drawnIn(c, 'errorForeground')).toBe(`${color}00`);
       expect(drawnIn(c, 'editorError.foreground')).toBe(before);
       const ed = editor(root, 'errorForeground');
@@ -426,7 +439,8 @@ describe('Palette Lab color editing', () => {
     it('Opacity sets this key alone to its color with that alpha', () => {
       const { c, root, color } = opened();
       setColor(editor(root, 'errorForeground').querySelector<HTMLInputElement>('.gb-ke-alpha')!, '50');
-      expect((c.ui as any).edits.keys).toEqual({ errorForeground: `${color}80` });
+      expect((c.ui as any).edits.keys).toEqual({ errorForeground: '~0,0,0/80' });
+      expect(drawnIn(c, 'errorForeground')).toBe(`${color}80`);
       expect(editor(root, 'errorForeground').querySelector('.gb-ke-pct')!.textContent).toBe('50%');
     });
 
@@ -437,7 +451,8 @@ describe('Palette Lab color editing', () => {
       expect(hex().getAttribute('aria-invalid')).toBe('true');
       expect((c.ui as any).edits?.keys ?? {}).toEqual({});
       setColor(hex(), '#11223344');
-      expect((c.ui as any).edits.keys).toEqual({ errorForeground: '#11223344' });
+      expect(TB.isShift((c.ui as any).edits.keys.errorForeground)).toBe(true);
+      expect((c.ui as any).edits.keys.errorForeground).toMatch(/\/44$/);
       expect(drawnIn(c, 'errorForeground')).toBe('#11223344');
     });
 
@@ -451,7 +466,7 @@ describe('Palette Lab color editing', () => {
       expect(ed.querySelector<HTMLButtonElement>('.gb-ke-default')!.disabled).toBe(true);
       expect(ed.textContent).toContain('VS Code draws it in its own default color');
       buttonFor(root, 'Edits (1)').click();
-      expect(root.querySelector('.gb-dock-edits li')!.textContent).toContain('errorForeground (VS Code default)');
+      expect(root.querySelector('.gb-dock-edits li')!.textContent).toContain('Error foreground (errorForeground), VS Code default');
       buttonFor(root, 'Try in VS Code').click();
       expect(c.post.mock.calls[0][0].edits).toEqual({ swatches: {}, keys: { errorForeground: 'default' } });
       // Reset in the editor undoes it.
@@ -475,7 +490,10 @@ describe('Palette Lab color editing', () => {
     lab.restoreTry(ui, { mode: 'generated', rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, chromeIndex: 0, surfaces: 'neutral', edits: { swatches: { accent: '#ff0000' }, keys: {} } });
     expect(ui.edits).toEqual({ swatches: { accent: '#ff0000' }, keys: {} });
     lab.render(ctx({ ui }));
-    expect(drawnIn({ ui }, 'button.background')).toBe('#ff0000');
+    // Rendering turns the fixed color into a shift (D1), and the accent role is lifted to
+    // 4.5:1 on the editor background, as an edit to a lifted role now is.
+    expect(TB.isShift(ui.edits.swatches.accent)).toBe(true);
+    expect(drawnIn({ ui }, 'button.background')).toBe(GB.liftTo('#ff0000', TB.THEME_BACKGROUND, 4.5));
     lab.restoreTry(ui, { mode: 'generated', rule: 'triad', hue: 10, lightness: 0.7, chroma: 0.1, chromeIndex: 0, surfaces: 'neutral' });
     expect(ui.edits).toEqual({ swatches: {}, keys: {} });
   });
@@ -521,19 +539,20 @@ describe('Palette Lab layout', () => {
     const state = (n: number) => root.querySelector(`.gb-s${n} .gb-step-state`)?.textContent;
     expect(state(1)).toBe('Wheel, Triad 210°');
     const TRIAD = GB.harmony('triad', { hue: 210, lightness: 0.75, chroma: 0.13 }).map((d: { hex: string }) => d.hex);
-    const m = /^weakest contrast \d+\.\d:1 \((?:AAA|AA|Large|Fail)\), (#[0-9a-f]{6}) on (#[0-9a-f]{6})$/.exec(state(2) || '');
+    const m = /^Weakest pair \d+\.\d:1 \((?:AAA|AA|Large|Fail)\): (#[0-9a-f]{6}) on (.+)$/.exec(state(2) || '');
     expect(m).not.toBeNull();
     expect(TRIAD).toContain(m![1]);
-    expect(['#121212', '#1e1e1e', '#252526', '#1f1f1f']).toContain(m![2]);
-    expect(state(3)).toBe('Frame 1 Filled · Accent 1 Neutral');
+    expect(['Near black', 'Dark editor', 'Dark side bar', 'Your editor']).toContain(m![2]);
+    expect(state(3)).toBe('Frame 1 Filled · Accent 1 · Neutral surfaces');
     expect(state(4)).toBe('0 edits');
   });
 
   it('{#one-primary} has Try in VS Code as the only primary button at both widths, with the preview window open', () => {
     for (const width of [1400, 880]) {
       const root = renderAt(width, { detached: true });
+      // Step headings, role rows and the Rule picker are buttons drawn as heading lines and a dropdown.
       const primary = [...root.querySelectorAll('button')]
-        .filter(b => !b.classList.contains('secondary') && b.getAttribute('role') !== 'tab')
+        .filter(b => !b.classList.contains('secondary') && b.getAttribute('role') !== 'tab' && !b.matches('.gb-step-btn, .gb-rule-btn, .gb-role-chip'))
         .map(b => b.textContent);
       expect({ width, primary }).toEqual({ width, primary: ['Try in VS Code'] });
     }
@@ -565,9 +584,9 @@ describe('Palette Lab layout', () => {
     const tabs = [...tablist(root, 'Start from').querySelectorAll('[role="tab"]')];
     expect(tabs.map(t => t.getAttribute('data-tab'))).toEqual(['wheel', 'saved']);
     const texts = tabTexts(root, 'Start from');
-    expect(texts[0]).toBe('Wheel');
+    expect(texts[0]).toBe('Color wheel');
     // The Saved tab carries the saved-theme count after its name.
-    expect(texts[1]).toMatch(/^Saved\d+$/);
+    expect(texts[1]).toMatch(/^Saved themes\d+$/);
   });
 
   it('{#old-tab-falls-back} opens a state saved on the Paste or Shipped tab on Wheel, with its panel shown', () => {
@@ -597,10 +616,14 @@ describe('Palette Lab layout', () => {
     }
   });
 
-  it('reads the Wheel tab as Base color, Rule, Hue, Lightness, Chroma', () => {
+  it('reads the Wheel tab as Base color, Color rule, Hue, Lightness, Chroma, each saying what it sets in its title', () => {
     const root = lab.render(ctx());
-    const labels = [...panel(root, 'Start from', 'wheel').querySelectorAll('.gb-pl-field > .gb-pl-field-name')].map(el => el.textContent);
-    expect(labels).toEqual(['Base color', 'Rule', 'Hue', 'Lightness', 'Chroma']);
+    const names = [...panel(root, 'Start from', 'wheel').querySelectorAll<HTMLElement>(':is(.gb-pl-field, .gb-pl-slider) > .gb-pl-field-name')];
+    expect(names.map(el => el.textContent)).toEqual(['Base color', 'Color rule', 'Hue', 'Lightness', 'Chroma']);
+    // Base color and Color rule carry the title on their name; a slider row on the whole row, value included.
+    const titles = names.map(el => el.title || (el.parentElement as HTMLElement).title);
+    expect(titles.every(t => t.length > 20)).toBe(true);
+    expect(titles[4]).toContain('0 is gray');
   });
 
   it('remembers the chosen Start from tab through a hue change and a fresh render', () => {
@@ -671,8 +694,9 @@ describe('Palette Lab step 2 contrast table', () => {
     const hex = marked[0].closest('tr')!.querySelector('.gb-pl-hex')!.textContent;
     const low = Math.min(...ratios);
     const tag = { aaa: 'AAA', aa: 'AA', large: 'Large', fail: 'Fail' }[GB.contrastGrade(low)[0] as string];
+    const bgName = { '#121212': 'Near black', '#1e1e1e': 'Dark editor', '#252526': 'Dark side bar', '#1f1f1f': 'Your editor' }[marked[0].dataset.bg!];
     expect(root.querySelector('.gb-s2 .gb-step-state')!.textContent)
-      .toBe(`weakest contrast ${low.toFixed(1)}:1 (${tag}), ${hex} on ${marked[0].dataset.bg}`);
+      .toBe(`Weakest pair ${low.toFixed(1)}:1 (${tag}): ${hex} on ${bgName}`);
     const verdict = { aaa: 'Easy to read at any size', aa: 'Readable as normal text', large: 'Fine for icons, borders and large text; too faint for normal text', fail: 'Hard to read; avoid it for text' }[GB.contrastGrade(low)[0] as string];
     const title = marked[0].getAttribute('title')!;
     expect(title.startsWith(`${verdict}. ${hex} on `)).toBe(true);
@@ -698,13 +722,13 @@ describe('Palette Lab step 2 contrast table', () => {
       }
     }
     expect(cells).toBe(20);
-    expect(root.querySelector('.gb-s2 .gb-pl-intro')!.textContent).toContain('Each cell shows "Aa" in the color on that background');
+    expect(root.querySelector('.gb-s2 .gb-pl-intro')!.textContent).toContain('Each cell shows "Aa" in the color, at normal size and large and bold');
   });
 
   it('{#adjusted-line} names the automatic adjustments in one line after the legend', () => {
     const root = lab.render(ctx());
     const legend = root.querySelector('.gb-s2 .gb-pl-legend')!;
-    expect(legend.nextElementSibling?.textContent).toContain('lifted to at least 4.5:1');
+    expect(legend.nextElementSibling?.textContent).toContain('raised to at least 4.5:1');
   });
 
   it('{#explained} says what the numbers are before the table, and each cell and heading says what it measured', () => {
@@ -712,7 +736,7 @@ describe('Palette Lab step 2 contrast table', () => {
     const body = root.querySelector('.gb-s2 .gb-step-body')!;
     const intro = body.querySelector('.gb-pl-intro')!;
     expect(intro.textContent).toContain('contrast ratio');
-    expect(intro.textContent).toContain('higher is easier to read');
+    expect(intro.textContent).toContain('higher reads more easily');
     expect(follows(intro, body.querySelector('table.gb-pl-contrast')!)).toBe(true);
     // A cell's title leads with what its ratio means, then the pair and the ratio; the first
     // column is the near-black background. The weakest cell's extra note is checked in {#weakest-one}.
@@ -803,7 +827,9 @@ describe('Palette Lab Edit dock', () => {
     dockOf(root)!.querySelector<HTMLButtonElement>('.gb-dock-reopen')!.click();
     const dock = dockOf(root)!;
     expect(dock.hasAttribute('data-min')).toBe(false);
-    expect(dock.querySelector('.gb-dock-h')!.textContent).toMatch(/^5\s*Edit$/);
+    // Step 5's own heading says '5 Edit'; the dock's heading names the part, here none.
+    expect(dock.querySelector('.gb-dock-h')!.textContent).toBe('No part picked');
+    expect(root.querySelector('#gb-step-5-h')!.textContent).toMatch(/^5\s*Edit/);
     expect(dock.querySelector('.gb-dock-body')!.textContent).toBe('Pick a part in the preview window, or open a role in Roles.');
   });
 
@@ -849,7 +875,7 @@ describe('Palette Lab Edit dock', () => {
     const dock = dockOf(root)!;
     const head = root.querySelector(`#${dock.getAttribute('aria-labelledby')}`)!;
     expect(dock.getAttribute('role')).toBe('region');
-    expect(head.textContent).toMatch(/^5\s*Edit/);
+    expect(head.textContent).toBe('Ask about this file, in the chat view');
   });
 });
 
@@ -887,7 +913,7 @@ describe('Palette Lab step 4 Roles', () => {
     expect(chips.every(ch => ch.tagName === 'BUTTON')).toBe(true);
   });
 
-  it('{#step-headings} reads the step headings 1 to 6 as Start, Palette, Frame and Editor, Roles, Edit, Try and save', () => {
+  it('{#step-headings} reads the step headings 1 to 6 as Start, Palette, Frame and accent, Roles, Edit, Try and save', () => {
     for (const width of [1400, 880]) {
       const root = renderAt(width);
       const heads = [...root.querySelectorAll<HTMLElement>('.gb-step-h')]
@@ -895,7 +921,7 @@ describe('Palette Lab step 4 Roles', () => {
         .sort((a, b) => Number(a[0]) - Number(b[0]));
       expect({ width, heads }).toEqual({
         width,
-        heads: [['1', 'Start'], ['2', 'Palette'], ['3', 'Frame and Editor'], ['4', 'Roles'], ['5', 'Edit'], ['6', 'Try and save']],
+        heads: [['1', 'Start'], ['2', 'Palette'], ['3', 'Frame and accent'], ['4', 'Roles'], ['5', 'Edit'], ['6', 'Try and save']],
       });
     }
   });
@@ -908,10 +934,16 @@ describe('Palette Lab step 4 Roles', () => {
     expect(chipOf(root, 'raised').getAttribute('aria-expanded')).toBe('true');
     const editor = rolesOf(root).querySelector<HTMLElement>('.gb-role-ed')!;
     expect(editor.dataset.swatch).toBe('raised');
-    expect(editor.textContent).toContain(`Used by ${TB.KEY_GROUPS.raised.length} keys`);
+    expect(editor.textContent).toContain(`Changing it recolors all ${TB.KEY_GROUPS.raised.length} colors below`);
+    // Every color the role draws is listed, grouped by part of the window, with its setting name.
+    expect([...editor.querySelectorAll(".gb-role-keys code")].map(c => c.textContent).sort()).toEqual([...TB.KEY_GROUPS.raised].sort());
     expect(document.activeElement).toBe(editor.querySelector('.gb-cp-trigger'));
     pickColor(editor.querySelector<HTMLElement>('.gb-cp-trigger')!, '#333333');
-    expect(c.ui.edits.swatches.raised).toBe('#333333');
+    // Kept as a shift from the role's own color (D1); the chip shows the color it gives.
+    expect(TB.isShift(c.ui.edits.swatches.raised)).toBe(true);
+    expect(roleColor(root, 'raised')).toBe('#333333');
+    // Under the editor: the color the palette gives, and how far the edit moves it (D5).
+    expect(rolesOf(root).querySelector('.gb-role-ed .gb-shift')!.textContent).toMatch(/^Palette gives #[0-9a-f]{6}; this edit: /);
     buttonFor(rolesOf(root), 'Reset').click();
     expect(c.ui.edits.swatches.raised).toBeUndefined();
     const open = rolesOf(root).querySelector<HTMLElement>('.gb-role-ed')!;
@@ -956,8 +988,8 @@ describe('Palette Lab step 4 Roles', () => {
     expect(buttonFor(rolesOf(root), 'Show where')).toBeDefined();
   });
 
-  it('{#roles-placement} with the stage built, Roles sits in the stage before Edit, and after a pick shows only its heading line', () => {
-    const c: any = ctx();
+  it('{#roles-placement} with the stage built, Roles sits in the stage before Edit, and a pick opens Edit and leaves Roles as it was', () => {
+    const c: any = ctx({ ui: { sections: [1, 4] } });
     const root = renderWith(c, 1400);
     const stage = root.querySelector<HTMLElement>('.gb-stage')!;
     const kids = [...stage.children].map(el => el.className);
@@ -966,16 +998,18 @@ describe('Palette Lab step 4 Roles', () => {
     expect(stage.querySelector<HTMLElement>('.gb-roles > .gb-step-body')!.hidden).toBe(false);
     const picked = pickIn(c, CHAT_INPUT, 1400);
     const roles = picked.querySelector<HTMLElement>('.gb-stage > .gb-roles')!;
-    expect(roles.querySelector<HTMLElement>(':scope > .gb-step-body')!.hidden).toBe(true);
-    expect(roles.querySelector(':scope > .gb-step-h button.gb-step-btn')).not.toBeNull();
-    // Show where on a role picks its first key, which opens the dock and folds Roles too.
-    const fresh = ctx();
+    expect(roles.querySelector<HTMLElement>(':scope > .gb-step-body')!.hidden).toBe(false);
+    expect(picked.querySelector<HTMLElement>('.gb-s4 > .gb-step-body')!.hidden).toBe(false);
+    expect(c.ui.sections).toEqual([1, 4, 5]);
+    // Show where on a role picks its first key, which opens Edit and leaves Roles open.
+    const fresh = ctx({ ui: { sections: [4] } });
     const again = renderWith(fresh, 1400);
     document.body.replaceChildren(again);
     chipOf(again, 'raised').click();
     buttonFor(rolesOf(again), 'Show where').click();
     expect(again.querySelector(`.gb-dock .gb-pl-key[data-key="${TB.KEY_GROUPS.raised[0]}"]`)).not.toBeNull();
-    expect(again.querySelector<HTMLElement>('.gb-stage > .gb-roles > .gb-step-body')!.hidden).toBe(true);
+    expect(again.querySelector<HTMLElement>('.gb-stage > .gb-roles > .gb-step-body')!.hidden).toBe(false);
+    expect(again.querySelector<HTMLElement>('.gb-s4 > .gb-step-body')!.hidden).toBe(false);
   });
 });
 
@@ -996,7 +1030,7 @@ describe('Palette Lab step 5 bar', () => {
   it('{#bar-line} shows the palette as chips and the same lowest ratio as step 2\'s heading, in a polite live region', () => {
     const root = lab.render(ctx());
     const line = root.querySelector<HTMLElement>('.gb-bar .gb-bar2')!;
-    const ratioOf = (text: string | null) => /[Ww]eakest contrast (\d+\.\d):1/.exec(text || '')?.[1];
+    const ratioOf = (text: string | null) => /[Ww]eakest (?:contrast|pair) (\d+\.\d):1/.exec(text || '')?.[1];
     expect(line.querySelectorAll('.gb-bar-chip')).toHaveLength(5);
     expect(ratioOf(line.querySelector('.gb-bar-low')!.textContent)).toBe(ratioOf(root.querySelector('.gb-s2 .gb-step-state')!.textContent));
     expect(ratioOf(line.querySelector('.gb-bar-low')!.textContent)).toBeDefined();
@@ -1051,89 +1085,95 @@ describe('Palette Lab step 5 bar', () => {
   });
 });
 
-describe('Palette Lab narrow folding', () => {
+describe('Palette Lab collapsible steps', () => {
   afterEach(() => { renderAt(880); });
-  const body = (root: HTMLElement, n: number) => root.querySelector<HTMLElement>(`.gb-s${n} > .gb-step-body`)!;
-  const head = (root: HTMLElement, n: number) => root.querySelector<HTMLElement>(`.gb-s${n} > .gb-step-h`)!;
-  const keyRows = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('.gb-dock .gb-pl-key')];
-  const expanded = (root: HTMLElement) =>
-    keyRows(root).filter(r => r.querySelector('.gb-pl-key-head')!.getAttribute('aria-expanded') === 'true').map(r => r.dataset.key);
+  /** Step n's element: steps 1 to 3 and 5 by class, step 4 (Roles) by its own class. */
+  const stepEl = (root: HTMLElement, n: number) => root.querySelector<HTMLElement>(n === 4 ? '.gb-roles' : `.gb-s${n === 5 ? 4 : n}`)!;
+  const body = (root: HTMLElement, n: number) => stepEl(root, n).querySelector<HTMLElement>(':scope > .gb-step-body')!;
+  const headButton = (root: HTMLElement, n: number) => stepEl(root, n).querySelector<HTMLButtonElement>(':scope > .gb-step-h > button.gb-step-btn')!;
+  const openSteps = (root: HTMLElement) => [1, 2, 3, 4, 5].filter(n => !body(root, n).hidden);
+  const allToggle = (root: HTMLElement) => root.querySelector<HTMLButtonElement>('.gb-lab-top .gb-all-toggle')!;
 
-  it('{#fold-on-pick} at 880 px a pick hides the bodies of steps 1 to 3 and leaves their headings, each a collapsed button', () => {
-    const c = ctx();
-    const before = renderWith(c, 880);
-    expect([1, 2, 3].map(n => body(before, n).hidden)).toEqual([false, false, false]);
-    const root = pickIn(c, CHAT_INPUT, 880);
-    expect([1, 2, 3].map(n => body(root, n).hidden)).toEqual([true, true, true]);
-    for (const n of [1, 2, 3]) {
-      expect(head(root, n).hidden).toBe(false);
-      const button = head(root, n).querySelector('button.gb-step-btn')!;
-      expect({ n, expanded: button.getAttribute('aria-expanded') }).toEqual({ n, expanded: 'false' });
+  it('{#fresh-start-only} a fresh Lab opens on step 1, Start, with steps 2 to 5 collapsed to heading buttons, at both widths', () => {
+    for (const width of [1400, 880]) {
+      const c: any = ctx();
+      const root = renderWith(c, width);
+      expect({ width, open: openSteps(root) }).toEqual({ width, open: [1] });
+      for (const n of [1, 2, 3, 4, 5]) {
+        expect({ width, n, expanded: headButton(root, n).getAttribute('aria-expanded') }).toEqual({ width, n, expanded: String(n === 1) });
+      }
+      expect(c.ui.sections).toEqual([1]);
+      // Step 6, Try and save, has no collapse: its body always shows.
+      expect(root.querySelector<HTMLElement>('.gb-bar > .gb-step-body')!.hidden).toBe(false);
+      expect(root.querySelector('.gb-bar .gb-step-btn')).toBeNull();
     }
-    expect(root.querySelector('.gb-s1 .gb-step-state')!.textContent).toBe('Wheel, Triad 210°');
   });
 
-  it('{#reopen-keeps-place} at 880 px, opening step 2 shrinks the dock to one line naming the part, and reopening it keeps the third key row expanded', () => {
-    const c = ctx();
-    renderWith(c, 880);
-    const root = pickIn(c, CHAT_INPUT, 880);
-    keyRows(root)[2].querySelector<HTMLButtonElement>('.gb-pl-key-head')!.click();
-    const third = keyRows(root)[2].dataset.key;
-    head(root, 2).querySelector<HTMLButtonElement>('button.gb-step-btn')!.click();
-    expect(body(root, 2).hidden).toBe(false);
-    expect([body(root, 1).hidden, body(root, 3).hidden]).toEqual([true, true]);
-    const dock = root.querySelector<HTMLElement>('.gb-dock')!;
-    expect(dock.hasAttribute('data-min')).toBe(true);
-    expect(dock.querySelector('.gb-pl-key')).toBeNull();
-    expect(dock.textContent).toContain('in the chat view');
-    dock.querySelector<HTMLButtonElement>('.gb-dock-reopen')!.click();
-    expect(root.querySelector('.gb-dock')!.hasAttribute('data-min')).toBe(false);
-    expect(expanded(root)).toEqual([third]);
-    expect(body(root, 2).hidden).toBe(true);
-  });
-
-  it('{#frame-row-moves} at 880 px a pick in the status bar moves the Frame row into the dock\'s first row, and step 3 keeps no Frame row', () => {
-    const c = ctx();
-    renderWith(c, 880);
-    const root = pickIn(c, '.gb-pl-chrome [data-region="statusBar"]', 880);
-    const first = root.querySelector('.gb-dock .gb-dock-body')!.firstElementChild!;
-    expect(first.classList.contains('gb-dock-lead')).toBe(true);
-    expect(first.querySelector('.gb-dock-lead-row > .gb-fr-box')).not.toBeNull();
-    expect(first.querySelectorAll('.gb-fr-pick').length).toBeGreaterThan(0);
-    expect(root.querySelectorAll('.gb-fr-box')).toHaveLength(1);
-    expect(root.querySelector('.gb-s3 .gb-fr-box')).toBeNull();
-    expect(root.querySelector('.gb-s3 .gb-step-state')!.textContent).toBe('Frame 1 Filled · Accent 1 Neutral');
-    // A pick in the editor tabs moves the Editor row instead.
-    const other = ctx();
-    renderWith(other, 880);
-    const tabs = pickIn(other, '.gb-pl-chrome [data-region="tabs"] .gb-tab', 880);
-    expect(tabs.querySelector('.gb-dock .gb-dock-body > .gb-dock-lead:first-child .gb-ed-box')).not.toBeNull();
-    expect(tabs.querySelector('.gb-s3 .gb-fr-box')).not.toBeNull();
-  });
-
-  it('{#wide-no-fold} at 1400 px a pick leaves steps 1 to 3 with their bodies shown and the Frame row in step 3', () => {
-    const c = ctx();
-    renderWith(c, 1400);
-    const root = pickIn(c, '.gb-pl-chrome [data-region="statusBar"]', 1400);
-    expect(root.querySelector('.gb-dock')).not.toBeNull();
-    expect([1, 2, 3].map(n => body(root, n).hidden)).toEqual([false, false, false]);
-    expect(root.querySelector('.gb-s3 .gb-fr-box')).not.toBeNull();
-    // Only step 4 (Roles, in the stage) folds to a heading button while the dock is open.
-    expect(root.querySelector('.gb-tasks .gb-step-btn')).toBeNull();
-  });
-
-  it('{#roles-fold-narrow} at 880 px a pick folds step 4 (Roles) to its heading with steps 1 to 3, and its heading opens it', () => {
-    const c = ctx();
-    renderWith(c, 880);
-    const root = pickIn(c, CHAT_INPUT, 880);
+  it('{#heading-toggles} a heading opens and collapses its own step only, keeps focus, and the state keeps the choice', () => {
+    const save = jest.fn();
+    const c: any = ctx({ save });
+    const root = renderWith(c, 880);
     document.body.replaceChildren(root);
-    const roles = root.querySelector<HTMLElement>('.gb-tasks > .gb-roles')!;
-    expect(roles.querySelector<HTMLElement>(':scope > .gb-step-body')!.hidden).toBe(true);
-    roles.querySelector<HTMLButtonElement>(':scope > .gb-step-h button.gb-step-btn')!.click();
-    const again = root.querySelector<HTMLElement>('.gb-tasks > .gb-roles')!;
-    expect(again.querySelector<HTMLElement>(':scope > .gb-step-body')!.hidden).toBe(false);
-    expect(root.querySelector('.gb-dock')!.hasAttribute('data-min')).toBe(true);
-    expect(document.activeElement).toBe(again.querySelector('.gb-step-btn'));
+    headButton(root, 3).focus();
+    headButton(root, 3).click();
+    expect(openSteps(root)).toEqual([1, 3]);
+    // An open step carries data-open, which palette.css highlights (border, heading band, line).
+    expect([1, 2, 3].map(n => stepEl(root, n).hasAttribute('data-open'))).toEqual([true, false, true]);
+    expect(c.ui.sections).toEqual([1, 3]);
+    expect(save).toHaveBeenCalled();
+    expect(document.activeElement).toBe(headButton(root, 3));
+    headButton(root, 1).click();
+    expect(openSteps(root)).toEqual([3]);
+    // A later render of the same state (a restored tab) keeps the choice.
+    expect(openSteps(renderWith(c, 1400))).toEqual([3]);
+  });
+
+  it('{#pick-opens-edit-only} a pick opens step 5 and changes no other step, at both widths, and the Frame row stays in step 3', () => {
+    for (const width of [1400, 880]) {
+      const c: any = ctx({ ui: { sections: [2, 3] } });
+      renderWith(c, width);
+      const root = pickIn(c, '.gb-pl-chrome [data-region="statusBar"]', width);
+      expect({ width, open: openSteps(root) }).toEqual({ width, open: [2, 3, 5] });
+      expect(root.querySelector('.gb-dock')).not.toBeNull();
+      expect(root.querySelectorAll('.gb-fr-box')).toHaveLength(1);
+      expect(root.querySelector('.gb-s3 .gb-fr-box')).not.toBeNull();
+    }
+  });
+
+  it('{#pick-keeps-collapse} a step collapsed while the dock is open stays collapsed, and the dock stays open', () => {
+    const c: any = ctx({ ui: { sections: [1, 2] } });
+    renderWith(c, 880);
+    const root = pickIn(c, CHAT_INPUT, 880);
+    headButton(root, 2).click();
+    expect(openSteps(root)).toEqual([1, 5]);
+    expect(root.querySelector('.gb-dock')!.hasAttribute('data-min')).toBe(false);
+    // Collapsing step 5 hides the dock with it; opening it shows the dock where it was.
+    headButton(root, 5).click();
+    expect(body(root, 5).hidden).toBe(true);
+    headButton(root, 5).click();
+    expect(body(root, 5).contains(root.querySelector('.gb-dock'))).toBe(true);
+  });
+
+  it('{#expand-all} Expand all opens steps 1 to 5 and becomes Collapse all, which closes them all', () => {
+    const c: any = ctx();
+    const root = renderWith(c, 1400);
+    expect(allToggle(root).textContent).toBe('Expand all');
+    allToggle(root).click();
+    expect(openSteps(root)).toEqual([1, 2, 3, 4, 5]);
+    expect(c.ui.sections).toEqual([1, 2, 3, 4, 5]);
+    expect(allToggle(root).textContent).toBe('Collapse all');
+    allToggle(root).click();
+    expect(openSteps(root)).toEqual([]);
+    expect(allToggle(root).textContent).toBe('Expand all');
+    expect(root.querySelector<HTMLElement>('.gb-bar > .gb-step-body')!.hidden).toBe(false);
+  });
+
+  it('{#groups-mode-no-toggle} the Style groups mode hides Expand all, and Back to design shows it again', () => {
+    const root = renderWith(ctx(), 880);
+    buttonFor(root, 'Edit style groups').click();
+    expect(allToggle(root).hidden).toBe(true);
+    buttonFor(root, 'Back to design').click();
+    expect(allToggle(root).hidden).toBe(false);
   });
 });
 
@@ -1160,7 +1200,7 @@ describe('Theme Preview drawing fit', () => {
 describe('Palette Lab steps and label column', () => {
   it('opens each of steps 1, 2 and 3 with a numbered heading, and no step is a bordered box', () => {
     const root = lab.render(ctx());
-    const steps: Array<[string, string, string]> = [['.gb-s1', '1', 'Start'], ['.gb-s2', '2', 'Palette'], ['.gb-s3', '3', 'Frame and Editor']];
+    const steps: Array<[string, string, string]> = [['.gb-s1', '1', 'Start'], ['.gb-s2', '2', 'Palette'], ['.gb-s3', '3', 'Frame and accent']];
     for (const [selector, n, title] of steps) {
       const el = root.querySelector<HTMLElement>(selector)!;
       const head = el.firstElementChild!;
@@ -1171,12 +1211,52 @@ describe('Palette Lab steps and label column', () => {
     expect(root.querySelector('.gb-tasks .gb-box:not(.gb-sg)')).toBeNull();
   });
 
-  it('labels the Frame and Editor rows, with what each colors in the label\'s title', () => {
+  it('labels step 3\'s rows with a line naming what each colors, and more in the label\'s title', () => {
     const root = lab.render(ctx());
     const label = (sel: string) => root.querySelector<HTMLElement>(`.gb-s3 ${sel} .gb-fe-l`)!;
-    expect([label('.gb-fr-box').textContent, label('.gb-ed-box').textContent]).toEqual(['Frame', 'Editor']);
-    expect(label('.gb-fr-box').title).toBe('Title bar, activity bar, status bar and window border.');
-    expect(label('.gb-ed-box').title).toBe('Everything else: editor, side bar, tabs, panel, inputs and widgets.');
+    const rows = ['.gb-fr-box', '.gb-fs-box', '.gb-ed-box', '.gb-sf-box'];
+    expect(rows.map(sel => [label(sel).firstChild!.textContent, label(sel).querySelector('small')!.textContent])).toEqual([
+      ['Frame color', 'Title, activity and status bars'],
+      ['Frame style', 'How the frame uses its color'],
+      ['Accent', 'Buttons, links, badges, focus'],
+      ['Surfaces', 'Side bar, tabs, panels'],
+    ]);
+    expect(label('.gb-fr-box').title).toBe('The title bar, activity bar, status bar and window border. Text on them is picked to stay readable.');
+    expect(label('.gb-sf-box').title).toContain('The editor background stays #1e1e1e.');
+  });
+
+  it('draws Frame style and Surfaces as example chips, each a small window in the colors it would give', () => {
+    const root = lab.render(ctx());
+    const chips = (cls: string) => [...root.querySelectorAll<HTMLElement>(`.gb-s3 .${cls}`)];
+    expect(chips('gb-fr-style-pick').map(b => b.querySelector('.gb-ex-name')!.textContent)).toEqual(['Filled', 'Dark']);
+    expect(chips('gb-ch-surface-pick').map(b => b.querySelector('.gb-ex-name')!.textContent)).toEqual(['Neutral', 'Tinted', 'Rich']);
+    // Each chip's side bar is drawn in the deep surface its choice gives, so the three differ.
+    const sides = chips('gb-ch-surface-pick').map(b => b.querySelector<HTMLElement>('.gb-mini-side')!.style.background);
+    expect(new Set(sides).size).toBe(3);
+    // The Filled chip's title bar is the frame color; the Dark chip's is the side bar's deep surface.
+    const [filled, dark] = chips('gb-fr-style-pick').map(b => b.querySelector<HTMLElement>('.gb-mini-title')!.style.background);
+    expect(filled).not.toBe(dark);
+    chips('gb-ch-surface-pick')[2].click();
+    expect(root.querySelector('.gb-s3 .gb-step-state')!.textContent).toBe('Frame 1 Filled · Accent 1 · Rich surfaces');
+  });
+
+  it('takes a custom accent, kept as a shift from the base, that also tints the surfaces; a palette pick clears it', () => {
+    const c = ctx();
+    const root = lab.render(c);
+    const side = drawnIn(c, 'sideBar.background');
+    pickColor(root.querySelector<HTMLElement>('.gb-ac-custom')!, '#2f9e44');
+    expect((c.ui as any).accentColor).toBe(TB.shiftFor('#2f9e44', BASE));
+    expect(root.querySelector('.gb-ed-box .gb-ch-pick[data-index="custom"]')!.getAttribute('aria-checked')).toBe('true');
+    expect(drawnIn(c, 'button.background')).toBe(GB.liftTo('#2f9e44', '#1e1e1e', 4.5));
+    expect(drawnIn(c, 'sideBar.background')).not.toBe(side);
+    expect(root.querySelector('.gb-s3 .gb-step-state')!.textContent).toBe('Frame 1 Filled · Accent Custom · Neutral surfaces');
+    buttonFor(root, 'Try in VS Code').click();
+    const msg = c.post.mock.calls[0][0];
+    expect(msg.chrome.color).toBe((c.ui as any).accentColor);
+    expect(msg.settings.accentColor).toBe((c.ui as any).accentColor);
+    root.querySelector<HTMLButtonElement>('.gb-ed-box .gb-ch-pick[data-index="1"]')!.click();
+    expect((c.ui as any).accentColor).toBeUndefined();
+    expect((c.ui as any).chromeIndex).toBe(1);
   });
 
   it('draws the Frame row with no folder-color button and no region checkboxes', () => {
@@ -1293,6 +1373,25 @@ describe('Palette Lab saved themes', () => {
   const action = (root: HTMLElement, id: string, name: string) => row(root, id).querySelector<HTMLButtonElement>(`button[data-action="${name}"]`);
   const savedTab = (root: HTMLElement) => root.querySelector<HTMLElement>('[role="tablist"][aria-label="Start from"] [data-tab="saved"]')!;
 
+  it('{#use-after-save} step 6 offers Use in this project and Use everywhere only for the saved theme it holds, unchanged', () => {
+    const shown = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>('.gb-bar .gb-bar-use')].filter(b => !b.hidden).map(b => b.dataset.action);
+    const fresh = lab.render(ctx({ library: LIBRARY, hasFolder: true }));
+    expect(shown(fresh)).toEqual([]);
+    const c = ctx({ library: LIBRARY, hasFolder: true });
+    (lab as any).loadSaved(c.ui, LIBRARY[0]);
+    const root = lab.render(c);
+    expect(shown(root)).toEqual(['project', 'everywhere']);
+    root.querySelector<HTMLButtonElement>('.gb-bar .gb-bar-use[data-action="everywhere"]')!.click();
+    expect(c.post).toHaveBeenCalledWith({ type: 'useTheme', id: 'a', where: 'everywhere' });
+    // A different name is not that saved theme, so the Use buttons go.
+    const name = root.querySelector<HTMLInputElement>('.gb-pl-name')!;
+    name.value = 'Something else';
+    name.dispatchEvent(new Event('input'));
+    expect(shown(root)).toEqual([]);
+    // What Try and Save do is said on the bar, not only in their tooltips.
+    expect(root.querySelector('.gb-bar .gb-bar-hint')!.textContent).toContain('GigglyBits Dark (Lab)');
+  });
+
   it('Save theme posts the name and the whole design, Frame included', () => {
     const c = ctx();
     const root = lab.render(c);
@@ -1311,7 +1410,7 @@ describe('Palette Lab saved themes', () => {
   it('the Saved tab is labelled with the count and lists each theme with its slot', () => {
     const root = lab.render(ctx({ library: LIBRARY, hasFolder: true }));
     const label = savedTab(root);
-    expect([label.firstChild?.firstChild?.textContent, label.querySelector('.count')?.textContent].join(' ')).toBe('Saved 2');
+    expect([label.firstChild?.firstChild?.textContent, label.querySelector('.count')?.textContent].join(' ')).toBe('Saved themes 2');
     const rows = [...root.querySelectorAll('.gb-pl-lib-row')].map(r =>
       [r.querySelector('.gb-pl-row-name')?.textContent, r.querySelector('.gb-pl-row-slot')?.textContent]);
     expect(rows).toEqual([['Alpha', 'Theme 1'], ['Beta', 'No slot']]);
@@ -1718,17 +1817,22 @@ describe('Palette Lab color picker', () => {
     expect([c.ui.hue, c.ui.lightness, c.ui.chroma]).toEqual([Math.round(o.h) % 360, Number(o.l.toFixed(2)), Number(o.c.toFixed(3))]);
     expect([c.ui.hue, c.ui.lightness, c.ui.chroma]).not.toEqual([210, 0.75, 0.13]);
     pickColor(root.querySelector<HTMLElement>('.gb-fr-custom')!, '#336699');
-    expect(c.ui.frame).toEqual({ color: '#336699', style: 'filled' });
+    // The custom frame color is measured from the base color just picked (D4).
+    const base = GB.oklchToHex({ l: c.ui.lightness, c: c.ui.chroma, h: c.ui.hue });
+    expect(c.ui.frame).toEqual({ color: TB.shiftFor('#336699', base), style: 'filled' });
+    expect(drawnIn(c, 'titleBar.activeBackground')).toBe('#336699');
     chipOf(root, 'raised').click();
     pickColor(roleTrigger(root), '#404040');
-    expect(c.ui.edits.swatches.raised).toBe('#404040');
+    expect(TB.isShift(c.ui.edits.swatches.raised)).toBe(true);
+    expect(roleColor(root, 'raised')).toBe('#404040');
     const c2: any = ctx();
     lab.render(c2);
     const r2 = pickIn(c2, CHAT_INPUT);
     // Whole role is the default scope, which writes the role; This key only writes the key.
     errorRow(r2).querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
     pickColor(errorRow(r2).querySelector<HTMLElement>('.gb-ke-pick')!, '#123456');
-    expect(c2.ui.edits.keys.errorForeground).toBe('#123456');
+    expect(TB.isShift(c2.ui.edits.keys.errorForeground)).toBe(true);
+    expect(drawnIn(c2, 'errorForeground')).toBe('#123456');
   });
 
   it('{#drag-live} a color changed in the Raised role\'s open picker saves and previews without closing the picker', () => {
@@ -1739,7 +1843,7 @@ describe('Palette Lab color picker', () => {
     save.mockClear();
     const dialog = pickColor(trigger, '#505050', 'open');
     expect(save).toHaveBeenCalled();
-    expect(c.ui.edits.swatches.raised).toBe('#505050');
+    expect(TB.isShift(c.ui.edits.swatches.raised)).toBe(true);
     expect(drawnIn(c, 'editorWidget.background')).toBe('#505050');
     expect(dialog.isConnected).toBe(true);
     expect(root.querySelector('.gb-cp')).toBe(dialog);
@@ -1752,7 +1856,7 @@ describe('Palette Lab color picker', () => {
     const root = openRaised(c);
     const before = JSON.parse(JSON.stringify(c.ui.edits));
     const dialog = pickColor(roleTrigger(root), '#505050', 'open');
-    expect(c.ui.edits.swatches.raised).toBe('#505050');
+    expect(TB.isShift(c.ui.edits.swatches.raised)).toBe(true);
     press(dialog, 'Escape');
     expect(c.ui.edits).toEqual(before);
     expect(rolesOf(root).querySelector('.gb-role-ed')).not.toBeNull();
@@ -1775,7 +1879,7 @@ describe('Palette Lab color picker', () => {
     const frameBefore = JSON.parse(JSON.stringify(c.ui.frame));
     const d = pickColor(root.querySelector<HTMLElement>('.gb-fr-custom')!, '#336699', 'open');
     // The custom frame color now previews while it is dragged.
-    expect(c.ui.frame).toEqual({ color: '#336699', style: 'dark' });
+    expect(c.ui.frame).toEqual({ color: TB.shiftFor('#336699', BASE), style: 'dark' });
     expect(drawnIn(c, 'titleBar.activeBackground')).not.toBe('');
     press(d, 'Escape');
     expect(c.ui.frame).toEqual(frameBefore);
@@ -1788,7 +1892,7 @@ describe('Palette Lab color picker', () => {
     errorRow(r2).querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
     const keysBefore = JSON.parse(JSON.stringify(c2.ui.edits.keys));
     const d2 = pickColor(errorRow(r2).querySelector<HTMLElement>('.gb-ke-pick')!, '#123456', 'open');
-    expect(c2.ui.edits.keys.errorForeground).toBe('#123456');
+    expect(TB.isShift(c2.ui.edits.keys.errorForeground)).toBe(true);
     press(d2, 'Escape');
     expect(c2.ui.edits.keys).toEqual(keysBefore);
     const dock = r2.querySelector<HTMLElement>('.gb-dock')!;
@@ -1844,5 +1948,255 @@ describe('Palette Lab color picker', () => {
     const root = lab.render(ctx());
     const row = root.querySelector('.gb-pl-base')!.closest('.gb-pl-field')!;
     expect(row.tagName).toBe('DIV');
+  });
+});
+
+describe('Palette Lab Start: two columns and the Rule picker', () => {
+  afterEach(() => { renderAt(880); });
+  const wheelOf = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-s1 .gb-pl-wheel')!;
+  const ruleButton = (root: HTMLElement) => root.querySelector<HTMLButtonElement>('.gb-s1 .gb-rule-btn')!;
+  const ruleList = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-s1 .gb-rule-list')!;
+  const key = (el: Element, k: string) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+  it('{#wheel-columns} the Wheel tab has Base color and Rule in one column and the three sliders in the other, with end words and the base hex', () => {
+    const root = renderAt(1400);
+    const cols = [...wheelOf(root).querySelectorAll(':scope > .gb-pl-col')];
+    expect(cols).toHaveLength(2);
+    const names = (col: Element) => [...col.querySelectorAll('.gb-pl-field-name')].map(el => el.textContent);
+    expect(names(cols[0])).toEqual(['Base color', 'Color rule']);
+    expect(names(cols[1])).toEqual(['Hue', 'Lightness', 'Chroma']);
+    expect([...cols[1].querySelectorAll('.gb-pl-ends')].map(el => el.textContent)).toEqual(['0°359°', 'darkerlighter', 'grayermore vivid']);
+    // Every slider row has the same three columns, so the tracks line up.
+    expect([...cols[1].querySelectorAll('.gb-pl-slider')].map(r => r.children[1].getAttribute('type'))).toEqual(['range', 'range', 'range']);
+    expect(root.querySelector('.gb-pl-base-hex')!.textContent).toBe(BASE);
+    // Each slider's track is painted with its own scale.
+    for (const cls of ['.gb-pl-hue', '.gb-pl-lightness', '.gb-pl-chroma']) {
+      expect(root.querySelector<HTMLElement>(cls)!.style.getPropertyValue('--gb-track')).toMatch(/^linear-gradient\(90deg, #/);
+    }
+  });
+
+  it('{#rule-button} the Rule button names the rule and shows its five colors at the current base', () => {
+    const root = renderAt(880);
+    const button = ruleButton(root);
+    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(button.getAttribute('aria-label')).toBe('Harmony rule: Triad');
+    const blocks = [...button.querySelectorAll<HTMLElement>('.gb-rule-strip > span')].map(b => b.style.background);
+    const triad = GB.harmony('triad', { hue: 210, lightness: 0.75, chroma: 0.13 }).map((d: any) => d.hex);
+    expect(blocks).toHaveLength(5);
+    expect(blocks.map(b => GB.toHex(GB.parseColor(b)))).toEqual(triad);
+    expect(button.querySelector('svg.gb-rule-wheel circle')).not.toBeNull();
+  });
+
+  it('{#rule-list} opening the picker lists all eight rules, each with a line on what it makes and its colors at the base; a click picks one', () => {
+    const c: any = ctx();
+    const root = renderWith(c, 880);
+    document.body.replaceChildren(root);
+    ruleButton(root).click();
+    const list = ruleList(root);
+    expect(list.hidden).toBe(false);
+    expect(ruleButton(root).getAttribute('aria-expanded')).toBe('true');
+    const options = [...list.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(options.map(o => o.dataset.rule)).toEqual(Object.keys(GB.HARMONY_RULES));
+    expect(options.every(o => o.querySelector('.gb-rule-note')!.textContent!.length > 10)).toBe(true);
+    expect(options.find(o => o.dataset.rule === 'triad')!.getAttribute('aria-selected')).toBe('true');
+    options.find(o => o.dataset.rule === 'square')!.click();
+    expect(c.ui.rule).toBe('square');
+    expect(list.hidden).toBe(true);
+    expect(document.activeElement).toBe(ruleButton(root));
+    expect(ruleButton(root).getAttribute('aria-label')).toBe('Harmony rule: Square');
+  });
+
+  it('{#rule-keys} the keyboard opens the picker, moves with the arrows and a letter, picks with Enter and closes with Escape', () => {
+    const c: any = ctx();
+    const root = renderWith(c, 880);
+    document.body.replaceChildren(root);
+    key(ruleButton(root), 'ArrowDown');
+    const list = ruleList(root);
+    expect(document.activeElement).toBe(list);
+    const active = () => list.querySelector('.gb-rule-active')!.getAttribute('data-rule');
+    expect(active()).toBe('triad');
+    key(list, 'ArrowDown');
+    expect(active()).toBe('complementary');
+    expect(list.getAttribute('aria-activedescendant')).toBe(list.querySelector('.gb-rule-active')!.id);
+    key(list, 's');
+    expect(active()).toBe('split-complementary');
+    key(list, 'Escape');
+    expect(list.hidden).toBe(true);
+    expect(c.ui.rule).toBe('triad');
+    key(ruleButton(root), 'Enter');
+    key(list, 'End');
+    key(list, 'Enter');
+    expect(c.ui.rule).toBe('shades');
+  });
+});
+
+describe('Palette Lab edits that follow the palette', () => {
+  afterEach(() => { renderAt(880); });
+  const setHue = (root: HTMLElement, value: string) => {
+    const hue = root.querySelector<HTMLInputElement>('.gb-pl-hue')!;
+    hue.value = value;
+    hue.dispatchEvent(new Event('input'));
+  };
+
+  it('{#migrate-fixed} an older state\'s fixed edits and custom frame color become shifts that draw the same colors', () => {
+    const ui: any = { frame: { color: '#336699', style: 'filled' }, edits: { swatches: { raised: '#404040' }, keys: { errorForeground: '#123456' } } };
+    const c: any = ctx({ ui });
+    const root = renderWith(c, 880);
+    expect(TB.isShift(ui.frame.color)).toBe(true);
+    expect(TB.isShift(ui.edits.swatches.raised)).toBe(true);
+    expect(TB.isShift(ui.edits.keys.errorForeground)).toBe(true);
+    expect(drawnIn(c, 'titleBar.activeBackground')).toBe('#336699');
+    expect(roleColor(root, 'raised')).toBe('#404040');
+    expect(drawnIn(c, 'errorForeground')).toBe('#123456');
+  });
+
+  it('{#hue-moves-edits} moving the hue moves a role edit, a key edit and a custom frame color with the palette', () => {
+    const ui: any = { frame: { color: '#336699', style: 'filled' }, edits: { swatches: { raised: '#404a40' }, keys: { errorForeground: '#123456' } } };
+    const c: any = ctx({ ui });
+    const root = renderWith(c, 880);
+    const shifts = JSON.parse(JSON.stringify(ui.edits));
+    const frame = ui.frame.color;
+    setHue(root, '30');
+    // The shifts stay as they were; what they give moves with the base.
+    expect(ui.edits).toEqual(shifts);
+    expect(ui.frame.color).toBe(frame);
+    const base = GB.oklchToHex({ l: 0.75, c: 0.13, h: 30 });
+    expect(drawnIn(c, 'titleBar.activeBackground')).toBe(TB.applyShift(frame, base));
+    expect(drawnIn(c, 'titleBar.activeBackground')).not.toBe('#336699');
+    expect(roleColor(root, 'raised')).not.toBe('#404a40');
+  });
+
+  it('{#key-shift-note} an edited key\'s editor says what the palette gives and how far the edit moves it', () => {
+    const c: any = ctx();
+    lab.render(c);
+    const root = pickIn(c, CHAT_INPUT, 880);
+    const row = () => root.querySelector<HTMLElement>('.gb-dock .gb-pl-key[data-key="errorForeground"]')!;
+    row().querySelector<HTMLButtonElement>('.gb-ke-seg[data-scope="key"]')!.click();
+    expect(row().querySelector('.gb-shift')).toBeNull();
+    pickColor(row().querySelector<HTMLElement>('.gb-ke-pick')!, '#123456');
+    const note = row().querySelector('.gb-shift')!;
+    expect(note.textContent).toMatch(/^Palette gives #[0-9a-f]{6}; this edit: (darker|lighter)/);
+    expect(note.getAttribute('title')).toContain('Lightness runs from 0 (black) to 1 (white)');
+  });
+});
+
+describe('Palette Lab Roles: what each role colors', () => {
+  afterEach(() => { renderAt(880); });
+  const rowOf = (root: HTMLElement, sw: string) => root.querySelector<HTMLElement>(`.gb-roles .gb-role-row[data-swatch="${sw}"]`)!;
+  const highlights = (post: jest.Mock) => post.mock.calls.map(call => call[0]).filter(m => m.type === 'previewHighlight').map(m => m.keys);
+
+  it('{#role-where} a role names its parts of the window in its tooltip; opened, it lists every color in one box per part, with counts that add up, and no pills', () => {
+    const root = lab.render(ctx());
+    // Collapsed: no second line, and the heading's tooltip names the parts with their counts.
+    expect(rowOf(root, 'border').querySelector('.gb-role-area')).toBeNull();
+    const tip = rowOf(root, 'border').querySelector<HTMLElement>('.gb-role-chip')!.title;
+    expect(tip).toContain(TB.SWATCHES.border[1]);
+    expect(tip).toMatch(/Colors: .*Popups and widgets \d+/);
+    expect(rowOf(root, 'kw').querySelector<HTMLElement>('.gb-role-chip')!.title).toContain('Used by code highlighting only');
+    rowOf(root, 'border').querySelector<HTMLButtonElement>('.gb-role-chip')!.click();
+    const border = rowOf(root, 'border');
+    expect(border.querySelector('.gb-role-area')).toBeNull();
+    const groups = [...border.querySelectorAll('.gb-role-keys .gb-role-keygroup')];
+    const total = groups.reduce((sum, g) => sum + Number(g.querySelector('h5 .muted')!.textContent), 0);
+    expect(total).toBe(TB.KEY_GROUPS.border.length);
+    expect(groups.map(g => g.getAttribute('aria-label'))).toContain('Popups and widgets');
+    expect(groups.every(g => g.querySelectorAll('li').length === Number(g.querySelector('h5 .muted')!.textContent))).toBe(true);
+    expect(border.querySelector('.gb-role-about')!.textContent).toBe(TB.SWATCHES.border[1]);
+    expect(border.querySelector('.gb-role-count')!.textContent).toBe(`${TB.KEY_GROUPS.border.length} colors`);
+  });
+
+  it('{#role-hover-outline} pointing at a role asks the preview to outline its colors; leaving goes back to the open role, or to none', () => {
+    const c: any = ctx();
+    const root = lab.render(c);
+    rowOf(root, 'border').dispatchEvent(new MouseEvent('mouseenter'));
+    rowOf(root, 'border').dispatchEvent(new MouseEvent('mouseleave'));
+    expect(highlights(c.post)).toEqual([TB.KEY_GROUPS.border, []]);
+    // An open role stays outlined after the pointer leaves another row.
+    rowOf(root, 'raised').querySelector<HTMLButtonElement>('.gb-role-chip')!.click();
+    rowOf(root, 'divider').dispatchEvent(new MouseEvent('mouseenter'));
+    rowOf(root, 'divider').dispatchEvent(new MouseEvent('mouseleave'));
+    expect(highlights(c.post).slice(2)).toEqual([TB.KEY_GROUPS.raised, TB.KEY_GROUPS.divider, TB.KEY_GROUPS.raised]);
+  });
+});
+
+describe('Palette Lab step 3 accent groups', () => {
+  afterEach(() => { renderAt(880); });
+  const TRIAD = GB.harmony('triad', { hue: 210, lightness: 0.75, chroma: 0.13 }).map((d: { hex: string }) => d.hex);
+  const groupRow = (root: HTMLElement, id: string) => root.querySelector<HTMLElement>(`.gb-s3 .gb-ag-row[data-group="${id}"]`)!;
+
+  it('{#ag-rows} step 3 has a row per accent group, each following the accent until a color is picked', () => {
+    const root = lab.render(ctx());
+    const ids = [...root.querySelectorAll<HTMLElement>('.gb-s3 .gb-ag-row')].map(r => r.dataset.group);
+    expect(ids).toEqual(Object.keys(TB.ACCENT_GROUPS));
+    for (const id of ids) {
+      expect(groupRow(root, id!).querySelector('.gb-ag-pick[aria-checked="true"]')!.getAttribute('data-index')).toBe('accent');
+    }
+  });
+
+  it('{#ag-pick} picking color 3 for Buttons recolors the buttons only, names it in the step 3 state, and Try and Save carry it', () => {
+    const c: any = ctx();
+    const root = lab.render(c);
+    const badge = drawnIn(c, 'badge.background');
+    groupRow(root, 'buttons').querySelector<HTMLButtonElement>('.gb-ag-pick[data-index="2"]')!.click();
+    expect(c.ui.accentGroups).toEqual({ buttons: { index: 2 } });
+    expect(drawnIn(c, 'button.background')).toBe(TB.accentSet(TRIAD[2]).accent);
+    expect(drawnIn(c, 'badge.background')).toBe(badge);
+    expect(root.querySelector('.gb-s3 .gb-step-state')!.textContent).toContain('1 group with own color');
+    expect(root.querySelector('.gb-ag-row[data-group="buttons"] .gb-ag-pick[aria-checked="true"]')!.getAttribute('data-index')).toBe('2');
+    buttonFor(root, 'Try in VS Code').click();
+    const msg = c.post.mock.calls.map((call: any[]) => call[0]).find((m: any) => m.type === 'applyPalette');
+    expect(msg.chrome.accentGroups).toEqual({ buttons: { index: 2 } });
+    expect(msg.settings.accentGroups).toEqual({ buttons: { index: 2 } });
+    // Back to Accent clears it.
+    groupRow(root, 'buttons').querySelector<HTMLButtonElement>('.gb-ag-pick[data-index="accent"]')!.click();
+    expect(c.ui.accentGroups).toEqual({});
+  });
+
+  it('{#ag-accent-edited} with an Accent role edit, the box says the edit wins', () => {
+    const root = lab.render(ctx({ ui: { edits: { swatches: { accent: '#3a7f3a' }, keys: {} } } }));
+    expect(root.querySelector('.gb-s3 .gb-ag-overridden')!.textContent).toContain('wins over these choices');
+  });
+});
+
+describe('Palette Lab Roles: each color shown against what it sits on', () => {
+  const sample = (root: HTMLElement, sw: string) => root.querySelector<HTMLElement>(`.gb-roles .gb-role-chip[data-swatch="${sw}"] .gb-role-sample`)!;
+
+  it('{#role-sample} draws a text role as "Aa" on the editor background, a line as a line, and a fill with its text on it', () => {
+    const root = lab.render(ctx());
+    const kw = sample(root, 'kw');
+    expect([kw.dataset.kind, kw.textContent]).toEqual(['text', 'Aa']);
+    expect(kw.title).toMatch(/^(Easy to read|Readable|Fine for|Hard to read).*Keywords on the editor background, as text: \d+\.\d:1\.$/);
+    expect(sample(root, 'border').dataset.kind).toBe('line');
+    expect(sample(root, 'border').textContent).toBe('');
+    const accent = sample(root, 'accent');
+    expect(accent.dataset.kind).toBe('fill');
+    expect(accent.title).toContain('Text on the accent on Accent');
+    expect(sample(root, 'muted').dataset.kind).toBe('text');
+  });
+
+  it('{#code-sample} the Syntax family shows its colors as code on the editor background, next to each Colors pick', () => {
+    const root = lab.render(ctx());
+    const code = root.querySelector<HTMLElement>('.gb-roles .gb-rf[data-family="syntax"] pre.gb-rf-code')!;
+    expect(code.textContent).toContain('export class Greeter');
+    const drawn = (sw: string) => code.querySelector<HTMLElement>(`[data-swatch="${sw}"]`)!.style.color;
+    expect(new Set(['kw', 'fn', 'str', 'type', 'num'].map(drawn)).size).toBeGreaterThan(1);
+    // Each Colors pick shows the color as the theme draws it, the same as the role's row.
+    const pick = root.querySelector<HTMLElement>('.gb-rf-pick .gb-rf-pick-sample')!;
+    expect(pick.dataset.color).toBe(sample(root, 'kw').dataset.color);
+  });
+});
+
+describe('Palette Lab Edit dock: plain names and samples', () => {
+  it('{#dock-rows} names each color in plain words with its setting beside it, shows a sample, and has no Edits button with no edits', () => {
+    const c = ctx();
+    lab.render(c);
+    const root = pickIn(c, CHAT_INPUT);
+    const row = root.querySelector<HTMLElement>('.gb-dock .gb-pl-key[data-key="errorForeground"]')!;
+    const label = row.querySelector('.gb-pl-key-label')!;
+    expect([label.querySelector('.gb-pl-key-name')!.textContent, label.querySelector('code')!.textContent]).toEqual(['Error foreground', 'errorForeground']);
+    const sample = row.querySelector<HTMLElement>('.gb-pl-key-head .gb-role-sample')!;
+    expect(sample.dataset.kind).toBe('text');
+    expect(sample.title).toContain('Error foreground on the editor background, as text');
+    expect([...root.querySelectorAll('.gb-dock button')].some(b => /^Edits \(/.test(b.textContent || ''))).toBe(false);
   });
 });

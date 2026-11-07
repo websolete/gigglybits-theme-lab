@@ -137,8 +137,9 @@ describe('Theme Lab page', () => {
   it('has Try in VS Code as the only primary button on the page while the preview window is open', () => {
     sendLibrary();
     send({ type: 'previewDetached', detached: true });
+    // Step headings, role rows and the Rule picker are buttons drawn as heading lines and a dropdown.
     const primary = [...document.querySelectorAll('#app button')]
-      .filter(b => !b.classList.contains('secondary') && b.getAttribute('role') !== 'tab')
+      .filter(b => !b.classList.contains('secondary') && b.getAttribute('role') !== 'tab' && !b.matches('.gb-step-btn, .gb-rule-btn, .gb-role-chip'))
       .map(b => b.textContent);
     expect(primary).toEqual(['Try in VS Code']);
   });
@@ -323,7 +324,7 @@ describe('Theme Lab opening on the current theme and workspace color', () => {
     expect(matches).toEqual([]);
     // The page and the window drew their content: the page has its steps, and the window
     // draws the chat family.
-    expect(seen.slice(0, -1).join(' ')).toContain('Frame and Editor');
+    expect(seen.slice(0, -1).join(' ')).toContain('Frame and accent');
     expect(seen[seen.length - 1]).toContain('Chat views');
   });
 });

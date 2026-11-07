@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { PaletteInspectorPanel } from './paletteInspectorPanel';
 import { parseFrameSeed, ThemeLabPanel } from './themeLabPanel';
-import { ThemePreviewPanel } from './themePreviewPanel';
+import { hasWebviewTab, ThemePreviewPanel } from './themePreviewPanel';
 import { IdentityController } from './identityController';
 import { ThemeLibraryController } from './themeLibraryController';
 
@@ -26,15 +26,22 @@ export function activate(context: vscode.ExtensionContext): void {
         PaletteInspectorPanel.revive(panel, context.extensionUri);
       },
     }),
+    // A Theme Preview from before a reload comes back only with a Theme Lab, open or being
+    // restored (its tab is already in the tab groups); otherwise it closes, window and all.
+    vscode.window.registerWebviewPanelSerializer(ThemePreviewPanel.viewType, {
+      async deserializeWebviewPanel(panel: vscode.WebviewPanel) {
+        const keep = ThemeLabPanel.isOpen() || hasWebviewTab(vscode.window.tabGroups, ThemeLabPanel.viewType);
+        ThemePreviewPanel.revive(panel, context.extensionUri, keep, ThemeLabPanel.latestPreviewState(),
+          ThemeLabPanel.pickFromPreview, ThemeLabPanel.previewClosed);
+      },
+    }),
   );
-  // A Theme Preview tab left over from before a reload has no page behind it (the panel has no
-  // serializer), so close it, and its window with it. The smoke test's stub has no tabGroups.
-  if (vscode.window.tabGroups) {
-    void ThemePreviewPanel.closeLeftovers(vscode.window.tabGroups).catch(() => undefined);
-  }
 }
 
-/** Closes the Theme Preview window when the extension stops, on a reload or a shutdown. */
+/**
+ * Nothing to stop. The Theme Preview is left open on purpose: VS Code saves the window layout
+ * before this runs, and the preview's serializer brings it back with the Theme Lab, or closes it.
+ */
 export function deactivate(): void {
-  ThemePreviewPanel.close();
+  // Intentionally empty.
 }
