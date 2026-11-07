@@ -78,6 +78,8 @@ export class ThemePreviewPanel {
 
   private readonly disposables: vscode.Disposable[] = [];
   private state: PreviewState | undefined;
+  /** The keys last outlined, sent again when the page (re)loads. */
+  private highlightKeys: string[] = [];
 
   /**
    * Opens the Theme Preview with `state` and floats it, or reveals the open one. `onPick`
@@ -186,10 +188,14 @@ export class ThemePreviewPanel {
   /**
    * Outlines the drawn parts that use any of `keys` in the open Theme Preview, if there is one;
    * an empty list clears the outlines. The Roles step sends the keys of the role under the
-   * pointer or open. Not kept: a page that loads later starts with no outlines.
+   * pointer or open, and Show where sends them right after opening the window. Kept, so a page
+   * that is still loading outlines them on its 'ready'.
    */
   static highlight(keys: string[]): void {
-    void ThemePreviewPanel.current?.panel.webview.postMessage({ type: 'highlight', keys });
+    const open = ThemePreviewPanel.current;
+    if (!open) { return; }
+    open.highlightKeys = keys;
+    void open.panel.webview.postMessage({ type: 'highlight', keys });
   }
 
   /** Keeps the state, for a page that loads later, and sends it to the page. */
@@ -202,6 +208,7 @@ export class ThemePreviewPanel {
     if (msg.type === 'ready') {
       this.postModernUI();
       if (this.state) { this.update(this.state); }
+      if (this.highlightKeys.length) { void this.panel.webview.postMessage({ type: 'highlight', keys: this.highlightKeys }); }
     } else if (msg.type === 'pickPart') {
       this.onPick(msg.part);
     }

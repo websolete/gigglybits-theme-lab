@@ -1627,15 +1627,11 @@
         },
       }, 'Reset') : null;
       const shift = shiftNote(B.preferredSwatch(theme.entry, theme.chrome, s.edits, sw), theme.sw[sw], s.edits.swatches[sw]);
-      // Keywords has no workbench key, so there is nothing in the preview to show.
+      // Show where brings the preview window forward (opening it if closed), outlines every part
+      // this role colors and scrolls to the first. Keywords has no workbench key, so nothing to show.
       const showWhere = count ? h('button', {
-        type: 'button', class: 'secondary gb-role-where', title: `Opens Edit on ${B.KEY_GROUPS[sw][0]}, the first key in this role`,
-        onclick: () => {
-          openDockOn({ card: '', index: -1, keys: [B.KEY_GROUPS[sw][0]], around: [], label: name, region: null, fixed: null }, s);
-          save(ctx);
-          redraw();
-          focusIn('.gb-dock .gb-pl-key-head');
-        },
+        type: 'button', class: 'secondary gb-role-where', title: `Brings the preview window forward and outlines every part ${name} colors`,
+        onclick: () => ctx.post({ type: 'showWhere', keys: (B.KEY_GROUPS[sw] || []).slice() }),
       }, 'Show where') : null;
       const used = count
         ? `Changing it recolors all ${count} ${count === 1 ? 'color' : 'colors'} below, in every part of the window listed.`

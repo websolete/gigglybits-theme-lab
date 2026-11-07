@@ -335,3 +335,20 @@ describe('Theme Preview across a reload', () => {
     closeAll();
   });
 });
+
+describe('Show where, host side', () => {
+  it('{#show-where} opens the Theme Preview when closed, and outlines the keys there, also once its page loads', async () => {
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    expect(ThemePreviewPanel.isOpen()).toBe(false);
+    await lab.receive!({ type: 'showWhere', keys: ['editorWidget.border', 42] });
+    expect(ThemePreviewPanel.isOpen()).toBe(true);
+    const window = panels.filter(p => p.viewType === 'gigglybits.themePreview').pop()!;
+    expect(window.posted.filter(m => m.type === 'highlight')).toEqual([{ type: 'highlight', keys: ['editorWidget.border'] }]);
+    // The page may still be loading: its ready gets the outline again.
+    await window.receive!({ type: 'ready' });
+    expect(window.posted.filter(m => m.type === 'highlight')).toHaveLength(2);
+    for (const p of [...panels]) { p.dispose(); }
+  });
+});

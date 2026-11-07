@@ -21,6 +21,7 @@ type FromWebview =
   | { type: 'deleteGroup'; id: string }
   | { type: 'previewState'; palette: unknown; groups: unknown }
   | { type: 'previewHighlight'; keys: unknown }
+  | { type: 'showWhere'; keys: unknown }
   | { type: 'openPreviewWindow' };
 
 const isGroupFamily = (v: unknown): v is GroupFamily => typeof v === 'string' && Object.prototype.hasOwnProperty.call(GROUP_FAMILIES, v);
@@ -45,6 +46,9 @@ export interface FrameSeed {
   frame: { color: string; style: 'filled' | 'dark' };
   name: string;
 }
+
+/** A message's key list: its strings only, at most 1000. */
+const keyList = (keys: unknown): string[] => (Array.isArray(keys) ? keys.filter((k): k is string => typeof k === 'string').slice(0, 1000) : []);
 
 /** A FrameSeed from the gigglybits.openThemeLab argument, or undefined when it is not one. */
 export function parseFrameSeed(value: unknown): FrameSeed | undefined {
@@ -273,7 +277,14 @@ export class ThemeLabPanel {
         break;
       case 'previewHighlight':
         // The Roles step's role under the pointer or open: outline its parts in the preview.
-        ThemePreviewPanel.highlight(Array.isArray(msg.keys) ? msg.keys.filter((k): k is string => typeof k === 'string').slice(0, 1000) : []);
+        ThemePreviewPanel.highlight(keyList(msg.keys));
+        break;
+      case 'showWhere':
+        // A role's Show where: bring the preview window forward, opening it if it is closed, then
+        // outline the role's parts there; the page scrolls to the first.
+        await this.openPreviewWindow();
+        await this.postDetached();
+        ThemePreviewPanel.highlight(keyList(msg.keys));
         break;
       case 'openPreviewWindow':
         await this.openPreviewWindow();

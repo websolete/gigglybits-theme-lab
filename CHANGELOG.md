@@ -4,6 +4,8 @@ All notable changes to GigglyBits Theme Lab are documented in this file.
 
 ## Unreleased
 
+- **Show where shows where.** A role's **Show where** button now brings the Theme Preview window forward, opening it if it was closed, and outlines every part that role colors there, scrolled to the first. It used to open the Edit panel on the role's first color.
+- **Try and save stands apart.** Its border, heading and heading line take the color of the Try in VS Code button, and it floats a little above the bottom of the Theme Lab instead of touching the edge.
 - **Try and save explains itself, and lets you use a theme right after saving it.** A line under the buttons says what Try in VS Code and Save theme do. Once the design is saved (or loaded from Saved themes) and unchanged, **Use in this project** and **Use everywhere** appear beside Save theme, so you no longer go back to Start to apply it. The pinned bar is a little slimmer: the readability sentence moved into the palette's tooltip, since step 2 shows the same grades.
 - **The Edit panel reads like Roles.** Each color is named in plain words with its setting name beside it ("Button background · button.background"), and shown as a sample against what it sits on instead of a dot. The heading names the part with its widget family ("Buttons: Commit"), a fully transparent color reads "transparent", and the Edits button appears only once you have edits.
 - **Editing a color you clicked changes just that color.** The Edit panel now opens on **This key only**. **Whole role** is one click away and says how many colors it would change, so recoloring one button no longer recolors every accent color by surprise.

@@ -1001,15 +1001,16 @@ describe('Palette Lab step 4 Roles', () => {
     expect(roles.querySelector<HTMLElement>(':scope > .gb-step-body')!.hidden).toBe(false);
     expect(picked.querySelector<HTMLElement>('.gb-s4 > .gb-step-body')!.hidden).toBe(false);
     expect(c.ui.sections).toEqual([1, 4, 5]);
-    // Show where on a role picks its first key, which opens Edit and leaves Roles open.
+    // Show where on a role asks the host to bring the preview window forward and outline every
+    // color the role draws there; the page itself stays as it was.
     const fresh = ctx({ ui: { sections: [4] } });
     const again = renderWith(fresh, 1400);
     document.body.replaceChildren(again);
     chipOf(again, 'raised').click();
     buttonFor(rolesOf(again), 'Show where').click();
-    expect(again.querySelector(`.gb-dock .gb-pl-key[data-key="${TB.KEY_GROUPS.raised[0]}"]`)).not.toBeNull();
+    expect(fresh.post).toHaveBeenCalledWith({ type: 'showWhere', keys: TB.KEY_GROUPS.raised });
     expect(again.querySelector<HTMLElement>('.gb-stage > .gb-roles > .gb-step-body')!.hidden).toBe(false);
-    expect(again.querySelector<HTMLElement>('.gb-s4 > .gb-step-body')!.hidden).toBe(false);
+    expect((fresh.ui as any).sections).toEqual([4]);
   });
 });
 

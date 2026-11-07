@@ -219,7 +219,16 @@ button.gb-role-chip:hover { background: var(--vscode-list-hoverBackground); }
    two Use buttons; then one line: what Try and Save do, and the palette, one pill per color with
    its weakest grade (the readability sentence is in its tooltip). The card color is opaque, so
    the steps scroll under it unseen. */
-.gb-bar { position: sticky; bottom: 0; z-index: 5; }
+/* It floats a little above the bottom edge; the page color below it hides what scrolls past.
+   Its border, heading band and heading line take VS Code's primary button color, the color of
+   Try in VS Code, so it reads apart from the steps above. */
+.gb-bar {
+  position: sticky; bottom: var(--gb-space-3); z-index: 5; margin-bottom: var(--gb-space-3);
+  border-color: var(--vscode-button-background);
+  box-shadow: 0 var(--gb-space-3) 0 var(--vscode-editor-background), 0 calc(-1 * var(--gb-space-1)) var(--gb-space-3) color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+}
+.gb-bar > .gb-step-h { background: color-mix(in srgb, var(--vscode-button-background) 24%, var(--gb-card)); }
+.gb-bar > .gb-step-body { border-top-color: color-mix(in srgb, var(--vscode-button-background) 50%, var(--gb-card-line)); }
 .gb-bar > .gb-step-body { gap: var(--gb-space-2); }
 .gb-bar-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gb-space-1) var(--gb-space-2); min-width: 0; }
 .gb-bar-name { display: flex; align-items: center; gap: var(--gb-space-2); flex: 1 1 10rem; min-width: 0; }
