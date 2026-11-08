@@ -236,7 +236,7 @@ describe('Theme Lab page', () => {
 describe('Theme Lab opening on the current theme and workspace color', () => {
   const ALL_REGIONS = ['titleBar', 'activityBar', 'statusBar', 'borders'];
   const PASTED_TRY = { mode: 'pasted', pasted: ['#cc0000', '#990000', '#336699'], chromeIndex: 2, surfaces: 'rich' };
-  const NOTE = 'Dark Modern has no Theme Lab palette, so the Lab starts from the default palette.';
+  const NOTE = 'GigglyBits Theme 3 holds no saved theme, so the Lab starts from the default palette.';
 
   const lastSaved = () => setState.mock.calls[setState.mock.calls.length - 1][0];
   const hueValue = () => document.querySelector<HTMLInputElement>('.gb-pl-hue-number')!.value;

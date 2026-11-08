@@ -140,9 +140,11 @@ function slotNumber(label: string): number | undefined {
 
 /**
  * What a fresh Theme Lab starts from under the active theme `active`: the last Try under the
- * Lab theme, the saved theme bound to the active slot, otherwise a note. An unknown active
- * theme (undefined) starts from the defaults with no note. `library` is the saved themes
- * (src/themeLibrary.ts parseLibrary).
+ * Lab theme, the saved theme bound to the active slot, otherwise the defaults. A note says why
+ * only under a GigglyBits theme that was expected to hold a design (the Lab theme with no Try
+ * record, an empty slot). Under any other theme, which is every new user's first open, the Lab
+ * starts from the defaults with no note, since nothing went wrong. `library` is the saved
+ * themes (src/themeLibrary.ts parseLibrary).
  */
 export function startConfig(active: string | undefined, lastTry: unknown, library: SavedTheme[] = []): StartConfig {
   if (active === undefined) {
@@ -161,5 +163,5 @@ export function startConfig(active: string | undefined, lastTry: unknown, librar
       ? { saved: { name: theme.name, design: theme.design } }
       : { note: `${active} holds no saved theme, so the Lab starts from the default palette.` };
   }
-  return { note: `${active} has no Theme Lab palette, so the Lab starts from the default palette.` };
+  return {};
 }

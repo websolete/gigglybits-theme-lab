@@ -151,8 +151,12 @@ export class ThemeLibraryController {
     const target = where === 'project' ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
     await this.config().update('workbench.colorTheme', slotLabel(slot), target);
     if (oldColor) {
-      await this.config().update('gigglybits.identity.hue', undefined, vscode.ConfigurationTarget.Workspace);
-      await this.config().update('gigglybits.identity.pinnedColor', undefined, vscode.ConfigurationTarget.Workspace);
+      // No longer declared, so VS Code can refuse the write: clear only what is set, and leave an
+      // inert leftover rather than fail Use in this project.
+      for (const name of ['hue', 'pinnedColor'] as const) {
+        if (this.identitySetting(name) === undefined) { continue; }
+        await Promise.resolve(this.config().update(`gigglybits.identity.${name}`, undefined, vscode.ConfigurationTarget.Workspace)).catch(() => undefined);
+      }
       vscode.window.setStatusBarMessage(`This folder's old color (${oldColor}) was replaced by ${bound.name}'s frame.`, 5000);
     }
   }

@@ -1,7 +1,7 @@
 {
   "name": "gigglybits-theme-lab",
-  "displayName": "GigglyBits Theme Laboratory",
-  "description": "A powerful, easy-to-use theme customizer for VS Code.",
+  "displayName": "GigglyBits Theme Lab",
+  "description": "Design your own dark VS Code theme, preview it live, and give each project a color of its own.",
   "version": "0.1.1",
   "publisher": "EdgeInformation",
   "author": {
@@ -74,28 +74,6 @@
           "default": [],
           "scope": "application",
           "markdownDescription": "Your syntax sets, written by step 4 of the Theme Lab (**GigglyBits: Open Theme Lab**). A syntax set is a named set of code colors (keywords, functions, strings, tags and more) that a saved theme can use instead of its palette's, so code looks the same in every workspace. Use the Theme Lab rather than editing this by hand."
-        },
-        "gigglybits.groups": {
-          "type": "array",
-          "default": [],
-          "scope": "application",
-          "markdownDescription": "Your style groups, from an earlier version of the Theme Lab.",
-          "markdownDeprecationMessage": "Style groups are retired and nothing reads this setting. Syntax sets in step 4 of the Theme Lab replace the Editor text group; steps 3 to 5 cover tabs, lists and buttons per theme."
-        },
-        "gigglybits.identity.hue": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 359,
-          "scope": "resource",
-          "markdownDescription": "This workspace's color as an OKLCH hue (0-359), from the retired per-folder color.",
-          "markdownDeprecationMessage": "The per-folder color is retired into project frames: a project's color now lives in its saved theme's frame. Use **Use in this project** in the Theme Lab."
-        },
-        "gigglybits.identity.pinnedColor": {
-          "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
-          "scope": "resource",
-          "markdownDescription": "A fixed hex color for this workspace, from the retired per-folder color.",
-          "markdownDeprecationMessage": "The per-folder color is retired into project frames: a project's color now lives in its saved theme's frame. Use **Use in this project** in the Theme Lab."
         }
       }
     },

@@ -6,11 +6,8 @@ const GENERATED = { mode: 'generated' as const, rule: 'square', hue: 12, lightne
 const NO_RECORD = 'No record of the last Try in VS Code, so the Lab starts from the default palette.';
 
 describe('startConfig', () => {
-  it('{#start-no-base} gives a no-palette note and no base under a GigglyBits Dark theme the extension no longer ships', () => {
-    const start = startConfig('GigglyBits Dark (Candy)', undefined);
-    expect(start.note).toContain('has no Theme Lab palette');
-    expect(start).not.toHaveProperty('base');
-    expect(start).toEqual({ note: 'GigglyBits Dark (Candy) has no Theme Lab palette, so the Lab starts from the default palette.' });
+  it('{#start-no-base} starts from the defaults with no note and no base under a GigglyBits Dark theme the extension no longer ships', () => {
+    expect(startConfig('GigglyBits Dark (Candy)', undefined)).toEqual({});
   });
 
   it('starts from the last Try under the Lab theme', () => {
@@ -33,9 +30,9 @@ describe('startConfig', () => {
       .toEqual({ note: 'GigglyBits Theme 3 holds no saved theme, so the Lab starts from the default palette.' });
   });
 
-  it('gives a note naming another theme, and nothing for an unknown one, ignoring the Try record', () => {
-    expect(startConfig('Dark Modern', GENERATED))
-      .toEqual({ note: 'Dark Modern has no Theme Lab palette, so the Lab starts from the default palette.' });
+  it('starts a new user under another theme from the defaults with no note, ignoring the Try record', () => {
+    expect(startConfig('Dark Modern', GENERATED)).toEqual({});
+    expect(startConfig('Dark 2026', undefined)).toEqual({});
     expect(startConfig(undefined, GENERATED)).toEqual({});
   });
 });

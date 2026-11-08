@@ -122,7 +122,12 @@ export class IdentityController {
     if (JSON.stringify(current ?? {}) !== JSON.stringify(next)) {
       await vscode.workspace.getConfiguration('workbench').update('colorCustomizations', Object.keys(next).length ? next : undefined, vscode.ConfigurationTarget.Workspace);
     }
-    await this.config().update('hue', undefined, vscode.ConfigurationTarget.Workspace);
-    await this.config().update('pinnedColor', undefined, vscode.ConfigurationTarget.Workspace);
+    // The hue and pinnedColor settings are no longer declared, and VS Code can refuse to write an
+    // undeclared setting. Clear each only when it is set, and leave it if VS Code refuses:
+    // nothing draws it any more.
+    for (const key of ['hue', 'pinnedColor']) {
+      if (this.config().inspect(key)?.workspaceValue === undefined) { continue; }
+      await Promise.resolve(this.config().update(key, undefined, vscode.ConfigurationTarget.Workspace)).catch(() => undefined);
+    }
   }
 }
