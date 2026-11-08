@@ -4,15 +4,14 @@
 // module in Node, where scripts/theme-builder.js re-exports it for the build script and the
 // extension host. One builder means the Lab previews exactly what Try in VS Code applies.
 //
-// The theme owns the workbench colors the Palette Inspector's element gallery draws
+// The theme owns the workbench colors the element gallery (gallery.js) draws
 // (and no others, so it never sets a key a third-party extension registers). Syntax is
 // a baseline only: a few language-neutral root-scope rules and no semantic token rules,
 // so coloring a specialized extension supplies is never fought by the theme.
 //
-// Every key starts in one swatch (a role, such as "accent" or "raised surface"). A style group
-// can move a family's keys (tabs, lists and trees, buttons, editor text) to other Editor roles.
-// The Lab's edits change a role, which moves every key in it and the roles made from it, or
-// one key, and a key edit wins over a group.
+// Every key starts in one swatch (a role, such as "accent" or "raised surface"). A syntax set
+// (chrome.syntaxColors) replaces the palette's code colors with its own fixed ones. The Lab's
+// edits change a role, which moves every key in it and the roles made from it, or one key.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -223,7 +222,8 @@
    * The Roles step's three settings in a chrome choice, cleaned: syntax, five palette indexes
    * for ROLE_NAMES (null for the default, colors 1 to 5 in order); depth, the multiplier on the
    * surface offsets, clamped to 0.5 to 2 and rounded to 0.1 (1 when not a finite number); text,
-   * a TEXT_LEVELS id ('standard' otherwise). Every value missing or invalid builds as today.
+   * a TEXT_LEVELS id ('standard' otherwise); syntaxColors, a syntax set's colors (every
+   * SYNTAX_SET_KEYS key as '#rrggbb', lower-cased) or null. Every value missing or invalid builds as today.
    */
   function cleanChrome(chrome) {
     const c = chrome && typeof chrome === 'object' ? chrome : {};
@@ -232,7 +232,24 @@
     const depth = typeof c.depth === 'number' && Number.isFinite(c.depth)
       ? Math.round(Math.min(2, Math.max(0.5, c.depth)) * 10) / 10 : 1;
     const text = Object.prototype.hasOwnProperty.call(TEXT_LEVELS, c.text) ? c.text : 'standard';
-    return { syntax, depth, text, accentGroups: cleanAccentGroups(c.accentGroups) };
+    return { syntax, depth, text, accentGroups: cleanAccentGroups(c.accentGroups), syntaxColors: cleanSyntaxColors(c.syntaxColors) };
+  }
+
+  /**
+   * The colors a syntax set holds, one per kind of code. A theme on a set takes these as they
+   * are, lifted only for readability, so its code colors do not follow the palette.
+   */
+  const SYNTAX_SET_KEYS = ['keyword', 'function', 'string', 'type', 'number', 'comment', 'tag', 'attribute', 'variable', 'property', 'constant', 'operator', 'regex'];
+
+  /** value as a syntax set's colors, lower-cased, when it holds every SYNTAX_SET_KEYS key as '#rrggbb'; otherwise null. */
+  function cleanSyntaxColors(value) {
+    if (!value || typeof value !== 'object') {return null;}
+    const out = {};
+    for (const key of SYNTAX_SET_KEYS) {
+      if (typeof value[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(value[key])) {return null;}
+      out[key] = value[key].toLowerCase();
+    }
+    return out;
   }
 
   /**
@@ -448,7 +465,12 @@
     const opaque = hex => hex.slice(0, 7);
 
     const roles = cleanChrome(chrome);
-    const [kw, fn, str, type, num] = roleColors(entry, roles.syntax);
+    // On a syntax set the code colors are the set's, lifted for readability and not spread
+    // apart; otherwise they come from the palette.
+    const set = roles.syntaxColors;
+    const [kw, fn, str, type, num] = set
+      ? ['keyword', 'function', 'string', 'type', 'number'].map(k => setColor(set[k]))
+      : roleColors(entry, roles.syntax);
     put('kw', kw); put('fn', fn); put('str', str); put('type', type); put('num', num);
 
     // The palette's accent tints the surfaces and sets the status colors' lightness. An edited
@@ -1020,26 +1042,6 @@
     for (const key of keys) {SWATCH_OF[key] = swatch;}
   }
 
-  /** The token rule names tokenColors gives its rules, which an Editor text group can map. */
-  const TOKEN_RULES = ['Keyword', 'Function', 'String', 'Type', 'Number', 'Comment'];
-
-  /**
-   * The widget families a style group can restyle: label, the color keys in it, and the token
-   * rules in it. Every FRAME_KEYS key is left out, so a group never reaches the frame.
-   */
-  const GROUP_FAMILIES = (() => {
-    const frame = new Set(FRAME_KEYS);
-    const keysFrom = (...prefixes) => Object.keys(SWATCH_OF).filter(k => !frame.has(k) && prefixes.some(p => k.startsWith(p))).sort();
-    return {
-      tabs: { label: 'Tabs', keys: keysFrom('tab.'), tokens: [] },
-      lists: { label: 'Lists and trees', keys: keysFrom('list.', 'tree.'), tokens: [] },
-      buttons: { label: 'Buttons', keys: keysFrom('button.'), tokens: [] },
-      editorText: { label: 'Editor text', keys: ['editor.foreground'], tokens: TOKEN_RULES.slice() },
-    };
-  })();
-
-  const isEditorRole = name => typeof name === 'string' && Object.prototype.hasOwnProperty.call(SWATCHES, name) && SWATCHES[name][2] === 'editor';
-
   /**
    * The accent groups (walkthrough decision G1): sets of keys the accent colors that can take
    * their colors from another palette color. Every key is in an Accent-family swatch and outside
@@ -1124,33 +1126,148 @@
   }
 
   /**
-   * What the groups set, as { keys: { key: value }, tokens: { rule name: value } } from the
-   * swatches sw. An entry counts only when it names a key or token rule of its group's family
-   * and an Editor swatch; every other entry, and anything that is not a group, is ignored.
+   * The token rules a theme on a syntax set adds after today's six, in order: rule name, the
+   * set key whose color it takes, and its scopes. The Number rule gives constant.language to
+   * Constant on a set. Keyword operator keeps new, typeof and instanceof in the keyword color:
+   * tokenColors gives it the Keywords role as drawn, edit included, not the raw set color.
    */
-  function groupValues(sw, groups) {
-    const keys = {};
-    const tokens = {};
-    for (const g of Array.isArray(groups) ? groups : []) {
-      if (!g || typeof g !== 'object' || !Object.prototype.hasOwnProperty.call(GROUP_FAMILIES, g.family)) {continue;}
-      if (!g.roles || typeof g.roles !== 'object') {continue;}
-      const family = GROUP_FAMILIES[g.family];
-      for (const [name, swatch] of Object.entries(g.roles)) {
-        if (!isEditorRole(swatch) || FRAME_KEYS.includes(name)) {continue;}
-        if (family.keys.includes(name)) {keys[name] = sw[swatch];}
-        else if (family.tokens.includes(name)) {tokens[name] = sw[swatch];}
-      }
-    }
-    return { keys, tokens };
+  const SET_RULES = [
+    ['Tag', 'tag', ['entity.name.tag']],
+    ['Attribute', 'attribute', ['entity.other.attribute-name']],
+    ['Variable', 'variable', ['variable', 'variable.parameter', 'support.variable', 'meta.definition.variable.name']],
+    ['Property', 'property', ['variable.other.property', 'variable.other.object.property', 'meta.object-literal.key', 'support.type.property-name']],
+    ['Constant', 'constant', ['constant.language', 'variable.other.constant', 'variable.other.enummember']],
+    ['Operator', 'operator', ['keyword.operator', 'punctuation.separator', 'punctuation.terminator', 'punctuation.accessor', 'punctuation.definition.tag']],
+    ['Regex', 'regex', ['string.regexp', 'constant.character.escape']],
+    ['Keyword operator', 'keyword', ['keyword.operator.new', 'keyword.operator.expression']],
+  ];
+
+  /** A set color raised until it reads 4.5:1 on the editor background, hue and chroma kept. */
+  const setColor = hex => (contrastOnBg(hex) >= MIN_CONTRAST ? hex : liftToContrast(GB.hexToOklch(hex)).hex);
+
+  // ---- Starters: ready-made syntax set colors the Lab offers under Start set from ----
+
+  /** Builds a scheme's colors from 13 hex values in SYNTAX_SET_KEYS order. */
+  const schemeColors = hexes => Object.fromEntries(SYNTAX_SET_KEYS.map((k, i) => [k, hexes[i]]));
+
+  /**
+   * Well-known dark schemes, credited to their original repositories. Each kind takes the
+   * scheme's own syntax guidance where it has one, otherwise its Base16 port's slot (see
+   * docs/DEVELOPMENT.md); README.md's Credits section names each one's author and license.
+   * Order of colors: keyword, function, string, type, number, comment, tag, attribute, variable,
+   * property, constant, operator, regex.
+   */
+  const SYNTAX_SCHEMES = [
+    { id: 'dracula', name: 'Dracula', author: 'Dracula Theme', license: 'MIT', url: 'https://github.com/dracula/dracula-theme',
+      colors: schemeColors(['#ff79c6', '#50fa7b', '#f1fa8c', '#8be9fd', '#ffb86c', '#6272a4', '#ff79c6', '#50fa7b', '#f8f8f2', '#f8f8f2', '#bd93f9', '#f8f8f2', '#ff5555']) },
+    { id: 'nord', name: 'Nord', author: 'Sven Greb', license: 'MIT', url: 'https://github.com/nordtheme/nord',
+      colors: schemeColors(['#81a1c1', '#88c0d0', '#a3be8c', '#8fbcbb', '#b48ead', '#4c566a', '#81a1c1', '#d8dee9', '#d8dee9', '#d8dee9', '#d8dee9', '#81a1c1', '#ebcb8b']) },
+    { id: 'solarized-dark', name: 'Solarized Dark', author: 'Ethan Schoonover', license: 'MIT', url: 'https://github.com/altercation/solarized',
+      colors: schemeColors(['#6c71c4', '#268bd2', '#859900', '#b58900', '#cb4b16', '#657b83', '#dc322f', '#cb4b16', '#dc322f', '#93a1a1', '#cb4b16', '#93a1a1', '#2aa198']) },
+    { id: 'gruvbox-dark', name: 'Gruvbox (dark)', author: 'Pavel Pertsev (morhetz)', license: 'MIT/X11', url: 'https://github.com/morhetz/gruvbox',
+      colors: schemeColors(['#b16286', '#458588', '#98971a', '#d79921', '#d65d0e', '#665c54', '#cc241d', '#d65d0e', '#cc241d', '#ebdbb2', '#d65d0e', '#ebdbb2', '#689d6a']) },
+    { id: 'one-dark', name: 'One Dark', author: 'GitHub Inc. (Atom)', license: 'MIT', url: 'https://github.com/atom/one-dark-syntax',
+      colors: schemeColors(['#c678dd', '#61afef', '#98c379', '#e5c07b', '#d19a66', '#545862', '#e06c75', '#d19a66', '#e06c75', '#abb2bf', '#d19a66', '#abb2bf', '#56b6c2']) },
+    { id: 'tokyo-night', name: 'Tokyo Night', author: 'Enkia', license: 'MIT', url: 'https://github.com/tokyo-night/tokyo-night-vscode-theme',
+      colors: schemeColors(['#bb9af7', '#7aa2f7', '#9ece6a', '#c0caf5', '#ff9e64', '#565f89', '#f7768e', '#bb9af7', '#c0caf5', '#7dcfff', '#ff9e64', '#a9b1d6', '#b4f9f8']) },
+    { id: 'catppuccin-mocha', name: 'Catppuccin Mocha', author: 'Catppuccin', license: 'MIT', url: 'https://github.com/catppuccin/catppuccin',
+      colors: schemeColors(['#cba6f7', '#89b4fa', '#a6e3a1', '#f9e2af', '#fab387', '#9399b2', '#f38ba8', '#f9e2af', '#f38ba8', '#89b4fa', '#fab387', '#89dceb', '#f5c2e7']) },
+  ];
+
+  /** The one TextMate scope starterFromRules looks up for each kind. */
+  const STARTER_PROBES = {
+    keyword: 'keyword', function: 'entity.name.function', string: 'string', type: 'entity.name.type', number: 'constant.numeric',
+    comment: 'comment', tag: 'entity.name.tag', attribute: 'entity.other.attribute-name', variable: 'variable',
+    property: 'variable.other.property', constant: 'variable.other.constant', operator: 'keyword.operator', regex: 'string.regexp',
+  };
+
+  /** A rule's foreground as lower-case '#rrggbb' ('#rgb' expanded, an alpha byte dropped), or null. */
+  function starterHex(value) {
+    if (typeof value !== 'string') {return null;}
+    const v = value.trim().toLowerCase();
+    if (/^#[0-9a-f]{3}$/.test(v)) {return '#' + v.slice(1).split('').map(c => c + c).join('');}
+    if (/^#[0-9a-f]{4}$/.test(v)) {return '#' + v.slice(1, 4).split('').map(c => c + c).join('');}
+    if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/.test(v)) {return v.slice(0, 7);}
+    return null;
   }
 
   /**
-   * Workbench colors, sorted by key. groups ({ family, roles } each) move their family's keys
-   * to other Editor swatches after the roles are applied; edits.keys replaces single keys last.
+   * A syntax set's 13 colors read from a theme's token rules ({ scope, foreground? } in theme
+   * order; scope a comma-separated selector list, '(editor default)' for a rule with no scope).
+   * Each kind probes one scope (STARTER_PROBES): a selector matches when it equals the probe or
+   * is a dot-segment prefix of it, a selector with a space is ignored, the match with the most
+   * segments wins and a tie goes to the later rule. A kind with no match takes the last
+   * '(editor default)' rule's foreground, else `foreground`, else #d4d4d4.
+   */
+  function starterFromRules(rules, foreground) {
+    const list = Array.isArray(rules) ? rules : [];
+    let fallback = null;
+    for (const rule of list) {
+      if (rule && rule.scope === '(editor default)') {
+        const hex = starterHex(rule.foreground);
+        if (hex) {fallback = hex;}
+      }
+    }
+    fallback = fallback || starterHex(foreground) || '#d4d4d4';
+    const out = {};
+    for (const key of SYNTAX_SET_KEYS) {
+      const probe = STARTER_PROBES[key];
+      let best = null;
+      let bestSegments = 0;
+      for (const rule of list) {
+        if (!rule || typeof rule.scope !== 'string' || rule.scope === '(editor default)') {continue;}
+        const hex = starterHex(rule.foreground);
+        if (!hex) {continue;}
+        for (const raw of rule.scope.split(',')) {
+          const sel = raw.trim();
+          if (!sel || /\s/.test(sel)) {continue;}
+          if (sel !== probe && !probe.startsWith(sel + '.')) {continue;}
+          const segments = sel.split('.').length;
+          if (segments >= bestSegments) { best = hex; bestSegments = segments; }
+        }
+      }
+      out[key] = best || fallback;
+    }
+    return out;
+  }
+
+  /** A hue in degrees wrapped into 0 to 360. */
+  const wrapHue = h => ((h % 360) + 360) % 360;
+
+  /**
+   * The 13 colors of a palette recipe. 'quiet' keeps the palette's string, number and function
+   * colors and draws the rest in the editor foreground (comments in `comment`). 'harmony' spaces
+   * hues around baseHue at OKLCH lightness 0.78 and chroma 0.12. `sw` is the drawn swatch map.
+   */
+  function recipeColors(id, { sw = {}, foreground, comment, baseHue = 0 } = {}) {
+    const hex = v => String(v).slice(0, 7).toLowerCase();
+    const fg = hex(foreground);
+    if (id === 'quiet') {
+      return {
+        keyword: fg, function: hex(sw.fn), string: hex(sw.str), type: hex(sw.fn), number: hex(sw.num), comment: hex(comment),
+        tag: fg, attribute: fg, variable: fg, property: fg, constant: hex(sw.num), operator: fg, regex: hex(sw.str),
+      };
+    }
+    const at = (l, c, dh) => GB.oklchToHex({ l, c, h: wrapHue(baseHue + dh) });
+    const tone = dh => at(0.78, 0.12, dh);
+    return {
+      keyword: tone(0), function: tone(60), string: tone(120), type: tone(180), number: tone(240), comment: at(0.66, 0.03, 0),
+      tag: tone(300), attribute: tone(30), variable: fg, property: fg, constant: tone(240), operator: fg, regex: at(0.70, 0.12, 120),
+    };
+  }
+
+  /** The hue Harmony starts from: the frame's OKLCH hue when it has chroma 0.03 or more, else the accent's. */
+  function harmonyHue(frameHex, accentHex) {
+    const frame = GB.hexToOklch(String(frameHex).slice(0, 7));
+    return frame.c >= 0.03 ? frame.h : GB.hexToOklch(String(accentHex).slice(0, 7)).h;
+  }
+
+  /**
+   * Workbench colors, sorted by key; edits.keys replaces single keys last.
    * A key edited to 'default' (DEFAULT_COLOR) keeps that value: the settings VS Code reads honor
    * it, and the Lab's preview leaves the key out (media/palette.js themeOf).
    */
-  function buildColors(entry, chrome = {}, edits = undefined, groups = []) {
+  function buildColors(entry, chrome = {}, edits = undefined) {
     const sw = swatches(entry, chrome, edits);
     const colors = {};
     for (const [swatch, keys] of Object.entries(KEY_GROUPS)) {
@@ -1161,8 +1278,7 @@
       }
     }
     applyAccentGroups(colors, entry, chrome, edits);
-    Object.assign(colors, groupValues(sw, groups).keys);
-    // A shift moves the key's value as the roles and groups left it; a key with no value has
+    // A shift moves the key's value as the roles left it; a key with no value has
     // nothing to move, so its shift is dropped. A single key is not lifted: its role says
     // nothing about whether this one key draws text (a button background is in the accent role).
     for (const [key, edit] of Object.entries(cleanEdits(edits).keys)) {
@@ -1183,10 +1299,10 @@
   }
 
   /** The color a key would have without its own edit, or undefined when the theme leaves it unset. */
-  function preferredKey(entry, chrome, edits, groups, key) {
+  function preferredKey(entry, chrome, edits, key) {
     const e = cleanEdits(edits);
     delete e.keys[key];
-    return buildColors(entry, chrome, e, groups)[key];
+    return buildColors(entry, chrome, e)[key];
   }
 
   /**
@@ -1194,7 +1310,7 @@
    * so each later one is measured with the earlier ones already shifts. A key the theme leaves
    * unset has nothing to measure from and keeps its fixed color, as does 'default'.
    */
-  function toShifts(entry, chrome, edits, groups = []) {
+  function toShifts(entry, chrome, edits) {
     const out = cleanEdits(edits);
     for (const [name, v] of Object.entries(out.swatches)) {
       if (isShift(v)) {continue;}
@@ -1203,38 +1319,44 @@
     }
     for (const [key, v] of Object.entries(out.keys)) {
       if (isShift(v) || v === DEFAULT_COLOR) {continue;}
-      const from = preferredKey(entry, chrome, out, groups, key);
+      const from = preferredKey(entry, chrome, out, key);
       if (typeof from === 'string' && HEX.test(from)) {out.keys[key] = shiftFor(v, from);}
     }
     return out;
   }
 
-  /** The baseline token rules; an Editor text group sets a rule's foreground. */
-  function tokenColors(entry, chrome = {}, edits = undefined, groups = []) {
+  /**
+   * The token rules: today's six from the palette, or, on a syntax set (cleanChrome's
+   * syntaxColors), the same six in the set's colors with Number giving constant.language to
+   * Constant, followed by SET_RULES. Every set color is lifted to 4.5:1, hue kept.
+   */
+  function tokenColors(entry, chrome = {}, edits = undefined) {
     const sw = swatches(entry, chrome, edits);
-    const grouped = groupValues(sw, groups).tokens;
+    const set = cleanChrome(chrome).syntaxColors;
     const rules = [
       { name: 'Keyword', scope: ['keyword', 'storage.type', 'storage.modifier'], settings: { foreground: sw.kw } },
       { name: 'Function', scope: ['entity.name.function', 'support.function'], settings: { foreground: sw.fn } },
       { name: 'String', scope: ['string'], settings: { foreground: sw.str } },
       { name: 'Type', scope: ['entity.name.type', 'entity.name.class', 'support.type', 'support.class'], settings: { foreground: sw.type } },
-      { name: 'Number', scope: ['constant.numeric', 'constant.language'], settings: { foreground: sw.num } },
-      { name: 'Comment', scope: ['comment'], settings: { foreground: sw.muted, fontStyle: 'italic' } },
+      { name: 'Number', scope: set ? ['constant.numeric'] : ['constant.numeric', 'constant.language'], settings: { foreground: sw.num } },
+      { name: 'Comment', scope: ['comment'], settings: { foreground: set ? setColor(set.comment) : sw.muted, fontStyle: 'italic' } },
     ];
-    for (const rule of rules) {
-      if (rule.name in grouped) {rule.settings.foreground = grouped[rule.name];}
+    if (!set) {return rules;}
+    for (const [name, key, scope] of SET_RULES) {
+      // Keyword operator takes the Keywords role as drawn, so a Keywords edit moves it too.
+      rules.push({ name, scope: scope.slice(), settings: { foreground: key === 'keyword' ? sw.kw : setColor(set[key]) } });
     }
     return rules;
   }
 
-  function buildTheme(entry, chrome = {}, edits = undefined, groups = []) {
+  function buildTheme(entry, chrome = {}, edits = undefined) {
     return {
       $schema: 'vscode://schemas/color-theme',
       name: themeLabel(entry),
       type: 'dark',
       semanticHighlighting: true,
-      colors: buildColors(entry, chrome, edits, groups),
-      tokenColors: tokenColors(entry, chrome, edits, groups),
+      colors: buildColors(entry, chrome, edits),
+      tokenColors: tokenColors(entry, chrome, edits),
     };
   }
 
@@ -1253,20 +1375,20 @@
 
   /**
    * Everything the Lab writes to try a candidate live: the theme colors and token rules,
-   * scoped to the Lab theme in user settings, with the style groups given. Workspace
-   * identity is not part of it.
+   * scoped to the Lab theme in user settings. Workspace identity is not part of it.
    */
-  function labSettings(entry, chrome = {}, edits = undefined, groups = []) {
-    const theme = buildTheme(entry, chrome, edits, groups);
+  function labSettings(entry, chrome = {}, edits = undefined) {
+    const theme = buildTheme(entry, chrome, edits);
     return { colors: theme.colors, tokenColors: theme.tokenColors };
   }
 
   return {
     THEME_BACKGROUND, UNSET_KEYS, LEFT_TO_VSCODE, leftToVSCode, GENERIC_SCOPES, ROLE_NAMES, LAB_THEME_LABEL, LAB_THEME_FILE,
     SLOT_COUNT, slotLabel, slotFile,
-    KEY_GROUPS, SWATCHES, SWATCH_OF, FRAME_KEYS, GROUP_FAMILIES, ROLE_FAMILIES, TEXT_LEVELS, cleanChrome,
+    KEY_GROUPS, SWATCHES, SWATCH_OF, FRAME_KEYS, ROLE_FAMILIES, TEXT_LEVELS, cleanChrome, SYNTAX_SET_KEYS, SET_RULES,
     DEFAULT_COLOR, roleColors, themeLabel, themeFileName, swatches, cleanEdits, buildColors, tokenColors, buildTheme, labSettings,
     isShift, parseShift, applyShift, shiftFor, baseColor, preferredSwatch, preferredKey, toShifts,
     ACCENT_GROUPS, accentSet, cleanAccentGroups, accentSource,
+    cleanSyntaxColors, setColor, SYNTAX_SCHEMES, STARTER_PROBES, starterFromRules, recipeColors, harmonyHue,
   };
 });

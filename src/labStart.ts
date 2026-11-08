@@ -29,16 +29,20 @@ export interface TryRecord {
   text?: TextLevel;
   /** Accent groups with their own color (step 3), present only when any has one. */
   accentGroups?: AccentGroups;
+  /** The id of the syntax set the code colors come from (step 4); absent means From this palette. */
+  syntaxSet?: string;
 }
 
 const TEXT_IDS: readonly TextLevel[] = ['soft', 'standard', 'high'];
 
 /**
  * The Roles step's settings in value, each kept only when valid: syntax as five non-negative
- * integers, depth as a finite number, text as a level id. The builder cleans the values further.
+ * integers, depth as a finite number, text as a level id, syntaxSet as a non-empty string. The
+ * builder cleans the values further.
  */
-export function parseRoleSettings(value: Record<string, unknown>): Pick<TryRecord, 'syntax' | 'depth' | 'text' | 'accentGroups'> {
-  const out: Pick<TryRecord, 'syntax' | 'depth' | 'text' | 'accentGroups'> = {};
+export function parseRoleSettings(value: Record<string, unknown>): Pick<TryRecord, 'syntax' | 'depth' | 'text' | 'accentGroups' | 'syntaxSet'> {
+  const out: Pick<TryRecord, 'syntax' | 'depth' | 'text' | 'accentGroups' | 'syntaxSet'> = {};
+  if (typeof value.syntaxSet === 'string' && value.syntaxSet) { out.syntaxSet = value.syntaxSet; }
   const groups = cleanChrome({ accentGroups: value.accentGroups }).accentGroups;
   if (Object.keys(groups).length) { out.accentGroups = groups; }
   const syntax = value.syntax;

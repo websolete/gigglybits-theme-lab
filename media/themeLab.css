@@ -1,13 +1,12 @@
 /* Theme Lab. Base text, button, badge, toast, tab and count styles and the --gb-* tokens
-   come from inspector.css, which the Theme Lab loads first; this file holds only what the
+   come from base.css, which the Theme Lab loads first; this file holds only what the
    Theme Lab adds. palette.css loads after this file and holds the Lab's layout. */
 
-/* The page is the Lab alone: on a wide tab its two panes are the height of the tab and scroll
-   on their own, and on a narrow one the step 6 bar sits on the tab's bottom edge, so the page
-   keeps no padding under them. */
+/* The page is the Lab alone, and its step 6 bar sits on the tab's bottom edge, so the page
+   keeps no padding under it. */
 body:has(.gb-palette) { padding-bottom: 0; }
 #results, #section-palette { margin: 0; padding: 0; }
 
-/* gallery.css sets this in the inspector; the chrome preview's remote icon needs it here.
+/* The chrome preview's remote icon needs this size here.
    palette.css loads after this file, so its .gb-ch-icon size still wins. */
 .codicon { font-size: 16px; vertical-align: text-bottom; }

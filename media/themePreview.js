@@ -2,8 +2,8 @@
 // Theme Preview webview: the Theme Lab's only preview, in a window of its own that the
 // extension opens (src/themePreviewPanel.ts). One scrolling page: the Workbench,
 // then the widget families the Lab chose. It draws nothing of its own: each
-// { type: 'state', palette, groups } message from the host carries the Lab's Palette Lab state
-// and style groups, and palette.js renderPreview() draws them. A part clicked here is posted as
+// { type: 'state', palette, syntaxSets } message from the host carries the Lab's Palette Lab
+// state and the syntax sets, and palette.js renderPreview() draws them. A part clicked here is posted as
 // { type: 'pickPart', part } and opens in the Lab's Edit panel.
 (function () {
   // @ts-ignore acquireVsCodeApi is provided by the webview host
@@ -15,8 +15,8 @@
 
   /** The state drawn last, so a 'modernUI' message can redraw it. */
   let current = null;
-  /** The groups drawn last, for the same reason. */
-  let currentGroups = [];
+  /** The syntax sets drawn last, for the same reason. */
+  let currentSets = [];
   /** VS Code's modern UI settings from the latest 'modernUI' message; null draws the classic workbench. */
   let modernUI = null;
   /** The keys of the role the Theme Lab's Roles step points at, from 'highlight'; kept across redraws. */
@@ -37,16 +37,16 @@
     if (scroll && first && typeof first.scrollIntoView === 'function') first.scrollIntoView({ block: 'nearest' });
   }
 
-  function draw(palette, groups) {
+  function draw(palette, syntaxSets) {
     current = palette && typeof palette === 'object' ? palette : {};
-    currentGroups = Array.isArray(groups) ? groups : [];
+    currentSets = Array.isArray(syntaxSets) ? syntaxSets : [];
     const app = document.getElementById('app');
     if (!app) return;
     // A redraw keeps the page where it was scrolled.
     const top = document.scrollingElement ? document.scrollingElement.scrollTop : 0;
     app.replaceChildren(PaletteLab.renderPreview({
       ui: current,
-      groups: currentGroups,
+      syntaxSets: currentSets,
       modernUI,
       post: message => vscode.postMessage(message),
     }));
@@ -56,14 +56,15 @@
 
   window.addEventListener('message', ev => {
     const msg = ev.data;
-    if (msg && msg.type === 'state') draw(msg.palette, msg.groups);
+    if (msg && msg.type === 'state') draw(msg.palette, msg.syntaxSets);
     else if (msg && msg.type === 'highlight') {
       highlightKeys = Array.isArray(msg.keys) ? msg.keys.filter(k => typeof k === 'string') : [];
-      applyHighlight(true);
+      // Only Show where asks to scroll; opening a role outlines its parts where the page sits.
+      applyHighlight(msg.scroll === true);
     }
     else if (msg && msg.type === 'modernUI') {
       modernUI = msg.modernUI && typeof msg.modernUI === 'object' ? msg.modernUI : null;
-      if (current) draw(current, currentGroups);
+      if (current) draw(current, currentSets);
     }
   });
 

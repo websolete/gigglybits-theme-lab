@@ -25,5 +25,9 @@ package-lock.json
 .mcp.json
 AGENTS.md
 *.vsix
+# README screenshot. The README links it by its absolute raw.githubusercontent.com URL, so
+# GitHub, the Marketplace page and VS Code's Extensions view all load it from the repository
+# once it is pushed, and the package does not need a copy.
+images/**
 # Full-size logo source (about 1 MB). The package ships media/icon.png, a 256 px copy, instead.
 media/gigglybits.png

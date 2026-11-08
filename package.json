@@ -1,20 +1,27 @@
 {
-  "name": "gigglybits-vscode-theme",
+  "name": "gigglybits-theme-lab",
   "displayName": "GigglyBits Theme Laboratory",
-  "description": "An easy-to-use and powerful theme customizer for VS Code.",
-  "version": "0.0.23",
-  "publisher": "Websolete",
+  "description": "A powerful, easy-to-use theme customizer for VS Code.",
+  "version": "0.1.1",
+  "publisher": "EdgeInformation",
+  "author": {
+    "name": "Kevin Miller"
+  },
   "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#17324d",
+    "theme": "dark"
+  },
   "license": "MIT",
+  "pricing": "Free",
   "repository": {
     "type": "git",
-    "url": "https://github.com/websolete/gigglybits-vscode-theme.git"
+    "url": "https://github.com/websolete/gigglybits-theme-lab.git"
   },
-  "homepage": "https://github.com/websolete/gigglybits-vscode-theme#readme",
+  "homepage": "https://github.com/websolete/gigglybits-theme-lab#readme",
   "bugs": {
-    "url": "https://github.com/websolete/gigglybits-vscode-theme/issues"
+    "url": "https://github.com/websolete/gigglybits-theme-lab/issues"
   },
-  "private": true,
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -22,10 +29,21 @@
     "Themes",
     "Other"
   ],
+  "keywords": [
+    "theme",
+    "color theme",
+    "dark theme",
+    "theme builder",
+    "theme editor",
+    "palette",
+    "syntax highlighting",
+    "workspace colors",
+    "title bar color",
+    "accessibility"
+  ],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onWebviewPanel:gigglybits.themeLab",
-    "onWebviewPanel:gigglybits.paletteInspector",
     "onWebviewPanel:gigglybits.themePreview",
     "onStartupFinished"
   ],
@@ -34,11 +52,6 @@
       {
         "command": "gigglybits.openThemeLab",
         "title": "Open Theme Lab",
-        "category": "GigglyBits"
-      },
-      {
-        "command": "gigglybits.openPaletteInspector",
-        "title": "Open Palette Inspector",
         "category": "GigglyBits"
       },
       {
@@ -56,11 +69,18 @@
           "scope": "application",
           "markdownDescription": "Your saved themes, written by **Save theme** in the Theme Lab (**GigglyBits: Open Theme Lab**). Each is bound to one of the slots GigglyBits Theme 1 to 12. Use the Theme Lab or **GigglyBits: Choose Theme** rather than editing this by hand."
         },
+        "gigglybits.syntaxSets": {
+          "type": "array",
+          "default": [],
+          "scope": "application",
+          "markdownDescription": "Your syntax sets, written by step 4 of the Theme Lab (**GigglyBits: Open Theme Lab**). A syntax set is a named set of code colors (keywords, functions, strings, tags and more) that a saved theme can use instead of its palette's, so code looks the same in every workspace. Use the Theme Lab rather than editing this by hand."
+        },
         "gigglybits.groups": {
           "type": "array",
           "default": [],
           "scope": "application",
-          "markdownDescription": "Your style groups, written by the **Style groups** box in the Theme Lab (**GigglyBits: Open Theme Lab**). A group maps the colors of tabs, lists and trees, buttons or editor text to theme roles; one that is on applies to every saved theme in that theme's own colors. Use the Theme Lab rather than editing this by hand."
+          "markdownDescription": "Your style groups, from an earlier version of the Theme Lab.",
+          "markdownDeprecationMessage": "Style groups are retired and nothing reads this setting. Syntax sets in step 4 of the Theme Lab replace the Editor text group; steps 3 to 5 cover tabs, lists and buttons per theme."
         },
         "gigglybits.identity.hue": {
           "type": "number",
@@ -163,7 +183,7 @@
     "test": "npm run check-types:test && jest",
     "verify": "npm run check-types && npm run lint && npm test",
     "clean": "node -e \"for (const d of ['dist', 'out']) require('fs').rmSync(d, { recursive: true, force: true })\"",
-    "pack": "vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "pack": "vsce package --no-dependencies",
     "version:patch": "npm version patch --no-git-tag-version",
     "install:local": "node scripts/install-local.js",
     "build:pack": "npm run clean && npm run pack",

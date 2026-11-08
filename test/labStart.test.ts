@@ -25,8 +25,8 @@ describe('startConfig', () => {
   it('starts from the saved theme bound to the active slot, and gives a note for an empty slot', () => {
     const design = { ...GENERATED, colors: ['#20c3d9', '#dc8fd5', '#ceaa3e'], frame: { index: 1, style: 'filled' as const }, edits: { swatches: {}, keys: {} } };
     const library = [
-      { id: 'a', name: 'Alpha', slot: 2, design, groups: [], savedAt: '2026-11-04T00:00:00.000Z' },
-      { id: 'b', name: 'Beta', slot: null, design, groups: [], savedAt: '2026-11-04T00:00:00.000Z' },
+      { id: 'a', name: 'Alpha', slot: 2, design, savedAt: '2026-11-04T00:00:00.000Z' },
+      { id: 'b', name: 'Beta', slot: null, design, savedAt: '2026-11-04T00:00:00.000Z' },
     ];
     expect(startConfig('GigglyBits Theme 2', undefined, library)).toEqual({ saved: { name: 'Alpha', design } });
     expect(startConfig('GigglyBits Theme 3', undefined, library))
@@ -89,6 +89,14 @@ describe('parseTryRecord and the Roles step settings', () => {
     expect(bad).toBeDefined();
     expect(bad).not.toHaveProperty('syntax');
     expect(bad).toMatchObject({ rule: 'square', hue: 12, chromeIndex: 1, surfaces: 'neutral', depth: 1.5 });
+  });
+});
+
+describe('parseTryRecord and the syntax set', () => {
+  it('{#try-record-keeps-set} keeps a syntaxSet id and drops a value that is not a non-empty string', () => {
+    expect(parseTryRecord({ ...GENERATED, syntaxSet: 'abc' })?.syntaxSet).toBe('abc');
+    expect(parseTryRecord({ ...GENERATED, syntaxSet: 5 })).not.toHaveProperty('syntaxSet');
+    expect(parseTryRecord({ ...GENERATED, syntaxSet: '' })).not.toHaveProperty('syntaxSet');
   });
 });
 

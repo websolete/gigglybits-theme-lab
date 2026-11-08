@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
+import { readFileSync } from 'fs';
 import * as path from 'path';
 import { parse, ParseError, printParseErrorCode } from 'jsonc-parser';
+import { starterFromRules, SyntaxColors } from '../scripts/theme-builder';
 
 /**
  * Where a declared value came from. Colors that VS Code resolves on its own
@@ -148,6 +150,73 @@ export async function captureThemeSnapshot(): Promise<ThemeSnapshot> {
   applySemanticCustomizations(snap);
   resolveSemanticHighlighting(snap);
   return snap;
+}
+
+// ---------------------------------------------------------------------------
+// Installed dark themes as syntax set starters
+// ---------------------------------------------------------------------------
+
+/** An installed dark theme's code colors, offered by the Theme Lab under Start set from. */
+export interface InstalledSyntaxStarter {
+  /** The theme id, else its label. */
+  id: string;
+  label: string;
+  /** The contributing extension's display name, localized, else its id. */
+  extension: string;
+  colors: SyntaxColors;
+}
+
+let ownId: string | undefined;
+/**
+ * This extension's id ('<publisher>.<name>', lower case), read from its own package.json so it
+ * follows the manifest; its own themes are never offered as starters. The bundle runs from
+ * dist/ and the tests from src/, so the manifest is one folder up in both. '' when unreadable.
+ */
+export function ownExtensionId(): string {
+  if (ownId === undefined) {
+    try {
+      const pkg = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as Json;
+      ownId = typeof pkg.publisher === 'string' && typeof pkg.name === 'string' ? `${pkg.publisher}.${pkg.name}`.toLowerCase() : '';
+    } catch {
+      ownId = '';
+    }
+  }
+  return ownId;
+}
+
+/**
+ * Every vs-dark theme contributed by another extension, with the 13 syntax set colors read from
+ * its token rules (theme-builder starterFromRules, include chain followed as loadThemeFile does).
+ * A theme with no token rules is left out.
+ */
+export async function listInstalledSyntaxStarters(): Promise<InstalledSyntaxStarter[]> {
+  const out: InstalledSyntaxStarter[] = [];
+  for (const ext of vscode.extensions.all) {
+    if (ext.id.toLowerCase() === ownExtensionId()) {
+      continue;
+    }
+    const pkg = ext.packageJSON as Json;
+    const contributes = pkg?.contributes;
+    const themes = isObject(contributes) && Array.isArray(contributes.themes) ? (contributes.themes as ThemeContribution[]) : [];
+    const darkThemes = themes.filter(t => t && t.uiTheme === 'vs-dark' && typeof t.path === 'string');
+    if (!darkThemes.length) {
+      continue;
+    }
+    const extension = (typeof pkg.displayName === 'string' ? await localize(pkg.displayName, ext.extensionPath) : undefined) ?? ext.id;
+    for (const theme of darkThemes) {
+      const label = (await localize(theme.label, ext.extensionPath)) ?? path.basename(theme.path as string);
+      const snap: ThemeSnapshot = {
+        contributions: {}, files: [], themeColors: {}, userColors: {}, tokenRules: [], semanticRules: [],
+        semanticHighlighting: { setting: undefined, effective: false }, warnings: [],
+      };
+      await loadThemeFile(path.join(ext.extensionPath, theme.path as string), ext.extensionPath, snap, 0);
+      if (!snap.tokenRules.length) {
+        continue;
+      }
+      out.push({ id: theme.id ?? label, label, extension, colors: starterFromRules(snap.tokenRules, snap.themeColors['editor.foreground']?.value) });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +376,7 @@ async function loadThemeFile(file: string, root: string, snap: ThemeSnapshot, de
   if (Array.isArray(data.tokenColors)) {
     addTokenRules(data.tokenColors, 'theme', rel, snap.tokenRules);
   } else if (typeof data.tokenColors === 'string') {
-    snap.warnings.push(`${rel} loads token colors from "${data.tokenColors}" (a .tmTheme file), which this inspector does not parse yet.`);
+    snap.warnings.push(`${rel} loads token colors from "${data.tokenColors}" (a .tmTheme file), which this extension does not parse.`);
   }
 
   if (isObject(data.semanticTokenColors)) {

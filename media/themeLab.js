@@ -1,8 +1,7 @@
 // @ts-check
 // Theme Lab webview: the place to build, try and pick a GigglyBits theme. It draws the
 // Palette Lab (palette.js), whose Start step offers Wheel and Saved, and asks the extension
-// host for your saved themes. The page has no header; the Palette Inspector, the separate
-// debugging view, opens from its command.
+// host for your saved themes. The page has no header.
 //
 // The Palette Lab's ui state persists through vscode.setState. On a fresh open (no saved
 // state) the host's first 'start' message picks the starting palette; a tab restored by a
@@ -47,21 +46,27 @@
    * survive a reload.
    */
   let detached = false;
-
   /**
-   * Latest 'library' message: your saved themes (src/themeLibrary.ts SavedTheme), your style
-   * groups (StyleGroup), and whether a folder is open, which decides whether Use in this
-   * project is offered.
-   * @type {{ themes: any[], groups: any[], hasFolder: boolean }}
+   * The installed dark themes' syntax set starters from the latest 'installedStarters' message
+   * (src/themeSource.ts InstalledSyntaxStarter), offered under Start set from. Never saved.
+   * @type {any[]}
    */
-  let libraryState = { themes: [], groups: [], hasFolder: false };
+  let installedStarters = [];
 
   /**
-   * Hands the Palette Lab state and the style groups to the host, which passes them to the
+   * Latest 'library' message: your saved themes (src/themeLibrary.ts SavedTheme), your syntax
+   * sets (SyntaxSet), and whether a folder is open, which decides whether Use in this
+   * project is offered.
+   * @type {{ themes: any[], syntaxSets: any[], hasFolder: boolean }}
+   */
+  let libraryState = { themes: [], syntaxSets: [], hasFolder: false };
+
+  /**
+   * Hands the Palette Lab state and the syntax sets to the host, which passes them to the
    * floating Theme Preview window, so it follows every change, a color drag included.
    */
   function postPreviewState() {
-    vscode.postMessage({ type: 'previewState', palette: ui.palette, groups: libraryState.groups });
+    vscode.postMessage({ type: 'previewState', palette: ui.palette, syntaxSets: libraryState.syntaxSets });
   }
 
   function saveState() {
@@ -101,12 +106,13 @@
       post: message => vscode.postMessage(message),
       copy,
       library: libraryState.themes,
-      groups: libraryState.groups,
+      syntaxSets: libraryState.syntaxSets,
       hasFolder: libraryState.hasFolder,
       identityFill,
       startNote,
       modernUI,
       detached,
+      installedStarters,
     });
     return h('section', { id: 'section-palette' },
       h('div', { class: 'gb-lab' }, lab));
@@ -119,7 +125,7 @@
     postPreviewState();
   }
 
-  /** The page is the Lab alone: no header; the Palette Inspector stays a command. */
+  /** The page is the Lab alone, with no header. */
   function renderShell() {
     document.getElementById('app').replaceChildren(h('main', { id: 'results' }, paletteSection()));
   }
@@ -140,6 +146,12 @@
       ui.palette.startTab = 'saved';
     } else if (s.note) {
       startNote = s.note;
+    }
+    // The default palette start (no Try record, no saved theme) takes its code colors from your
+    // default syntax set; a loaded Try or saved theme keeps its own choice.
+    if (!s.lastTry && !s.saved) {
+      const def = libraryState.syntaxSets.find(t => t && t.isDefault === true && typeof t.id === 'string');
+      if (def) ui.palette.syntaxSet = def.id;
     }
     saveState();
     renderPalette();
@@ -168,7 +180,7 @@
     if (msg.type === 'library') {
       libraryState = {
         themes: Array.isArray(msg.themes) ? msg.themes : [],
-        groups: Array.isArray(msg.groups) ? msg.groups : [],
+        syntaxSets: Array.isArray(msg.syntaxSets) ? msg.syntaxSets : [],
         hasFolder: msg.hasFolder === true,
       };
       renderPalette();
@@ -188,6 +200,9 @@
       }
     } else if (msg.type === 'previewDetached') {
       detached = msg.detached === true;
+      renderPalette();
+    } else if (msg.type === 'installedStarters') {
+      installedStarters = Array.isArray(msg.starters) ? msg.starters : [];
       renderPalette();
     } else if (msg.type === 'pickPart') {
       // A part clicked in the Theme Preview window: open its colors in step 5, Edit. Only step 5

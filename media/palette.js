@@ -1,23 +1,21 @@
 // @ts-check
 // Palette Lab for the Theme Lab, laid out to the design council's contract
-// (.copirate/working/prototypes/theme-lab-council/CONTRACT-v4.md): numbered steps (1 Start,
-// 2 Check readability, 3 Frame and accent, 4 Color by purpose, 5 Fine-tune a part, 6 Try it, then save) and a Preview card. From 75rem
-// they are two panes, the Preview card and steps 4 and 5 on the right; narrower, one column. render()
-// builds each region in the order of the width.
+// (.copirate/working/prototypes/theme-lab-council/CONTRACT-v4.md): numbered steps (1 Pick your colors,
+// 2 Check readability, 3 Frame and accent, 4 Color by purpose, 5 Fine-tune a part, 6 Try it, then save) and a Preview card, in one
+// column at every width.
 //
 // The preview is drawn only in the floating Theme Preview window: renderPreview() draws its
 // page (themePreview.js), the whole theme Try in VS Code would apply (themeBuilder.js) as a
-// Workbench and the Palette Inspector's widgets (gallery.js). A part clicked there reaches the
+// Workbench and the element gallery's widgets (gallery.js). A part clicked there reaches the
 // Lab through setPicked(), which opens the Edit dock on its color keys, by role or one key at a
 // time; the edits ride along with Try in VS Code and Save theme.
 //
 // Step 1, Start, has two tabs: Wheel builds a new palette from a harmony rule, Saved lists
 // the saved themes (ctx.library) to load one.
 //
-// The Style groups mode builds a group (a widget family's colors mapped to Editor roles) and
-// lists the saved ones (ctx.groups, from gigglybits.groups), with the draft family's card drawn
-// on the page. The previews draw the candidate with every group that is on, the draft taking
-// the place of the on group of its family, and Try in VS Code sends the same groups.
+// Step 4's Syntax family takes its code colors from the palette or from a syntax set (ctx.syntaxSets,
+// from gigglybits.syntaxSets), named by id in the state's syntaxSet. The previews and Try in VS
+// Code draw the set's colors (chrome.syntaxColors) whenever the named set exists.
 //
 // Palette colors are literal hex values. The live editor text and comment colors come
 // from --vscode-* variables in palette.css.
@@ -89,15 +87,10 @@
     // Widgets in the preview is gone too: the window draws every widget family, so a state
     // saved before then drops its choice.
     delete s.widgets;
-    // The style group being built: a family, its rows' roles and a name.
-    const g = s.groupDraft;
-    const families = Builder().GROUP_FAMILIES;
-    if (!g || typeof g !== 'object' || !Object.prototype.hasOwnProperty.call(families, g.family)) {
-      s.groupDraft = { family: Object.keys(families)[0], name: '', roles: {} };
-    } else {
-      if (typeof g.name !== 'string') g.name = '';
-      if (!g.roles || typeof g.roles !== 'object') g.roles = {};
-    }
+    // Style groups are retired: a draft saved while they existed changes nothing and goes.
+    delete s.groupDraft;
+    // The syntax set the code colors come from, by id; anything else means From this palette.
+    if (!(typeof s.syntaxSet === 'string' && s.syntaxSet)) delete s.syntaxSet;
     // The open sections: step numbers 1 to 5. A fresh Lab opens on Start alone.
     if (!Array.isArray(s.sections)) s.sections = [1];
     s.sections = s.sections.filter(n => SECTIONS.includes(n));
@@ -113,26 +106,19 @@
     if (!s.sections.includes(n)) s.sections = [...s.sections, n].sort();
   }
 
-  // ----------------------------------------------------------------- style groups
+  // ----------------------------------------------------------------- syntax sets
 
-  /** The saved style groups the host sent (src/themeLibrary.ts StyleGroup). */
-  const groupsOf = ctx => (Array.isArray(ctx.groups) ? ctx.groups : []).filter(g => g && typeof g === 'object');
+  /** The saved syntax sets the host sent (src/themeLibrary.ts SyntaxSet). */
+  const setsOf = ctx => (Array.isArray(ctx.syntaxSets) ? ctx.syntaxSets : []).filter(t => t && typeof t === 'object' && typeof t.id === 'string');
 
-  /** The draft as { family, roles }, or null while no row names a role. */
-  function draftGroup(s) {
-    const d = s.groupDraft;
-    return d && Object.keys(d.roles).length ? { family: d.family, roles: { ...d.roles } } : null;
-  }
+  /** The syntax set the state names, or null when it names none or one that no longer exists. */
+  const currentSet = (sets, s) => (s.syntaxSet ? sets.find(t => t.id === s.syntaxSet) || null : null);
 
-  /**
-   * The groups the previews draw and Try in VS Code sends, { family, roles } each: every group
-   * that is on, with a draft that counts in place of the on group of its family.
-   */
-  function previewGroups(ctx, s) {
-    const draft = draftGroup(s);
-    const on = groupsOf(ctx).filter(g => g.on === true && !(draft && g.family === draft.family))
-      .map(g => ({ family: g.family, roles: { ...g.roles } }));
-    return draft ? [...on, draft] : on;
+  /** The chrome fields a syntax set adds: { syntaxColors } when the state is on an existing set, else {}. */
+  function setChrome(sets, s) {
+    const set = currentSet(sets, s);
+    const colors = set && Builder().cleanChrome({ syntaxColors: set.colors }).syntaxColors;
+    return colors ? { syntaxColors: colors } : {};
   }
 
   function save(ctx) {
@@ -315,8 +301,7 @@
     }
     /**
      * Places the open list against the window under the button (above it when there is more room
-     * there), so a column that scrolls on its own, such as the wide layout's task column, cannot
-     * clip it. A scroll outside the list closes it, since the button has moved away.
+     * there), so a box that scrolls on its own cannot clip it. A scroll outside the list closes it, since the button has moved away.
      */
     function place() {
       if (typeof button.getBoundingClientRect !== 'function') return;
@@ -564,19 +549,19 @@
 
   /**
    * The theme Try in VS Code would apply (media/themeBuilder.js, the same code the host runs),
-   * Frame and style groups included. A folder's own color is not drawn: the preview shows the
-   * theme alone.
+   * Frame and syntax set (from `sets`, the saved syntax sets) included. A folder's own color is
+   * not drawn: the preview shows the theme alone.
    */
-  function themeOf(candidate, s, groups = []) {
-    const { index, chrome, entry } = inputsOf(candidate, s);
+  function themeOf(candidate, s, sets = []) {
+    const { index, chrome, entry } = inputsOf(candidate, s, sets);
     const B = Builder();
     // A key edited to VS Code's default is left out, so the drawing shows it unset: a modern UI
     // key in VS Code's worked-out default (galleryContext), any other in the Lab's own color.
-    const colors = Object.fromEntries(Object.entries(B.buildColors(entry, chrome, s.edits, groups)).filter(([, v]) => v !== B.DEFAULT_COLOR));
+    const colors = Object.fromEntries(Object.entries(B.buildColors(entry, chrome, s.edits)).filter(([, v]) => v !== B.DEFAULT_COLOR));
     return {
-      index, chrome, entry, groups, colors,
+      index, chrome, entry, colors,
       sw: B.swatches(entry, chrome, s.edits),
-      tokens: B.tokenColors(entry, chrome, s.edits, groups),
+      tokens: B.tokenColors(entry, chrome, s.edits),
     };
   }
 
@@ -587,10 +572,13 @@
     });
   }
 
-  /** What the builder takes for the candidate: the accent index, the chrome choices and the entry (palette and base). */
-  function inputsOf(candidate, s) {
+  /**
+   * What the builder takes for the candidate: the accent index, the chrome choices (with the
+   * colors of the syntax set the state names, when it is in `sets`) and the entry (palette and base).
+   */
+  function inputsOf(candidate, s, sets = []) {
     const index = Math.min(Number(s.chromeIndex) || 0, candidate.colors.length - 1);
-    const chrome = { index, ...(s.accentColor ? { color: s.accentColor } : {}), surfaces: s.surfaces, frame: s.frame, ...roleSettingsOf(s) };
+    const chrome = { index, ...(s.accentColor ? { color: s.accentColor } : {}), surfaces: s.surfaces, frame: s.frame, ...roleSettingsOf(s), ...setChrome(sets, s) };
     const entry = { colors: candidate.colors, base: baseHexOf(candidate) };
     return { index, chrome, entry };
   }
@@ -612,9 +600,9 @@
     const frameFixed = fixed(s.frame.color);
     const editsFixed = [...Object.values(s.edits.swatches), ...Object.values(s.edits.keys)].some(fixed);
     if (frameFixed || editsFixed) {
-      const { chrome, entry } = inputsOf(candidateOf(s), s);
+      const { chrome, entry } = inputsOf(candidateOf(s), s, setsOf(ctx));
       if (frameFixed) s.frame = { color: B.shiftFor(s.frame.color, entry.base), style: s.frame.style };
-      if (editsFixed) s.edits = B.toShifts(entry, { ...chrome, frame: s.frame }, s.edits, previewGroups(ctx, s));
+      if (editsFixed) s.edits = B.toShifts(entry, { ...chrome, frame: s.frame }, s.edits);
     }
     fixedChecked = JSON.stringify([s.edits, s.frame]);
   }
@@ -650,11 +638,9 @@
   /**
    * Fits a drawing to its frame (CONTRACT-v4 section 4). The zoom is the frame's width over the
    * drawing's natural width, never above 1, so parts are never drawn larger than full size.
-   * Where the frame has a height of its own (the stage's preview row, or the narrow band up to
-   * 45vh), a drawing taller than the frame is zoomed down to fit it, and the Workbench window's
-   * middle row (activity bar, side bars, editor) grows to fill the height left. On a window under
-   * 800px tall the wide stage keeps the height it has with the Edit dock open, so the drawing
-   * does not rescale under the pointer when a pick opens the dock.
+   * Where the frame has a height of its own, a drawing taller than the frame is zoomed down to
+   * fit it, and the Workbench window's middle row (activity bar, side bars, editor) grows to fill
+   * the height left.
    */
   function fitToWidth(frame) {
     if (typeof ResizeObserver === 'undefined') return;
@@ -668,13 +654,7 @@
       let zoom = have > 0 ? Math.min(1, have / inner.scrollWidth) : 1;
       // Only the Lab's preview row gives the frame a height of its own (palette.css .gb-preview
       // .gb-pl-fit); elsewhere, as in the Theme Preview window, the frame is as tall as the drawing.
-      let room = frame.closest('.gb-preview') ? frame.clientHeight : 0;
-      const lab = frame.closest('.gb-palette');
-      const stage = frame.closest('.gb-stage');
-      if (room > 0 && lab && stage && lab.hasAttribute('data-wide') && !lab.hasAttribute('data-docked') && window.innerHeight < 800) {
-        const line = stage.querySelector('.gb-s4-line');
-        room -= Math.max(0, Math.round(stage.clientHeight * 0.45) - (line ? line.offsetHeight : 0));
-      }
+      const room = frame.closest('.gb-preview') ? frame.clientHeight : 0;
       const natural = inner.offsetHeight;
       if (room > 0 && natural > 0) {
         if (natural * zoom > room) zoom = room / natural;
@@ -705,10 +685,9 @@
     pickOwner = ui;
     picked = null;
     Object.assign(result, { text: '', after: null, pendingSave: null, ownName: null });
-    groupsMode = false;
-    newGroupOpen = false;
     Object.assign(dock, { state: 'closed', key: null, scope: null, edits: false, scroll: 0 });
     Object.assign(rolesUi, { shown: [], open: null });
+    Object.assign(syntaxDraft, { value: null, group: null, all: false });
     highlighted = '';
   }
   /**
@@ -1161,7 +1140,7 @@
         if (scope === 'role' && own) lines.push('This key has its own edit, which wins over the role. Reset it under This key only.');
         const shift = scope === 'role'
           ? shiftNote(B.preferredSwatch(theme.entry, theme.chrome, s.edits, swatch), theme.sw[swatch], s.edits.swatches[swatch])
-          : shiftNote(B.preferredKey(theme.entry, theme.chrome, s.edits, theme.groups, key) || fallback, shown, own);
+          : shiftNote(B.preferredKey(theme.entry, theme.chrome, s.edits, key) || fallback, shown, own);
         notes.replaceChildren(...(shift ? [shift] : []), ...lines.map(t => h('p', { class: 'muted gb-ke-note' }, t)));
       }
 
@@ -1232,8 +1211,8 @@
     function edit(apply, done) {
       const next = { swatches: { ...s.edits.swatches }, keys: { ...s.edits.keys } };
       apply(next);
-      const { chrome, entry } = inputsOf(candidateOf(s), s);
-      s.edits = Builder().toShifts(entry, chrome, next, previewGroups(ctx, s));
+      const { chrome, entry } = inputsOf(candidateOf(s), s, setsOf(ctx));
+      s.edits = Builder().toShifts(entry, chrome, next);
       markChanged();
       save(ctx);
       if (done) redrawAll();
@@ -1265,7 +1244,7 @@
 
     /** Draws the dock for the current pick and edits, and returns the theme it drew from. */
     function draw() {
-      const theme = themeOf(candidate, s, previewGroups(ctx, s));
+      const theme = themeOf(candidate, s, setsOf(ctx));
       const oldBody = dockHost.querySelector('.gb-dock-body');
       if (oldBody) dock.scroll = oldBody.scrollTop;
       if (dock.state === 'closed') dockHost.replaceChildren();
@@ -1287,6 +1266,12 @@
    * editor is open. They survive redraws; a render with another state starts with neither.
    */
   const rolesUi = { shown: [], open: null };
+  /**
+   * The Syntax family's unsaved draft from Start set from: { key, name, source, colors } or null.
+   * It lives here, outside the saved Lab state, so it survives redraws of this page and goes
+   * with a reload; nothing saves or sends it until Save New Set.
+   */
+  const syntaxDraft = { value: null, group: null, all: false };
   /** The families that start folded to a strip of their colors. */
   const FOLDED_FAMILIES = ['status', 'terminal', 'frame'];
   /** Numbers each Roles step's ids, so two Lab roots never share one. */
@@ -1427,22 +1412,50 @@
     return el;
   }
 
+  /** The foreground of the token rule `name` in `tokens`, or undefined when the theme has no such rule. */
+  const ruleFg = (tokens, name) => {
+    const rule = (tokens || []).find(r => r && r.name === name);
+    return rule ? rule.settings.foreground : undefined;
+  };
+
   /**
-   * Three lines of code in the syntax colors on the editor background, so a Colors change
-   * shows as code before the preview window is looked at.
+   * A few lines of code in the syntax colors on the editor background, so a Colors change shows
+   * as code before the preview window is looked at: a comment in the Comment rule's color and,
+   * on a syntax set (a Tag rule in `tokens`), a markup line in the Tag and Attribute colors.
    */
-  function codeSample(sws) {
+  function codeSample(sws, tokens = []) {
     const tok = (sw, text) => {
       const el = h('span', { 'data-swatch': sw }, text);
       el.style.color = sws[sw];
       return el;
     };
+    // A word a set rule colors. Without that rule (From this palette), `onPalette` names the
+    // palette role VS Code would fall back to for it, such as Keywords for `+` and `new`, or
+    // nothing when it draws in the editor text color.
+    const ruled = (name, text, onPalette = '') => {
+      const el = h('span', { 'data-rule': name }, text);
+      const fg = ruleFg(tokens, name);
+      if (fg) el.style.color = fg;
+      else if (onPalette) {
+        el.dataset.paletteSwatch = onPalette;
+        el.style.color = sws[onPalette];
+      }
+      return el;
+    };
+    // Brackets and plain text: the editor text color in every theme, never part of a set.
+    const plain = text => h('span', { class: 'gb-rf-code-plain', title: 'Editor text color: brackets and plain text are never part of a syntax set' }, text);
+    const op = (text, onPalette = '') => ruled('Operator', text, onPalette);
     const lines = [
-      [tok('kw', 'export'), ' ', tok('kw', 'class'), ' ', tok('type', 'Greeter'), ' {'],
-      ['  ', tok('fn', 'greet'), '(name: ', tok('type', 'string'), ') { ', tok('kw', 'return'), ' ', tok('str', '"Hello, "'), ' + name.', tok('fn', 'repeat'), '(', tok('num', '2'), '); }'],
-      ['}'],
+      [ruled('Comment', '// Says hello')],
+      [tok('kw', 'export'), ' ', tok('kw', 'class'), ' ', tok('type', 'Greeter'), ' ', plain('{')],
+      ['  ', tok('fn', 'greet'), plain('('), ruled('Variable', 'name'), op(':', 'kw'), ' ', tok('type', 'string'), plain(')'), ' ', plain('{'), ' ', tok('kw', 'return'), ' ',
+        tok('str', '"Hello, "'), ' ', op('+', 'kw'), ' ', ruled('Variable', 'name'), op('.'), tok('fn', 'repeat'), plain('('), tok('num', '2'), plain(')'), op(';'), ' ', plain('}')],
+      [plain('}')],
+      [tok('kw', 'const'), ' ', ruled('Constant', 'MAX'), ' ', op('=', 'kw'), ' ', ruled('Keyword operator', 'new', 'kw'), ' ', tok('type', 'Greeter'), plain('('), ruled('Regex', '/ab+c/g', 'str'), plain(')'), op(';')],
+      [ruled('Variable', 'config'), op('.'), ruled('Property', 'ready'), ' ', op('=', 'kw'), ' ', ruled('Constant', 'true', 'num'), op(';')],
+      ...(ruleFg(tokens, 'Tag') ? [[op('<'), ruled('Tag', 'button'), ' ', ruled('Attribute', 'class'), op('='), tok('str', '"go"'), op('>'), plain('Go'), op('</'), ruled('Tag', 'button'), op('>')]] : []),
     ];
-    const el = h('pre', { class: 'gb-rf-code', title: 'Keywords, Functions, Strings, Types and Numbers as code on the editor background' },
+    const el = h('pre', { class: 'gb-rf-code', title: 'The code colors as code on the editor background' },
       lines.map(line => h('div', null, ...line)));
     el.style.background = String(sws.bg).slice(0, 7);
     el.style.color = String(sws.text).slice(0, 7);
@@ -1491,26 +1504,355 @@
       onclick: () => focusIn(selector),
     }, 'change in step 3');
 
+    // ---- Syntax: where the code colors come from (the palette or a syntax set)
+    const sets = setsOf(ctx);
+    const set = currentSet(sets, s);
+    const SET_LABELS = {
+      keyword: 'Keywords', function: 'Functions', string: 'Strings', type: 'Types', number: 'Numbers', comment: 'Comments',
+      tag: 'Tags', attribute: 'Attributes', variable: 'Variables', property: 'Properties', constant: 'Constants', operator: 'Operators', regex: 'Regex',
+    };
+    /** How many saved themes use the set id. */
+    const themesOn = id => (Array.isArray(ctx.library) ? ctx.library : []).filter(t => t && t.design && t.design.syntaxSet === id).length;
+    /** The editor text color and the comment color as the theme draws them now. */
+    const drawnFg = String(theme.colors['editor.foreground'] || theme.sw.text).slice(0, 7);
+    const drawnComment = String(ruleFg(theme.tokens, 'Comment') || theme.sw.muted).slice(0, 7);
+    /** The code colors as drawn now, as a syntax set's colors: the set's own on a set, else from the palette build. */
+    function drawnSetColors() {
+      if (set) return { ...set.colors };
+      const fg = drawnFg;
+      const comment = drawnComment;
+      const sw = k => String(theme.sw[k]).slice(0, 7);
+      return {
+        keyword: sw('kw'), function: sw('fn'), string: sw('str'), type: sw('type'), number: sw('num'), comment,
+        tag: fg, attribute: fg, variable: fg, property: fg, constant: sw('num'), operator: fg, regex: sw('str'),
+      };
+    }
+    /** From this palette, then each saved set by name; picking one sets the state's syntaxSet and drops a draft. */
+    function sourceRow() {
+      const options = [['palette', 'From this palette'], ...sets.map(t => [t.id, t.isDefault ? `${t.name} (default)` : t.name])];
+      return settingRow(label('Code colors'), segs('Code colors come from', 'syntax', options, set ? set.id : 'palette', v => {
+        syntaxDraft.value = null;
+        if (v === 'palette') delete s.syntaxSet;
+        else s.syntaxSet = v;
+      }));
+    }
+
+    // ---- Start set from: an unsaved draft from an installed theme, a well-known scheme or a recipe
+    const draft = syntaxDraft.value;
+    /** The installed dark themes the host sent (src/themeSource.ts InstalledSyntaxStarter) whose colors are complete. */
+    const installed = (Array.isArray(ctx.installedStarters) ? ctx.installedStarters : [])
+      .filter(t => t && typeof t.label === 'string' && B.cleanSyntaxColors(t.colors));
+    const installedKey = t => `installed:${t.extension || ''}/${t.id || t.label}`;
+    /** The draft a Start set from chip's key makes, or null for a key that names no starter now. */
+    function starterDraft(value) {
+      const at = value.indexOf(':');
+      const kind = value.slice(0, at);
+      const id = value.slice(at + 1);
+      if (kind === 'installed') {
+        const t = installed.find(x => installedKey(x) === value);
+        return t ? { key: value, name: t.label, source: t.label, colors: B.cleanSyntaxColors(t.colors) } : null;
+      }
+      if (kind === 'scheme') {
+        const scheme = B.SYNTAX_SCHEMES.find(x => x.id === id);
+        return scheme ? { key: value, name: scheme.name, source: scheme.name, colors: { ...scheme.colors } } : null;
+      }
+      if (kind === 'recipe' && (id === 'quiet' || id === 'harmony')) {
+        const name = id === 'quiet' ? 'Quiet' : 'Harmony';
+        const colors = B.recipeColors(id, {
+          sw: theme.sw, foreground: drawnFg, comment: drawnComment, baseHue: B.harmonyHue(theme.sw.frameBg, theme.sw.accent),
+        });
+        return { key: value, name, source: `${name}, from your palette`, colors };
+      }
+      return null;
+    }
+    /**
+     * The Start set from groups, each a list of chips: { key, name, sub, title, colors }. A chip's
+     * colors are the raw starter colors; the chip draws them lifted, as a theme would.
+     */
+    function starterGroups() {
+      const liftedCount = colors => B.SYNTAX_SET_KEYS.filter(k => B.setColor(colors[k]) !== colors[k]).length;
+      const readSub = colors => {
+        const n = liftedCount(colors);
+        return n ? `${n} lightened to read` : 'Reads as is';
+      };
+      const recipe = (id, name, sub, title) => {
+        const made = starterDraft(`recipe:${id}`);
+        return { key: `recipe:${id}`, name, sub, title, colors: made.colors };
+      };
+      return [
+        {
+          id: 'installed', label: 'Installed themes', about: 'Dark themes from your installed extensions, VS Code\'s own included.',
+          empty: 'No dark themes installed',
+          chips: installed.map(t => ({
+            key: installedKey(t), name: t.label, sub: readSub(t.colors), title: t.extension ? `${t.label}, from ${t.extension}` : t.label, colors: t.colors,
+          })),
+        },
+        {
+          id: 'schemes', label: 'Well-known schemes', about: 'Bundled, each credited with its author and license (README, Credits).',
+          chips: B.SYNTAX_SCHEMES.map(sc => ({
+            key: `scheme:${sc.id}`, name: sc.name, sub: `${sc.author}, ${sc.license}`, title: `${sc.name} by ${sc.author}, ${sc.license}, ${sc.url}`, colors: sc.colors,
+          })),
+        },
+        {
+          id: 'palette', label: 'From your palette', about: 'Worked out from this design\'s palette and frame.',
+          chips: [
+            recipe('quiet', 'Quiet', 'Palette strings, numbers, functions', 'Strings, numbers and functions in your palette colors; everything else in the editor text color'),
+            recipe('harmony', 'Harmony', 'Hues around your frame color', 'Hues spaced evenly around your frame color (your accent when the frame is grey), at one lightness'),
+          ],
+        },
+      ];
+    }
+    /** Three lines of code in a starter's colors on the editor background, lifted as a theme draws them. */
+    function chipCode(colors) {
+      const span = (key, text) => {
+        const color = B.setColor(colors[key]);
+        const el = h('span', { 'data-kind': key, 'data-color': color }, text);
+        el.style.color = color;
+        return el;
+      };
+      const el = h('span', { class: 'gb-ss-chip-code', 'aria-hidden': 'true' },
+        h('span', null, span('keyword', 'if'), ' (', span('variable', 'ok'), ') ', span('keyword', 'return'), ' ', span('string', '"hi"'), ';'),
+        h('span', null, span('function', 'greet'), '(', span('constant', 'MAX'), ', ', span('number', '42'), ');'),
+        h('span', null, span('keyword', 'class'), ' ', span('type', 'Name'), ' ', span('comment', '// note')));
+      el.style.background = String(theme.sw.bg).slice(0, 7);
+      el.style.color = drawnFg;
+      return el;
+    }
+    /** How many chips a group shows before Show all. */
+    const CHIPS_SHOWN = 8;
+    /**
+     * Start set from: one button per group, a line on the group shown, and its starters as
+     * chips that draw their code colors. A chip click makes the draft; the group shown and Show
+     * all live with the draft, outside the saved state.
+     */
+    function startRow() {
+      const groups = starterGroups();
+      if (!groups.some(g => g.id === syntaxDraft.group)) syntaxDraft.group = installed.length ? 'installed' : 'schemes';
+      const shown = groups.find(g => g.id === syntaxDraft.group);
+      const tabs = h('div', { class: 'gb-ke-segs gb-ss-groups', role: 'group', 'aria-label': 'Starter group' },
+        groups.map(g => h('button', {
+          type: 'button', class: 'secondary gb-ke-seg gb-ss-group', 'data-group': g.id, 'aria-pressed': String(g.id === shown.id),
+          onclick: () => {
+            if (g.id === syntaxDraft.group) return;
+            syntaxDraft.group = g.id;
+            syntaxDraft.all = false;
+            redraw();
+            focusIn(`.gb-ss-group[data-group="${g.id}"]`);
+          },
+        }, g.label, ' ', h('span', { class: 'gb-ss-group-n' }, String(g.chips.length)))));
+      const list = syntaxDraft.all ? shown.chips : shown.chips.slice(0, CHIPS_SHOWN);
+      const chips = h('div', { class: 'gb-ss-chips' }, list.map(c => h('button', {
+        type: 'button', class: 'secondary gb-ss-chip', 'data-key': c.key, 'aria-pressed': String(!!draft && draft.key === c.key),
+        title: c.title,
+        onclick: () => {
+          const made = starterDraft(c.key);
+          if (!made) return;
+          syntaxDraft.value = made;
+          redraw();
+          focusIn(`.gb-ss-chip[data-key="${c.key.replace(/["\\]/g, '\\$&')}"]`);
+        },
+      }, chipCode(c.colors), h('span', { class: 'gb-ex-text' }, h('span', { class: 'gb-ex-name' }, c.name), h('small', { class: 'gb-ex-about muted' }, c.sub)))));
+      const more = shown.chips.length > CHIPS_SHOWN
+        ? h('button', {
+          type: 'button', class: 'secondary gb-ss-more',
+          onclick: () => { syntaxDraft.all = !syntaxDraft.all; redraw(); focusIn('.gb-ss-more'); },
+        }, syntaxDraft.all ? 'Show fewer' : `Show all ${shown.chips.length}`)
+        : null;
+      return h('div', { class: 'gb-ss-start' },
+        settingRow(label('Start set from'), tabs),
+        h('p', { class: 'gb-ss-start-about muted' }, shown.chips.length ? shown.about : shown.empty),
+        shown.chips.length ? chips : null,
+        more);
+    }
+    /**
+     * The draft's line, Discard draft, which kinds the builder lightens, and one picker per
+     * color. A picker edits the draft only: nothing is saved or sent until Save New Set.
+     */
+    function draftEditor(d) {
+      const pickers = B.SYNTAX_SET_KEYS.map(k => {
+        const picker = colorPicker({
+          label: `${SET_LABELS[k]} in the draft from ${d.source}`, value: d.colors[k], className: 'gb-ss-pick',
+          snapshot: () => ({ ...d.colors }),
+          input: hex => { d.colors = { ...d.colors, [k]: String(hex).toLowerCase() }; },
+          change: hex => { d.colors = { ...d.colors, [k]: String(hex).toLowerCase() }; redraw(); focusIn(`.gb-ss-draft .gb-ss-color[data-key="${k}"] .gb-cp-trigger`); },
+          cancel: snap => { if (snap) d.colors = snap; redraw(); },
+        });
+        return h('label', { class: 'gb-ss-color', 'data-key': k }, picker, h('span', { class: 'gb-ss-l' }, SET_LABELS[k]));
+      });
+      const lifted = B.SYNTAX_SET_KEYS.filter(k => B.setColor(d.colors[k]) !== d.colors[k]);
+      const discard = h('button', {
+        type: 'button', class: 'secondary gb-ss-discard', title: 'Drops this draft; nothing was saved',
+        onclick: () => { syntaxDraft.value = null; redraw(); focusIn('.gb-ss-group[aria-pressed="true"]'); },
+      }, 'Discard draft');
+      return h('div', { class: 'gb-ss gb-ss-draft' },
+        h('div', { class: 'gb-ss-draft-head' }, h('p', { class: 'gb-ss-draft-line' }, `Unsaved draft from ${d.source}. Save New Set keeps it.`), discard),
+        lifted.length
+          ? h('p', { class: 'gb-ss-lift muted' },
+            `Lightened to stay readable on the editor background (4.5:1): ${lifted.map(k => SET_LABELS[k]).join(', ')}. The theme draws ${lifted.length === 1 ? 'this color' : 'these colors'} lighter than the starter has ${lifted.length === 1 ? 'it' : 'them'}.`)
+          : null,
+        h('div', { class: 'gb-ss-colors' }, ...pickers));
+    }
+    /**
+     * The set's colors, one picker each, and its actions. A kept color, a new name, Make default
+     * and Delete go to the host, which saves gigglybits.syntaxSets and rewrites every theme on the set.
+     */
+    function setEditor(t) {
+      const using = themesOn(t.id);
+      const post = colors => ctx.post({ type: 'saveSyntaxSet', id: t.id, name: t.name, colors });
+      const pickers = Builder().SYNTAX_SET_KEYS.map(k => {
+        const picker = colorPicker({
+          label: `${SET_LABELS[k]} in the set ${t.name}`, value: t.colors[k], className: 'gb-ss-pick',
+          snapshot: () => ({ ...t.colors }),
+          // Dragging recolors the set here and in the preview window, without a redraw.
+          input: hex => { t.colors = { ...t.colors, [k]: hex }; save(ctx); },
+          change: hex => { t.colors = { ...t.colors, [k]: hex }; post(t.colors); markChanged(); save(ctx); redraw(); focusIn(`.gb-ss-color[data-key="${k}"] .gb-cp-trigger`); },
+          cancel: snap => { if (snap) t.colors = snap; save(ctx); redraw(); },
+        });
+        // The swatch comes first and shares one outlined cell with its label, so each color reads
+        // as belonging to the name beside it and not to the next cell along.
+        return h('label', { class: 'gb-ss-color', 'data-key': k }, picker, h('span', { class: 'gb-ss-l' }, SET_LABELS[k]));
+      });
+      const nameInput = h('input', {
+        type: 'text', class: 'gb-ss-name', 'aria-label': `Name of the syntax set ${t.name}`, value: t.name,
+        onchange: ev => {
+          const name = String(ev.target.value).trim();
+          if (name && name !== t.name) ctx.post({ type: 'saveSyntaxSet', id: t.id, name, colors: t.colors });
+        },
+      });
+      const makeDefault = t.isDefault
+        ? h('span', { class: 'gb-ss-default muted' }, 'Default for new designs')
+        : h('button', { type: 'button', class: 'secondary gb-ss-make-default', onclick: () => ctx.post({ type: 'setDefaultSyntaxSet', id: t.id }) }, 'Make default');
+      const del = h('button', {
+        type: 'button', class: 'secondary gb-ss-delete',
+        title: using ? 'Asks first: the themes on this set go back to their palette\'s code colors' : 'Deletes this syntax set',
+        onclick: () => ctx.post({ type: 'deleteSyntaxSet', id: t.id }),
+      }, 'Delete set');
+      return h('div', { class: 'gb-ss' },
+        h('p', { class: 'gb-ss-use muted' },
+          `Used by ${using} saved theme${using === 1 ? '' : 's'}. A color changed here changes every theme on this set; a palette change leaves these colors alone.`),
+        h('div', { class: 'gb-ss-colors' }, ...pickers),
+        h('div', { class: 'gb-ss-actions' }, h('label', { class: 'gb-ss-rename' }, 'Name ', nameInput), makeDefault, del));
+    }
+    /**
+     * Save New Set: names the code colors as drawn now, or the draft's colors when there is a
+     * draft, and sends them to the host as a new set; Enter in the name saves too. Saving a draft
+     * drops it and leaves Code colors where it was.
+     */
+    function saveAsRow() {
+      const saveNew = () => {
+        const name = String(input.value).trim();
+        if (!name) { input.focus(); return; }
+        const d = syntaxDraft.value;
+        ctx.post({ type: 'saveSyntaxSet', name, colors: d ? { ...d.colors } : drawnSetColors() });
+        input.value = '';
+        if (d) {
+          syntaxDraft.value = null;
+          redraw();
+        }
+      };
+      const input = h('input', {
+        type: 'text', class: 'gb-ss-new-name', 'aria-label': 'Name for a new syntax set', placeholder: 'Enter name for new syntax set',
+        value: draft ? draft.name : undefined,
+        onkeydown: ev => { if (ev.key === 'Enter') { ev.preventDefault(); saveNew(); } },
+      });
+      const button = h('button', {
+        type: 'button', class: 'secondary gb-ss-save-as', title: 'Keeps the code colors shown here as a syntax set any theme can use',
+        onclick: saveNew,
+      }, 'Save New Set');
+      return h('div', { class: 'gb-ss-new' }, input, button);
+    }
+
+    /**
+     * Makes each colored word of the Syntax code sample point at the control that sets its color:
+     * a click outlines that control (a set's color cell, or the palette's Colors pick) and
+     * scrolls it into view. A word with no control here says why in its tooltip.
+     */
+    function linkSample(sample, box) {
+      const SW_KEY = { kw: 'keyword', fn: 'function', str: 'string', type: 'type', num: 'number' };
+      const RULE_KEY = {
+        Comment: 'comment', Tag: 'tag', Attribute: 'attribute', Variable: 'variable', Property: 'property',
+        Constant: 'constant', Operator: 'operator', Regex: 'regex', 'Keyword operator': 'keyword',
+      };
+      const targetOf = span => {
+        const key = span.dataset.swatch ? SW_KEY[span.dataset.swatch] : RULE_KEY[span.dataset.rule];
+        if (!key) return null;
+        if (set || draft) return box.querySelector(`.gb-ss-color[data-key="${key}"]`);
+        // From this palette: the Colors row of the palette role the word draws in, if any.
+        const role = span.dataset.swatch || span.dataset.paletteSwatch;
+        const select = role ? box.querySelector(`.gb-rf-syntax[data-swatch="${role}"]`) : null;
+        return select ? select.closest('.gb-rf-pick') : null;
+      };
+      for (const span of sample.querySelectorAll('[data-swatch], [data-rule]')) {
+        const key = span.dataset.swatch ? SW_KEY[span.dataset.swatch] : RULE_KEY[span.dataset.rule];
+        const name = key ? SET_LABELS[key] : '';
+        span.classList.add('gb-rf-code-link');
+        span.title = targetOf(span) ? `${name}: click to show the color that draws it`
+          : span.dataset.rule === 'Comment' ? `${name}: the theme's muted text color on From this palette`
+            : `${name}: the editor text color on From this palette; a syntax set can color it`;
+      }
+      sample.addEventListener('click', ev => {
+        const span = ev.target instanceof Element ? ev.target.closest('[data-swatch], [data-rule]') : null;
+        if (!span) return;
+        for (const el of box.querySelectorAll('.gb-ss-hl')) el.classList.remove('gb-ss-hl');
+        for (const el of sample.querySelectorAll('.gb-rf-code-on')) el.classList.remove('gb-rf-code-on');
+        const target = targetOf(span);
+        if (!target) return;
+        span.classList.add('gb-rf-code-on');
+        target.classList.add('gb-ss-hl');
+        if (typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'nearest' });
+      });
+    }
+
     /** The family's own setting, or null for Status and Terminal. */
     function familySetting(id) {
       const last = candidate.colors.length - 1;
       if (id === 'syntax') {
         const order = roles.syntax || [0, 1, 2, 3, 4];
-        const picks = settingRow(label('Colors'), ...['kw', 'fn', 'str', 'type', 'num'].map((sw, i) => {
+        // One row per code role: its name, then one option per palette color, then the color as
+        // the theme draws it now. Each option shows "Aa" in the color that pick would draw, on
+        // the editor background, over a strip of the raw palette color: the builder lifts every
+        // code color to 4.5:1 and pushes one too close to an earlier role's lighter, so the
+        // drawn color can differ a lot from the palette color it starts from.
+        const B = Builder();
+        const bg = String(theme.sw.bg).slice(0, 7);
+        const drawnFor = (i, j, sw) => {
+          const o = order.slice();
+          o[i] = j;
+          return String(B.swatches(theme.entry, { ...theme.chrome, syntax: o }, s.edits)[sw]).slice(0, 7);
+        };
+        const picks = h('div', { class: 'gb-rf-picks' }, label('Colors'), ...['kw', 'fn', 'str', 'type', 'num'].map((sw, i) => {
           const current = order[i] % candidate.colors.length;
-          const select = h('select', {
-            class: 'gb-rf-syntax', 'data-swatch': sw, 'aria-label': `${roleName(sw)}: palette color`,
-            onchange: ev => {
-              const next = order.slice();
-              next[i] = Number(ev.target.value);
-              setting(() => { s.syntax = next; }, `.gb-rf-syntax[data-swatch="${sw}"]`);
-            },
-          }, candidate.colors.map((hex, j) => h('option', { value: String(j), selected: j === current }, `${j + 1}`)));
-          // The color as the theme draws it, lifted for readability, as text on the editor background.
-          return h('span', { class: 'gb-rf-pick' }, h('span', { class: 'gb-rf-pick-l' }, roleName(sw)), select,
+          const group = h('span', { class: 'gb-rf-syntax', 'data-swatch': sw, role: 'radiogroup', 'aria-label': `${roleName(sw)}: palette color` },
+            candidate.colors.map((hex, j) => {
+              const drawn = drawnFor(i, j, sw);
+              const aa = h('span', { class: 'gb-rf-opt-aa', 'data-color': drawn }, 'Aa');
+              aa.style.color = drawn;
+              const b = h('button', {
+                type: 'button', class: 'secondary gb-rf-swatch-opt', role: 'radio', 'aria-checked': String(j === current), 'data-index': String(j),
+                title: `${roleName(sw)} from palette color ${j + 1} (${hex}), drawn as ${drawn}`,
+                onclick: () => {
+                  if (j === current) return;
+                  const next = order.slice();
+                  next[i] = j;
+                  setting(() => { s.syntax = next; }, `.gb-rf-syntax[data-swatch="${sw}"] [data-index="${j}"]`);
+                },
+              }, aa, h('span', { class: 'gb-rf-opt-n' }, String(j + 1)));
+              b.style.background = bg;
+              b.style.borderBottomColor = hex;
+              return b;
+            }));
+          return h('span', { class: 'gb-rf-pick' }, h('span', { class: 'gb-rf-pick-l' }, roleName(sw)), group,
             roleSample(sw, theme.sw[sw], theme.sw, roleName, 'gb-rf-pick-sample'));
         }));
-        return h('div', { class: 'gb-rf-syntax-set' }, picks, codeSample(theme.sw));
+        // With a draft, the sample draws the draft's colors as the builder draws a set's: lifted
+        // to 4.5:1, with the design's own edits applied as they would be on a set.
+        const drawn = draft
+          ? (ch => ({ sw: B.swatches(theme.entry, ch, s.edits), tokens: B.tokenColors(theme.entry, ch, s.edits) }))({ ...theme.chrome, syntaxColors: draft.colors })
+          : theme;
+        const sample = codeSample(drawn.sw, drawn.tokens);
+        const box = h('div', { class: 'gb-rf-syntax-set' }, sourceRow(), startRow(), draft ? draftEditor(draft) : set ? setEditor(set) : picks, sample, saveAsRow());
+        linkSample(sample, box);
+        return box;
       }
       if (id === 'surfaces') {
         const word = v => (v === 1 ? 'Standard' : `${v.toFixed(1)}x`);
@@ -1555,8 +1897,9 @@
      * One role as a row (R4-1): one line, a heading button with its color, name, what it is for and
      * how many VS Code colors use it, so a family scans as an even list (R4-3). The parts of the
      * window it colors, with a count each, are in the button's tooltip; the open row lists every
-     * color it draws, grouped by those parts, under the role's editor (roleEditor). Hovering or focusing a row
-     * outlines its parts in the Theme Preview window (R4-2); leaving it goes back to the open role.
+     * color it draws, grouped by those parts, under the role's editor (roleEditor). Pointing at a row
+     * does nothing in the Theme Preview window, so it never jumps under the pointer: the open role's
+     * parts stay outlined there (R4-2), and only Show where scrolls the window to them.
      */
     function roleRow(sw) {
       const count = keyCount(sw);
@@ -1580,14 +1923,7 @@
       h('span', { class: 'gb-role-about' }, about),
       h('span', { class: 'gb-role-count' },
         h('span', { class: 'gb-role-n' }, count ? String(count) : 'code'), count ? ` ${count === 1 ? 'color' : 'colors'}` : ' only'));
-      const keys = B.KEY_GROUPS[sw] || [];
-      const pointAt = () => highlightRole(ctx, keys);
-      const pointBack = () => highlightRole(ctx, rolesUi.open ? B.KEY_GROUPS[rolesUi.open] || [] : []);
-      return h('div', {
-        class: open ? 'gb-role-row gb-role-open' : 'gb-role-row', 'data-swatch': sw,
-        onmouseenter: pointAt, onmouseleave: pointBack,
-        onfocusin: pointAt, onfocusout: ev => { if (!ev.currentTarget.contains(ev.relatedTarget)) pointBack(); },
-      }, head, open ? roleEditor(sw) : null);
+      return h('div', { class: open ? 'gb-role-row gb-role-open' : 'gb-role-row', 'data-swatch': sw }, head, open ? roleEditor(sw) : null);
     }
 
     /** The open role's editor: its color, Reset when edited, and Show where. Escape closes it. */
@@ -1689,10 +2025,10 @@
       row.append(h('div', { class: 'gb-rf-roles' }, fam.roles.map(roleRow)));
       return row;
     });
-    // The open role stays outlined in the preview; with none open, nothing is.
+    // The open role stays outlined in the preview, without scrolling it; with none open, nothing is.
     highlightRole(ctx, rolesUi.open ? B.KEY_GROUPS[rolesUi.open] || [] : []);
     return [
-      h('p', { class: 'gb-rf-intro muted' }, 'Every color in the theme belongs to a role. Each family below is made from your palette in one way; change the family, or open a role and change it alone. Point at a role to see which parts of the window it colors, outlined in the preview window too; open it to change it and see every color it draws.'),
+      h('p', { class: 'gb-rf-intro muted' }, 'Every color in the theme belongs to a role. Each family below is made from your palette in one way; change the family, or open a role and change it alone. Open a role to change it and see every color it draws; its parts are outlined in the preview window, and Show where scrolls there. Click any part in the preview window to open its colors in step 5.'),
       ...rows,
     ];
   }
@@ -1794,7 +2130,7 @@
       });
       return el;
     };
-    const { chrome, entry } = inputsOf(candidate, s);
+    const { chrome, entry } = inputsOf(candidate, s, setsOf(ctx));
     const swFor = over => Builder().swatches(entry, { ...chrome, ...over }, s.edits);
     const example = (cls, name, about, id, picked, onclick, sw) => radio(`${cls} gb-ex-pick`, `${name}: ${about}`, id, picked, onclick,
       miniWindow(sw), h('span', { class: 'gb-ex-text' }, h('span', { class: 'gb-ex-name' }, name), h('small', { class: 'gb-ex-about muted' }, about)));
@@ -1921,13 +2257,15 @@
   }
 
   /**
-   * The Roles step's settings in the state (syntax, depth, text), cleaned by the builder, with
-   * each one left out while it is at its default, so a design made without touching them saves
-   * and tries as it always did. Syntax [0, 1, 2, 3, 4] is the default order.
+   * The Roles step's settings in the state (syntax, depth, text, the syntax set's id), cleaned by
+   * the builder, with each one left out while it is at its default, so a design made without
+   * touching them saves and tries as it always did. Syntax [0, 1, 2, 3, 4] is the default order.
+   * Save theme's design, Try's settings and the loads (takeRoleSettings) all go through here.
    */
   function roleSettingsOf(s) {
     const c = Builder().cleanChrome(s);
     const out = {};
+    if (typeof s.syntaxSet === 'string' && s.syntaxSet) out.syntaxSet = s.syntaxSet;
     if (c.syntax && c.syntax.some((v, i) => v !== i)) out.syntax = c.syntax;
     if (c.depth !== 1) out.depth = c.depth;
     if (c.text !== 'standard') out.text = c.text;
@@ -1945,6 +2283,7 @@
     delete ui.depth;
     delete ui.text;
     delete ui.accentGroups;
+    delete ui.syntaxSet;
     Object.assign(ui, c);
   }
 
@@ -2036,11 +2375,9 @@
         ctx.post({
           type: 'applyPalette',
           entry: { name: draft.name.trim() || defaultName(candidate), colors: candidate.colors.slice(), base: baseHexOf(candidate) },
-          chrome: { index: chromeIndex, ...(s.accentColor ? { color: s.accentColor } : {}), surfaces: s.surfaces, frame: { ...s.frame }, ...roleSettingsOf(s) },
+          chrome: { index: chromeIndex, ...(s.accentColor ? { color: s.accentColor } : {}), surfaces: s.surfaces, frame: { ...s.frame }, ...roleSettingsOf(s), ...setChrome(setsOf(ctx), s) },
           edits: s.edits,
           settings,
-          // The groups the preview draws, so the Try looks like the preview.
-          groups: previewGroups(ctx, s),
         });
         setResult('Tried in VS Code', 'try');
         showResult();
@@ -2116,132 +2453,7 @@
     }));
   }
 
-  /** The widget card each style group family is drawn on in the Style groups mode's stage. */
-  const FAMILY_CARDS = { tabs: 'tabs', lists: 'lists', buttons: 'buttons', editorText: 'editor-text' };
-  /** Whether the Style groups mode is open; never saved in webview state. */
-  let groupsMode = false;
-  /** Whether the mode's New group disclosure is open. */
-  let newGroupOpen = false;
-
-  /**
-   * The Style groups mode's task column (CONTRACT-v4 section 3, level 3): the saved groups, one
-   * line each with On, name and family, a click on the line showing Load and Delete; then a New
-   * group disclosure holding Family and one role select per key or token rule. Load opens New
-   * group filled. The host saves, switches and deletes; Delete asks there first. Returns the
-   * column and, for the step 6 bar, the Group name input and Save group.
-   * `redraw` rebuilds the mode; `redrawStage` redraws only its card.
-   */
-  function styleGroupsMode(ctx, redraw, redrawStage) {
-    const s = stateOf(ctx);
-    const B = Builder();
-    const families = B.GROUP_FAMILIES;
-    const editorRoles = Object.keys(B.SWATCHES).filter(name => B.SWATCHES[name][2] === 'editor');
-    const d = s.groupDraft;
-    const family = families[d.family];
-    const familySelect = h('select', {
-      class: 'gb-sg-family', 'aria-label': 'Family',
-      onchange: ev => {
-        // Another family has other rows, so its roles start empty.
-        s.groupDraft = { family: ev.target.value, name: d.name, roles: {} };
-        save(ctx);
-        redraw();
-        const again = /** @type {HTMLElement | null} */ (document.querySelector('.gb-sg-family'));
-        if (again) again.focus();
-      },
-    }, Object.entries(families).map(([id, f]) => h('option', { value: id, selected: id === d.family }, f.label)));
-    const roleSelect = name => {
-      const select = h('select', {
-        class: 'gb-sg-role', 'aria-label': `${name} role`,
-        onchange: ev => {
-          const roles = { ...s.groupDraft.roles };
-          if (ev.target.value) roles[name] = ev.target.value; else delete roles[name];
-          s.groupDraft = { ...s.groupDraft, roles };
-          save(ctx);
-          redrawStage();
-        },
-      },
-      h('option', { value: '' }, "Theme's own"),
-      editorRoles.map(role => h('option', { value: role }, B.SWATCHES[role][0])));
-      select.value = d.roles[name] || '';
-      return select;
-    };
-    const rows = [...family.keys, ...family.tokens].map(name =>
-      h('div', { class: 'gb-sg-row', 'data-name': name }, h('code', null, name), roleSelect(name)));
-
-    const saveButton = h('button', {
-      class: 'gb-sg-save secondary',
-      onclick: () => {
-        const g = s.groupDraft;
-        if (!g.name.trim()) return;
-        ctx.post({ type: 'saveGroup', name: g.name.trim(), family: g.family, roles: { ...g.roles } });
-      },
-    }, 'Save group');
-    const syncSave = () => {
-      const empty = !s.groupDraft.name.trim();
-      saveButton.disabled = empty;
-      saveButton.title = empty ? 'Name the group to save it' : 'Saves this group; one group per family is on at a time';
-    };
-    const nameInput = h('input', {
-      type: 'text', class: 'gb-sg-name', 'aria-label': 'Group name', placeholder: 'Name this group', value: d.name,
-      oninput: ev => {
-        s.groupDraft = { ...s.groupDraft, name: ev.target.value };
-        syncSave();
-        save(ctx);
-      },
-    });
-    syncSave();
-
-    const saved = groupsOf(ctx);
-    const act = (label, action, onclick) => h('button', { class: 'secondary', 'data-action': action, onclick }, label);
-    const savedRow = g => {
-      const on = h('input', {
-        type: 'checkbox', 'data-action': 'on', 'aria-label': `${g.name} on`,
-        onchange: ev => ctx.post({ type: 'setGroupOn', id: g.id, on: ev.target.checked }),
-      });
-      on.checked = g.on === true;
-      const actions = h('div', { class: 'gb-sg-actions' },
-        act('Load', 'load', () => {
-          s.groupDraft = { family: g.family, name: g.name, roles: { ...(g.roles || {}) } };
-          newGroupOpen = true;
-          save(ctx);
-          redraw();
-        }),
-        act('Delete', 'delete', () => ctx.post({ type: 'deleteGroup', id: g.id })));
-      actions.hidden = true;
-      const toggle = h('button', {
-        class: 'secondary gb-sg-toggle', 'aria-expanded': 'false', title: 'Show Load and Delete',
-        onclick: () => {
-          actions.hidden = !actions.hidden;
-          toggle.setAttribute('aria-expanded', String(!actions.hidden));
-        },
-      },
-      h('span', { class: 'gb-pl-row-name' }, g.name),
-      h('span', { class: 'gb-sg-family-name muted' }, families[g.family] ? families[g.family].label : g.family));
-      return h('div', { class: 'gb-sg-saved', 'data-id': g.id }, h('label', { class: 'gb-sg-on' }, on, ' On'), toggle, actions);
-    };
-    const list = h('div', { class: 'gb-sg-list' },
-      h('h3', { class: 'gb-sg-h' }, `Saved groups (${saved.length})`),
-      saved.length ? saved.map(savedRow) : h('p', { class: 'muted gb-sg-empty' }, 'No style groups yet. Build one under New group and click Save group.'));
-    const fresh = h('details', { class: 'gb-sg-new' },
-      h('summary', null, 'New group'),
-      h('p', { class: 'muted gb-sg-about' }, "A group draws a family's colors from the theme roles you pick. A group that is on applies to every saved theme you use, each in its own colors; one per family is on at a time. A single color you edited in a theme still wins."),
-      fieldRow('Family', [familySelect]),
-      h('div', { class: 'gb-sg-rows' }, rows));
-    fresh.open = newGroupOpen;
-    fresh.addEventListener('toggle', () => { newGroupOpen = fresh.open; });
-    return { column: h('div', { class: 'gb-sg' }, list, fresh), nameInput, saveButton };
-  }
-
   // ------------------------------------------------------------------ render
-
-  /** Whether the Lab root was last at least 75rem wide; a redraw keeps the layout it had. */
-  let wide = false;
-
-  /** 75rem in pixels: from this width the Lab is two panes (palette.css uses the same breakpoint). */
-  function wideFrom() {
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    return 75 * rem;
-  }
 
   /** A step's numbered heading; `state` is the span that carries the step's one-line state. */
   function stepHead(n, title, state) {
@@ -2267,8 +2479,7 @@
    * The Theme Lab page: the Preview card (whether the Theme Preview window is open, and Open
    * Preview), steps 1, 2 and 3, step 4 (Roles), step 5 (Edit) and the step 6
    * bar. The preview itself is drawn only in the Theme Preview window (src/themePreviewPanel.ts).
-   * From 75rem the page is two panes, the steps and the bar on the left and the Preview card
-   * and steps 4 and 5 on the right; narrower, one column. `ctx.detached` says whether the window is open.
+   * One column at every width. `ctx.detached` says whether the window is open.
    */
   function render(ctx) {
     const s = stateOf(ctx);
@@ -2545,70 +2756,16 @@
       grid.replaceChildren(...build());
     }
 
-    /**
-     * The Style groups mode: the task column becomes the groups editor, the stage a temporary
-     * view of the draft family's card alone, and the bar Group name, Save group and Try in VS
-     * Code. The view does not write the stage tab, so Back to design finds it as it was.
-     */
-    function buildGroupsMode() {
-      const candidate = candidateOf(s);
-      const cardView = h('div', { class: 'gb-preview gb-sg-stage' });
-      const familyName = h('span', { class: 'gb-sg-stage-name' });
-      function drawGroupStage() {
-        const theme = themeOf(candidate, s, previewGroups(ctx, s));
-        const gctx = galleryContext(theme.colors, theme.tokens, ctx.modernUI);
-        const d = s.groupDraft;
-        const fam = Builder().GROUP_FAMILIES[d.family];
-        familyName.textContent = `Style group preview: ${fam ? fam.label : d.family}`;
-        cardView.replaceChildren(widgetCards(theme, gctx, [FAMILY_CARDS[d.family] || d.family], () => {}).node);
-      }
-      drawGroupStage();
-      const sg = styleGroupsMode(ctx, rebuild, drawGroupStage);
-      const back = h('button', { class: 'secondary gb-sg-back', onclick: () => { groupsMode = false; rebuild(); } }, 'Back to design');
-      const decide = decisionControls(candidate, ctx);
-      const tryButton = decide[2].querySelector('.gb-pl-apply');
-      const bar = h('div', { class: 'gb-step gb-bar', 'data-step': '6' },
-        h('div', { class: 'gb-bar-main' },
-          h('span', { class: 'gb-step-n', 'aria-hidden': 'true' }, '6'),
-          h('label', { class: 'gb-bar-name' }, h('span', { class: 'gb-bar-l' }, 'Group'), sg.nameInput),
-          h('div', { class: 'gb-pl-buttons' }, sg.saveButton, tryButton)),
-        h('div', { class: 'gb-bar2' }, 'Theme ', h('span', { class: 'gb-bar-theme muted', title: 'The theme the group is tried with' }, draft.name)));
-      const tasks = h('section', { class: 'gb-tasks gb-sg-mode', 'aria-label': 'Style groups' },
-        h('div', { class: 'gb-step gb-sg-top' }, back, h('h2', { class: 'gb-sg-title' }, 'Style groups')), sg.column, bar);
-      const stage = h('section', { class: 'gb-stage', 'aria-label': 'Style group preview' },
-        h('div', { class: 'gb-tabrow' }, familyName), cardView);
-      root.toggleAttribute('data-wide', wide);
-      root.removeAttribute('data-docked');
-      root.removeAttribute('data-dock-min');
-      stepEls = [];
-      allToggle.hidden = true;
-      watch(stage, bar);
-      return wide ? [tasks, stage] : [stage, tasks];
-    }
-
     function build() {
-      if (groupsMode) return buildGroupsMode();
       syncControls();
       drawCandidate();
-      // The foot of the Saved tab opens the Style groups mode.
-      const groupsFoot = h('p', { class: 'gb-sg-foot muted' },
-        `Style groups (${groupsOf(ctx).length}), shared looks for one widget family`,
-        h('button', {
-          class: 'secondary', title: 'Opens the style groups in place of the design steps',
-          onclick: () => {
-            groupsMode = true;
-            picked = null;
-            dock.state = 'closed';
-            rebuild();
-          },
-        }, 'Edit style groups'));
       const startTabs = window.GB.tabs({
         label: 'Start from',
         selected: s.startTab,
         onSelect: id => { s.startTab = id; save(ctx); },
         tabs: [
           { id: 'wheel', label: 'Color wheel', panel: controls },
-          { id: 'saved', label: h('span', null, 'Saved themes', h('span', { class: 'count' }, String(library.length))), panel: h('div', { class: 'gb-pl-saved' }, libraryList(ctx, rerender), groupsFoot) },
+          { id: 'saved', label: h('span', null, 'Saved themes', h('span', { class: 'count' }, String(library.length))), panel: h('div', { class: 'gb-pl-saved' }, libraryList(ctx, rerender)) },
         ],
       });
       // startNote: why a fresh Theme Lab opened on the defaults (src/labStart.ts startConfig).
@@ -2645,32 +2802,16 @@
         stepHead(6, 'Try it, then save', resultEl), h('div', { class: 'gb-step-body' }, barSlot, bar2));
       stepEls = [...[s1, s2, s3].map((el, i) => ({ n: i + 1, el })), { n: 4, el: sRoles }, { n: 5, el: s4 }];
       allToggle.hidden = false;
-      // Wide, the Preview card, step 4 (Roles) and step 5 with its Edit dock have the second pane.
-      const tasks = h('section', { class: 'gb-tasks', 'aria-label': 'Design steps' }, ...(wide ? [s1, s2, s3, bar] : [previewCard, s1, s2, s3, sRoles, s4, bar]));
-      root.toggleAttribute('data-wide', wide);
-      // No preview band on this page (only the Style groups mode has one).
-      root.style.setProperty('--band-h', '0px');
+      const tasks = h('section', { class: 'gb-tasks', 'aria-label': 'Design steps' }, previewCard, s1, s2, s3, sRoles, s4, bar);
       syncSteps();
       watch(bar);
-      return wide ? [tasks, h('section', { class: 'gb-stage', 'aria-label': 'Preview, Roles and Edit' }, previewCard, sRoles, s4)] : [tasks];
+      return [tasks];
     }
 
-    // The wide flag follows the root's width; the band and bar heights are published for the
-    // scroll margins in palette.css.
+    // The bar's height is published for the scroll margins in palette.css.
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
       for (const entry of entries) {
-        if (entry.target === root) {
-          const width = entry.contentRect.width;
-          if (!(width > 0)) continue;
-          const next = width >= wideFrom();
-          if (next !== wide) {
-            wide = next;
-            grid.replaceChildren(...build());
-          }
-        } else {
-          const el = /** @type {HTMLElement} */ (entry.target);
-          root.style.setProperty(el.classList.contains('gb-bar') ? '--bar-h' : '--band-h', `${el.offsetHeight}px`);
-        }
+        root.style.setProperty('--bar-h', `${/** @type {HTMLElement} */ (entry.target).offsetHeight}px`);
       }
     });
     let watched = [];
@@ -2682,7 +2823,6 @@
     }
 
     grid.replaceChildren(...build());
-    if (ro) ro.observe(root);
     return root;
   }
 
@@ -2691,16 +2831,16 @@
   /**
    * The Theme Preview window's page (media/themePreview.js): one scrolling page of the Lab's
    * candidate, a Workbench section then a Widgets section with one card per widget family,
-   * every family in the gallery's order, drawn with the same candidate and style groups as the Lab. `ui` is the Lab's
-   * Palette Lab state, `groups` the saved style groups. A click on a drawn part posts
+   * every family in the gallery's order, drawn with the same candidate and syntax set as the Lab. `ui` is the Lab's
+   * Palette Lab state, `syntaxSets` the saved syntax sets. A click on a drawn part posts
    * { type: 'pickPart', part }, part being describePart's plain values, for the Lab to edit.
    * `modernUI` is VS Code's modern UI settings, which the Workbench drawing follows.
-   * @param {{ ui: any, groups?: any[], modernUI?: any, post: (message: any) => void }} ctx
+   * @param {{ ui: any, syntaxSets?: any[], modernUI?: any, post: (message: any) => void }} ctx
    */
   function renderPreview(ctx) {
     const s = stateOf(ctx);
     const candidate = candidateOf(s);
-    const theme = themeOf(candidate, s, previewGroups(ctx, s));
+    const theme = themeOf(candidate, s, setsOf(ctx));
     const gctx = galleryContext(theme.colors, theme.tokens, ctx.modernUI);
     const families = widgetFamilies();
     const workbenchSlot = h('div', { class: 'gb-pl-chrome' });

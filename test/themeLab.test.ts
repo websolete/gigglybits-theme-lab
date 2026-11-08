@@ -39,8 +39,8 @@ function load() {
 }
 
 const send = (data: any) => window.dispatchEvent(new MessageEvent('message', { data }));
-/** A library message with no saved themes or groups, as the host sends on 'ready'. */
-const sendLibrary = () => send({ type: 'library', themes: [], groups: [], hasFolder: false });
+/** A library message with no saved themes or syntax sets, as the host sends on 'ready'. */
+const sendLibrary = () => send({ type: 'library', themes: [], syntaxSets: [], hasFolder: false });
 
 const startTab = (id: string) =>
   document.querySelector<HTMLButtonElement>(`[role="tablist"][aria-label="Start from"] [data-tab="${id}"]`)!;
@@ -54,7 +54,7 @@ const selectedStart = () =>
 function previewPage(): HTMLElement {
   const states = postMessage.mock.calls.map(c => c[0]).filter(m => m.type === 'previewState');
   const last = states[states.length - 1];
-  return (window as any).GBPalette.renderPreview({ ui: last.palette, groups: last.groups, post: jest.fn() });
+  return (window as any).GBPalette.renderPreview({ ui: last.palette, syntaxSets: last.syntaxSets, post: jest.fn() });
 }
 
 /** Removes the page's window listeners so a second load() does not answer messages twice. */
@@ -119,7 +119,7 @@ describe('Theme Lab page', () => {
     save.click();
     const msg = posted('saveTheme')[0];
     expect(msg.name).toBe('Triad 210°');
-    send({ type: 'library', themes: [{ id: 's1', name: 'Triad 210°', slot: 1, design: msg.design, groups: [], savedAt: '2026-11-05T00:00:00.000Z' }], groups: [], hasFolder: false });
+    send({ type: 'library', themes: [{ id: 's1', name: 'Triad 210°', slot: 1, design: msg.design, savedAt: '2026-11-05T00:00:00.000Z' }], syntaxSets: [], hasFolder: false });
     expect(result()).toBe('Saved as Triad 210°');
     setHue('120');
     expect(result()).toBe('Unsaved changes');
@@ -153,7 +153,7 @@ describe('Theme Lab page', () => {
     const after = postMessage.mock.calls.slice(before).map(c => c[0]).filter(m => m.type === 'previewState');
     expect(after.length).toBeGreaterThan(0);
     expect(after[after.length - 1].palette.hue).toBe(123);
-    expect(Array.isArray(after[after.length - 1].groups)).toBe(true);
+    expect(Array.isArray(after[after.length - 1].syntaxSets)).toBe(true);
   });
 
   it('a pickPart from the Theme Preview window opens the Edit dock on the part, listing its keys', () => {
@@ -185,6 +185,22 @@ describe('Theme Lab page', () => {
     document.querySelector<HTMLButtonElement>('.gb-away .gb-away-open')!.click();
     expect(posted('openPreviewWindow')).toEqual([{ type: 'openPreviewWindow' }]);
     expect(posted('restoreInline')).toEqual([]);
+  });
+
+  it('{#lab-receives} lists the host\'s installedStarters under Installed themes in Start set from', () => {
+    sendLibrary();
+    const showInstalled = () => {
+      const b = document.querySelector<HTMLButtonElement>('.gb-ss-group[data-group="installed"]')!;
+      if (b.getAttribute('aria-pressed') !== 'true') { b.click(); }
+    };
+    const installedChips = () => [...document.querySelectorAll('.gb-ss-chip .gb-ex-name')].map(o => o.textContent);
+    showInstalled();
+    expect(installedChips()).toEqual([]);
+    expect(document.querySelector('.gb-ss-start-about')!.textContent).toBe('No dark themes installed');
+    const colors = Object.fromEntries(['keyword', 'function', 'string', 'type', 'number', 'comment', 'tag', 'attribute', 'variable', 'property', 'constant', 'operator', 'regex'].map(k => [k, '#d4d4d4']));
+    send({ type: 'installedStarters', starters: [{ id: 'Fixture Dark', label: 'Fixture Dark (localized)', extension: 'Fixture Themes', colors }] });
+    showInstalled();
+    expect(installedChips()).toEqual(['Fixture Dark (localized)']);
   });
 
   it('restores the Start from tab saved before the tab reloaded', () => {
@@ -291,18 +307,21 @@ describe('Theme Lab opening on the current theme and workspace color', () => {
     expect(document.querySelector<HTMLInputElement>('.gb-pl-name')!.value).toBe('copirate');
   });
 
-  it("draws the library message's switched-on groups and lists its groups in the Style groups box", () => {
-    sendLibrary();
-    const before = drawn('button.background');
-    send({
-      type: 'library', themes: [], hasFolder: false,
-      groups: [{ id: 'g1', name: 'Calm', family: 'buttons', roles: { 'button.background': 'deep' }, on: true, savedAt: '' }],
-    });
-    expect(drawn('button.background')).not.toBe(before);
-    expect(drawn('button.background')).toBe(drawn('sideBar.background'));
-    expect(document.querySelector('.gb-sg-foot')?.textContent).toContain('Style groups (1)');
-    [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Edit style groups')!.click();
-    expect(document.querySelector('.gb-sg-saved[data-id="g1"] .gb-pl-row-name')?.textContent).toBe('Calm');
+  it('{#default-on-fresh} the default palette start takes the default syntax set; a saved theme without one stays on its palette', () => {
+    const sets = [{ id: 'd1', name: 'Mine', colors: {}, isDefault: true, savedAt: '' }];
+    send({ type: 'library', themes: [], syntaxSets: sets, hasFolder: false });
+    send({ type: 'start', start: { note: 'No record of the last Try in VS Code, so the Lab starts from the default palette.' } });
+    const states = postMessage.mock.calls.map(c => c[0]).filter(m => m.type === 'previewState');
+    expect(states[states.length - 1].palette.syntaxSet).toBe('d1');
+  });
+
+  it('{#default-on-fresh} a saved theme start without a syntax set keeps From this palette even with a default set', () => {
+    const sets = [{ id: 'd1', name: 'Mine', colors: {}, isDefault: true, savedAt: '' }];
+    send({ type: 'library', themes: [], syntaxSets: sets, hasFolder: false });
+    const design = { mode: 'generated', rule: 'square', hue: 12, lightness: 0.6, chroma: 0.2, colors: ['#123456'], chromeIndex: 0, surfaces: 'neutral', frame: { index: 0, style: 'filled' }, edits: { swatches: {}, keys: {} } };
+    send({ type: 'start', start: { saved: { name: 'Alpha', design } } });
+    const states = postMessage.mock.calls.map(c => c[0]).filter(m => m.type === 'previewState');
+    expect(states[states.length - 1].palette).not.toHaveProperty('syntaxSet');
   });
 
   it('shows no "chrome" or "workspace identity" wording on any tab of the page or in the preview window', () => {

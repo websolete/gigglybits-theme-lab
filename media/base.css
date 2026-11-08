@@ -1,3 +1,6 @@
+/* Base styles for the Theme Lab and Theme Preview pages: spacing tokens, the page, inputs and
+   buttons in VS Code's colors, contrast badges, tabs and the copy toast. gallery.css, themeLab.css
+   and palette.css load after this file and build on it. */
 :root {
   --gb-space-1: 4px;
   --gb-space-2: 8px;
@@ -35,11 +38,6 @@ body {
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
 }
-.chip.warn-chip {
-  background: transparent;
-  color: var(--vscode-editorWarning-foreground);
-  border: 1px solid currentColor;
-}
 
 /* Controls */
 .controls {
@@ -54,7 +52,6 @@ body {
   background: var(--vscode-editor-background);
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
 }
-.controls .spacer { flex: 1; }
 /* Every text field takes VS Code's input colors; without them a field draws white. */
 input[type="search"], input[type="text"], input[type="number"], select {
   font: inherit;
@@ -118,8 +115,8 @@ details.section > summary {
   background: var(--vscode-editorWidget-background, transparent);
 }
 .card:hover { border-color: var(--vscode-focusBorder); }
-/* Translucent colors are laid over their usual surface by inspector.js, with a
-   narrow strip of the bare surface on the left for comparison. */
+/* A translucent color is laid over its usual surface, with a narrow strip of the bare surface
+   on the left for comparison. */
 .swatch {
   flex: 0 0 84px;
   height: 46px;
@@ -160,7 +157,6 @@ details.section > summary {
   color: var(--vscode-descriptionForeground);
 }
 .raw { opacity: 0.75; }
-.overridden { text-decoration: line-through; }
 
 /* Badges */
 .badge {
@@ -190,15 +186,6 @@ table.rules th, table.rules td {
 table.rules th { font-weight: 600; color: var(--vscode-descriptionForeground); }
 table.rules tbody tr { cursor: pointer; }
 table.rules tbody tr:hover { background: var(--vscode-list-hoverBackground); }
-.token-sample {
-  display: inline-block;
-  padding: 2px 6px;
-  font-family: var(--vscode-editor-font-family);
-  font-size: var(--vscode-editor-font-size);
-  background: var(--vscode-editor-background);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 
 /* Copy toast */
 .toast {

@@ -66,7 +66,7 @@ function renderWith(c: any, width?: number) {
 
 /** The Theme Preview window's page for the Lab state `c.ui`, as themePreview.js draws it. */
 function previewOf(c: any, post: jest.Mock = jest.fn()) {
-  return lab.renderPreview({ ui: c.ui, groups: c.groups, modernUI: c.modernUI, post });
+  return lab.renderPreview({ ui: c.ui, syntaxSets: c.syntaxSets, modernUI: c.modernUI, post });
 }
 
 /**
@@ -250,8 +250,7 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
     buttonFor(root, 'Try in VS Code').click();
     expect(c.post).toHaveBeenCalledTimes(1);
     const msg = c.post.mock.calls[0][0];
-    expect(Object.keys(msg).sort()).toEqual(['chrome', 'edits', 'entry', 'groups', 'settings', 'type']);
-    expect(msg.groups).toEqual([]);
+    expect(Object.keys(msg).sort()).toEqual(['chrome', 'edits', 'entry', 'settings', 'type']);
     expect(msg.entry).toEqual({ name: 'Triad 210°', colors: TRIAD, base: BASE });
     // An older fixed frame color comes in as a shift from the base, drawing the same color.
     const shifted = { color: TB.shiftFor('#336699', BASE), style: 'filled' };
@@ -514,21 +513,15 @@ describe('Palette Lab layout', () => {
 
   afterEach(() => { renderAt(880); });
 
-  it('{#region-order} wide, the task column holds steps 1 to 3 and the bar, and the stage the Preview card and steps 4 and 5; narrow, one column of the Preview card, steps 1 to 5 and the bar', () => {
+  it('{#region-order} at every width, one column of the Preview card, steps 1 to 5 and the bar', () => {
     const regions = (root: HTMLElement) => [...root.querySelector('.gb-lab-grid')!.children].map(el => el.className);
     const kids = (el: Element) => [...el.children].map(c => c.className);
-    const wideRoot = renderAt(1400);
-    expect(regions(wideRoot)).toEqual(['gb-tasks', 'gb-stage']);
-    expect(kids(wideRoot.querySelector('.gb-tasks')!)).toEqual(['gb-step gb-s1', 'gb-step gb-s2', 'gb-step gb-s3', 'gb-step gb-bar']);
-    expect(kids(wideRoot.querySelector('.gb-stage')!)).toEqual(['gb-step gb-away', 'gb-step gb-roles', 'gb-step gb-s4']);
-    expect(wideRoot.hasAttribute('data-wide')).toBe(true);
-
-    const narrow = renderAt(880);
-    expect(regions(narrow)).toEqual(['gb-tasks']);
-    expect(kids(narrow.querySelector('.gb-tasks')!))
-      .toEqual(['gb-step gb-away', 'gb-step gb-s1', 'gb-step gb-s2', 'gb-step gb-s3', 'gb-step gb-roles', 'gb-step gb-s4', 'gb-step gb-bar']);
-    expect(narrow.hasAttribute('data-wide')).toBe(false);
-    for (const root of [wideRoot, narrow]) {
+    for (const width of [1400, 880]) {
+      const root = renderAt(width);
+      expect(regions(root)).toEqual(['gb-tasks']);
+      expect(kids(root.querySelector('.gb-tasks')!))
+        .toEqual(['gb-step gb-away', 'gb-step gb-s1', 'gb-step gb-s2', 'gb-step gb-s3', 'gb-step gb-roles', 'gb-step gb-s4', 'gb-step gb-bar']);
+      expect(root.hasAttribute('data-wide')).toBe(false);
       expect(root.hasAttribute('data-detached')).toBe(false);
       expect(root.querySelector('.gb-preview, .gb-tabrow, .gb-pl-chrome, .gb-pl-scope')).toBeNull();
     }
@@ -770,8 +763,8 @@ describe('Palette Lab Edit dock', () => {
     expect(dockOf(renderWith(c, 1400))).toBeNull();
     const root = pickIn(c, CHAT_INPUT, 1400);
     expect(dockOf(root)).not.toBeNull();
-    // Wide, the dock is step 4 in the stage, under the Preview card.
-    expect(follows(root.querySelector('.gb-stage .gb-away')!, root.querySelector('.gb-stage .gb-s4 .gb-dock')!)).toBe(true);
+    // The dock is in step 5, after the Preview card.
+    expect(follows(root.querySelector('.gb-tasks .gb-away')!, root.querySelector('.gb-tasks .gb-s4 .gb-dock')!)).toBe(true);
     const rows = keyRows(root);
     expect(rows.length).toBeGreaterThanOrEqual(3);
     expect(expanded(root)).toEqual([rows[0].dataset.key]);
@@ -956,10 +949,17 @@ describe('Palette Lab step 4 Roles', () => {
   it('{#settings-ui} Keywords color 3, Depth 1.5 and Text High set the state, and the Keywords chip shows the builder\'s kw for that state', () => {
     const c: any = ctx();
     const root = lab.render(c);
-    const keywords = rolesOf(root).querySelector<HTMLSelectElement>('.gb-rf-syntax[data-swatch="kw"]')!;
-    expect([...keywords.options].map(o => o.textContent)).toEqual(['1', '2', '3', '4', '5']);
-    keywords.value = '2';
-    keywords.dispatchEvent(new Event('change'));
+    const keywords = rolesOf(root).querySelector<HTMLElement>('.gb-rf-syntax[data-swatch="kw"]')!;
+    const options = [...keywords.querySelectorAll<HTMLButtonElement>('.gb-rf-swatch-opt')];
+    expect(options.map(o => o.querySelector('.gb-rf-opt-n')!.textContent)).toEqual(['1', '2', '3', '4', '5']);
+    // Each option's strip is the palette color its number stands for; its "Aa" is the color the
+    // builder would draw Keywords in with that pick; the current one is checked.
+    const palette = GB.harmony(c.ui.rule, { hue: Math.round(c.ui.hue), lightness: Number(Number(c.ui.lightness).toFixed(2)), chroma: Number(Number(c.ui.chroma).toFixed(3)) }).map((d: any) => d.hex);
+    expect(options.map(o => GB.toHex(GB.parseColor(o.style.borderBottomColor)))).toEqual(palette);
+    const drawnKw = (j: number) => TB.swatches({ colors: palette, base: GB.oklchToHex({ l: 0.75, c: 0.13, h: 210 }) }, { index: 0, surfaces: 'neutral', frame: { index: 0, style: 'filled' }, syntax: [j, 1, 2, 3, 4] }, {}).kw;
+    expect(options.map(o => o.querySelector<HTMLElement>('.gb-rf-opt-aa')!.dataset.color)).toEqual(palette.map((_: string, j: number) => drawnKw(j)));
+    expect(options.map(o => o.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', 'false', 'false']);
+    options[2].click();
     const depth = rolesOf(root).querySelector<HTMLInputElement>('.gb-rf-depth')!;
     expect([depth.min, depth.max, depth.step]).toEqual(['0.5', '2', '0.1']);
     depth.value = '1.5';
@@ -988,16 +988,16 @@ describe('Palette Lab step 4 Roles', () => {
     expect(buttonFor(rolesOf(root), 'Show where')).toBeDefined();
   });
 
-  it('{#roles-placement} with the stage built, Roles sits in the stage before Edit, and a pick opens Edit and leaves Roles as it was', () => {
+  it('{#roles-placement} Roles sits before Edit, and a pick opens Edit and leaves Roles as it was', () => {
     const c: any = ctx({ ui: { sections: [1, 4] } });
     const root = renderWith(c, 1400);
-    const stage = root.querySelector<HTMLElement>('.gb-stage')!;
+    const stage = root.querySelector<HTMLElement>('.gb-tasks')!;
     const kids = [...stage.children].map(el => el.className);
     expect(kids.indexOf('gb-step gb-roles')).toBeGreaterThan(-1);
     expect(kids.indexOf('gb-step gb-roles')).toBeLessThan(kids.indexOf('gb-step gb-s4'));
     expect(stage.querySelector<HTMLElement>('.gb-roles > .gb-step-body')!.hidden).toBe(false);
     const picked = pickIn(c, CHAT_INPUT, 1400);
-    const roles = picked.querySelector<HTMLElement>('.gb-stage > .gb-roles')!;
+    const roles = picked.querySelector<HTMLElement>('.gb-tasks > .gb-roles')!;
     expect(roles.querySelector<HTMLElement>(':scope > .gb-step-body')!.hidden).toBe(false);
     expect(picked.querySelector<HTMLElement>('.gb-s4 > .gb-step-body')!.hidden).toBe(false);
     expect(c.ui.sections).toEqual([1, 4, 5]);
@@ -1009,7 +1009,7 @@ describe('Palette Lab step 4 Roles', () => {
     chipOf(again, 'raised').click();
     buttonFor(rolesOf(again), 'Show where').click();
     expect(fresh.post).toHaveBeenCalledWith({ type: 'showWhere', keys: TB.KEY_GROUPS.raised });
-    expect(again.querySelector<HTMLElement>('.gb-stage > .gb-roles > .gb-step-body')!.hidden).toBe(false);
+    expect(again.querySelector<HTMLElement>('.gb-tasks > .gb-roles > .gb-step-body')!.hidden).toBe(false);
     expect((fresh.ui as any).sections).toEqual([4]);
   });
 });
@@ -1171,13 +1171,6 @@ describe('Palette Lab collapsible steps', () => {
     expect(root.querySelector<HTMLElement>('.gb-bar > .gb-step-body')!.hidden).toBe(false);
   });
 
-  it('{#groups-mode-no-toggle} the Style groups mode hides Expand all, and Back to design shows it again', () => {
-    const root = renderWith(ctx(), 880);
-    buttonFor(root, 'Edit style groups').click();
-    expect(allToggle(root).hidden).toBe(true);
-    buttonFor(root, 'Back to design').click();
-    expect(allToggle(root).hidden).toBe(false);
-  });
 });
 
 describe('Theme Preview drawing fit', () => {
@@ -1555,195 +1548,204 @@ describe('Palette Lab saved themes', () => {
   });
 });
 
-describe('Palette Lab style groups', () => {
-  // The saved-theme tests above leave a loaded name in palette.js's module-level draft, which
-  // a palette change keeps; restoring a Try on a throwaway state clears it.
-  beforeEach(() => lab.restoreTry({}, { mode: 'generated', rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, chromeIndex: 0, surfaces: 'neutral' }));
-  const TRIAD =GB.harmony('triad', { hue: 210, lightness: 0.75, chroma: 0.13 }).map((d: { hex: string }) => d.hex);
-  /** The default candidate's swatches: Triad 210, accent color 1, neutral surfaces, a Filled frame in color 1. */
-  const SW = TB.swatches({ colors: TRIAD }, { index: 0, surfaces: 'neutral', frame: { index: 0, style: 'filled' } });
-  /** The color the stage draws a key in: its card's scope redefines the --vscode-* variables. */
-  const drawn = (root: HTMLElement, key: string) =>
-    root.querySelector<HTMLElement>('.gb-stage .gb-pl-scope')!.style.getPropertyValue(GB.varFor(key));
-  const box = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-sg')!;
-  const choose = (select: HTMLSelectElement, value: string) => {
-    select.value = value;
-    select.dispatchEvent(new Event('change'));
+describe('Palette Lab syntax sets', () => {
+  const COLORS = {
+    keyword: '#c792ea', function: '#82aaff', string: '#c3e88d', type: '#ffcb6b', number: '#f78c6c', comment: '#7f848e',
+    tag: '#f07178', attribute: '#ffcb6b', variable: '#eeffff', property: '#b2ccd6', constant: '#ff9cac', operator: '#89ddff', regex: '#c17e70',
   };
-  const familySelect = (root: HTMLElement) => box(root).querySelector<HTMLSelectElement>('.gb-sg-family')!;
-  const roleSelect = (root: HTMLElement, name: string) => box(root).querySelector<HTMLSelectElement>(`.gb-sg-row[data-name="${name}"] .gb-sg-role`)!;
-  /** Picks the option the user reads as `label`, such as 'Raised surface'. */
-  const chooseLabel = (select: HTMLSelectElement, label: string) =>
-    choose(select, [...select.options].find(o => o.textContent === label)!.value);
-  const enter = (root: HTMLElement) => buttonFor(root, 'Edit style groups').click();
-  const cards = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('.gb-stage [data-card]')].map(c => c.dataset.card);
-  const GROUPS = [
-    { id: 'g1', name: 'Calm', family: 'buttons', roles: { 'button.background': 'raised' }, on: false, savedAt: '2026-11-04T00:00:00.000Z' },
-    { id: 'g2', name: 'Wide tabs', family: 'tabs', roles: { 'tab.activeBackground': 'deep' }, on: true, savedAt: '2026-11-04T00:00:00.000Z' },
-  ];
-
-  it('closes the Style groups editor until asked for: the Saved tab\'s foot names the groups and offers Edit style groups', () => {
-    const root = lab.render(ctx({ groups: GROUPS }));
-    expect(root.querySelector('.gb-sg')).toBeNull();
-    const foot = root.querySelector('.gb-sg-foot')!;
-    expect(foot.textContent).toContain('Style groups (2), shared looks for one widget family');
-    expect(foot.closest('[role="tabpanel"]')!.getAttribute('data-tab')).toBe('saved');
-    expect(foot.querySelector('button')!.textContent).toBe('Edit style groups');
-  });
-
-  it('{#mode-enter} the mode lists the saved groups before New group, draws one tabs card, and the bar holds Group name, Save group and Try in VS Code', () => {
-    const root = lab.render(ctx({ groups: GROUPS }));
-    enter(root);
-    const tasks = root.querySelector<HTMLElement>('.gb-tasks')!;
-    expect(buttonFor(root, 'Back to design')).toBeDefined();
-    const list = tasks.querySelector('.gb-sg-list')!;
-    const fresh = tasks.querySelector('.gb-sg-new')!;
-    expect(follows(list, fresh)).toBe(true);
-    expect(fresh.querySelector('summary')!.textContent).toBe('New group');
-    expect(root.querySelector('.gb-s1')).toBeNull();
-    expect(cards(root)).toEqual(['tabs']);
-    const bar = root.querySelector<HTMLElement>('.gb-bar')!;
-    expect(bar.querySelector<HTMLInputElement>('input.gb-sg-name')!.getAttribute('aria-label')).toBe('Group name');
-    expect([...bar.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Save group', 'Try in VS Code']);
-    expect(bar.querySelector('.gb-bar-theme')!.textContent).toBe('Triad 210°');
-    const primary = [...root.querySelectorAll('button')].filter(b => !b.classList.contains('secondary') && b.getAttribute('role') !== 'tab').map(b => b.textContent);
-    expect(primary).toEqual(['Try in VS Code']);
-  });
-
-  it('{#editor-text-card} choosing the editorText family draws the editor-text card', () => {
-    const root = lab.render(ctx());
-    enter(root);
-    choose(familySelect(root), 'editorText');
-    expect(cards(root)).toEqual(['editor-text']);
-    choose(familySelect(root), 'lists');
-    expect(cards(root)).toEqual(['lists']);
-  });
-
-  it('{#exact-restore} Back to design restores the design page, and the preview window draws every family throughout', () => {
-    const c: any = ctx();
-    const all = (window as any).GBGallery.cards.map((x: any) => x.id).filter((id: string) => id !== 'workbench');
-    const previewCards = () => [...previewOf(c).querySelectorAll<HTMLElement>('.gb-pl-widgets-wrap [data-card]')].map(el => el.dataset.card);
-    const root = lab.render(c);
-    expect(cards(root)).toEqual([]);
-    expect(previewCards()).toEqual(all);
-    enter(root);
-    choose(familySelect(root), 'editorText');
-    expect(cards(root)).toEqual(['editor-text']);
-    expect(previewCards()).toEqual(all);
-    buttonFor(root, 'Back to design').click();
-    expect(cards(root)).toEqual([]);
-    expect(previewCards()).toEqual(all);
-    expect('widgets' in c.ui).toBe(false);
-    expect(root.querySelector('.gb-s1')).not.toBeNull();
-    expect(c.ui).not.toHaveProperty('groupsMode');
-  });
-
-  it('{#save-group} Save group posts the typed group name and the draft family', () => {
-    const c = ctx();
-    const root = lab.render(c);
-    enter(root);
-    const name = root.querySelector<HTMLInputElement>('.gb-bar input.gb-sg-name')!;
-    name.value = 'Quiet tabs';
-    name.dispatchEvent(new Event('input'));
-    buttonFor(root, 'Save group').click();
-    const msgs = c.post.mock.calls.map(call => call[0]).filter(m => m.type === 'saveGroup');
-    expect(msgs).toEqual([{ type: 'saveGroup', name: 'Quiet tabs', family: 'tabs', roles: {} }]);
-  });
-
-  it('has one row per family key with Theme\'s own first, then every Editor role', () => {
-    const root = lab.render(ctx());
-    enter(root);
-    expect([...familySelect(root).options].map(o => o.textContent)).toEqual(['Tabs', 'Lists and trees', 'Buttons', 'Editor text']);
-    choose(familySelect(root), 'buttons');
-    expect(box(root).querySelectorAll('.gb-sg-row')).toHaveLength(9);
-    const options = [...roleSelect(root, 'button.background').options].map(o => o.textContent);
-    expect(options[0]).toBe("Theme's own");
-    const editorRoles = Object.keys(TB.SWATCHES).filter((n: string) => TB.SWATCHES[n][2] === 'editor').map((n: string) => TB.SWATCHES[n][0]);
-    expect(options.slice(1)).toEqual(editorRoles);
-    choose(familySelect(root), 'editorText');
-    expect([...box(root).querySelectorAll('.gb-sg-row')].map(r => r.getAttribute('data-name')))
-      .toEqual(['editor.foreground', 'Keyword', 'Function', 'String', 'Type', 'Number', 'Comment']);
-  });
-
-  it('a Buttons draft mapping button.background to Raised surface draws it in the raised swatch', () => {
-    const root = lab.render(ctx());
-    enter(root);
-    choose(familySelect(root), 'buttons');
-    expect(drawn(root, 'button.background')).toBe(SW.accent);
-    chooseLabel(roleSelect(root, 'button.background'), 'Raised surface');
-    expect(drawn(root, 'button.background')).toBe(SW.raised);
-    expect(SW.raised).not.toBe(SW.accent);
-  });
-
-  it('Save group posts the name, the family and only the rows that name a role', () => {
-    const c = ctx();
-    const root = lab.render(c);
-    enter(root);
-    choose(familySelect(root), 'buttons');
-    chooseLabel(roleSelect(root, 'button.background'), 'Raised surface');
-    const name = root.querySelector<HTMLInputElement>('.gb-sg-name')!;
-    name.value = 'Calm buttons';
-    name.dispatchEvent(new Event('input'));
-    buttonFor(root, 'Save group').click();
-    const msgs = c.post.mock.calls.map(call => call[0]).filter(m => m.type === 'saveGroup');
-    expect(msgs).toEqual([{ type: 'saveGroup', name: 'Calm buttons', family: 'buttons', roles: { 'button.background': 'raised' } }]);
-  });
-
-  it('lists each saved group on one line with On, name and family; clicking the row shows Load and Delete, which act on that group', () => {
-    const c = ctx({ groups: GROUPS });
-    const root = lab.render(c);
-    enter(root);
-    const row = () => box(root).querySelector<HTMLElement>('.gb-sg-saved[data-id="g1"]')!;
-    expect(row().querySelector('.gb-pl-row-name')!.textContent).toBe('Calm');
-    expect(row().querySelector('.gb-sg-family-name')!.textContent).toBe('Buttons');
-    const actions = () => row().querySelector<HTMLElement>('.gb-sg-actions')!;
-    expect(actions().hidden).toBe(true);
-    row().querySelector<HTMLButtonElement>('.gb-sg-toggle')!.click();
-    expect(actions().hidden).toBe(false);
-    const on = row().querySelector<HTMLInputElement>('input[data-action="on"]')!;
-    expect(on.checked).toBe(false);
-    on.checked = true;
-    on.dispatchEvent(new Event('change'));
-    row().querySelector<HTMLButtonElement>('button[data-action="delete"]')!.click();
-    expect(c.post.mock.calls.map(call => call[0])).toEqual([
-      { type: 'setGroupOn', id: 'g1', on: true },
-      { type: 'deleteGroup', id: 'g1' },
-    ]);
-    row().querySelector<HTMLButtonElement>('button[data-action="load"]')!.click();
-    expect(familySelect(root).value).toBe('buttons');
-    expect(roleSelect(root, 'button.background').value).toBe('raised');
-    expect(box(root).querySelector<HTMLDetailsElement>('.gb-sg-new')!.open).toBe(true);
-    expect(root.querySelector<HTMLInputElement>('.gb-sg-name')!.value).toBe('Calm');
-  });
-
-  it('draws a group that is on with no draft, and a draft takes the place of the on group of its family', () => {
-    const on = [{ ...GROUPS[0], on: true }];
-    const root = lab.render(ctx({ groups: on }));
-    enter(root);
-    choose(familySelect(root), 'buttons');
-    expect(drawn(root, 'button.background')).toBe(SW.raised);
-    chooseLabel(roleSelect(root, 'button.background'), 'Deep surface');
-    expect(drawn(root, 'button.background')).toBe(SW.deep);
-    chooseLabel(roleSelect(root, 'button.background'), "Theme's own");
-    expect(drawn(root, 'button.background')).toBe(SW.raised);
-  });
-
-  it('Try in VS Code sends a Buttons draft as groups, with the on groups of other families', () => {
-    const c = ctx({ groups: GROUPS });
-    const root = lab.render(c);
-    enter(root);
-    choose(familySelect(root), 'buttons');
-    chooseLabel(roleSelect(root, 'button.background'), 'Raised surface');
+  const SETS = [{ id: 's1', name: 'Night', colors: COLORS, isDefault: false, savedAt: '' }];
+  const setHue = (root: HTMLElement, value: string) => {
+    const hue = root.querySelector<HTMLInputElement>('.gb-pl-hue')!;
+    hue.value = value;
+    hue.dispatchEvent(new Event('input'));
+  };
+  /** Clicks Try in VS Code and returns what it posted. */
+  const tryMsg = (c: any, root: HTMLElement) => {
+    c.post.mockClear();
     buttonFor(root, 'Try in VS Code').click();
-    const msg = c.post.mock.calls.map(call => call[0]).find(m => m.type === 'applyPalette');
-    expect(msg.groups).toEqual([
-      { family: 'tabs', roles: { 'tab.activeBackground': 'deep' } },
-      { family: 'buttons', roles: { 'button.background': 'raised' } },
-    ]);
+    return c.post.mock.calls.find((call: any[]) => call[0].type === 'applyPalette')![0];
+  };
+  /** The token rule foregrounds of the theme a Try message builds, the same builder the Lab draws with. */
+  const tokenFgs = (msg: any) => TB.labSettings(msg.entry, msg.chrome, msg.edits).tokenColors.map((r: any) => [r.name, r.settings.foreground]);
+  const sourceButton = (root: HTMLElement, value: string) =>
+    root.querySelector<HTMLButtonElement>(`.gb-rf[data-family="syntax"] .gb-ke-seg[data-value="${value}"]`)!;
+
+  it('{#no-groups-mode} draws no style groups mode and no Edit style groups button', () => {
+    const root = lab.render(ctx({ syntaxSets: SETS }));
+    expect(root.querySelector('.gb-sg')).toBeNull();
+    expect(buttonFor(root, 'Edit style groups')).toBeUndefined();
+    // The search finds what it looks for: the syntax family's controls are drawn.
+    expect(sourceButton(root, 'palette')).not.toBeNull();
+  });
+
+  it('{#draft-ignored} a group draft left in the saved state changes nothing a Try sends', () => {
+    const draft = { family: 'buttons', name: 'Calm', roles: { 'button.background': 'raised' } };
+    const plain = ctx();
+    const withDraft = ctx({ ui: { groupDraft: draft } });
+    const a = tryMsg(plain, lab.render(plain));
+    const b = tryMsg(withDraft, lab.render(withDraft));
+    expect(b).toEqual(a);
+    expect(withDraft.ui).not.toHaveProperty('groupDraft');
+  });
+
+  it('{#try-uses-set} choosing a set sends its colors with the Try', () => {
+    const c = ctx({ syntaxSets: SETS });
+    let root = lab.render(c);
+    sourceButton(root, 's1').click();
+    root = lab.render(c);
+    const msg = tryMsg(c, root);
+    expect(msg.chrome.syntaxColors).toEqual(COLORS);
+    expect(msg.settings.syntaxSet).toBe('s1');
+  });
+
+  it('{#palette-swap-keeps-set} on a set, a hue change leaves every token rule foreground as it was', () => {
+    const c = ctx({ syntaxSets: SETS, ui: { syntaxSet: 's1' } });
+    const root = lab.render(c);
+    const before = tokenFgs(tryMsg(c, root));
+    setHue(root, '30');
+    const after = tokenFgs(tryMsg(c, lab.render(c)));
+    expect(after).toEqual(before);
+    expect(before.find((r: any[]) => r[0] === 'Tag')).toEqual(['Tag', COLORS.tag]);
+  });
+
+  it('{#palette-swap-follows} on From this palette, a hue change moves the Keyword foreground', () => {
+    const c = ctx();
+    const root = lab.render(c);
+    const kw = (msg: any) => tokenFgs(msg).find((r: any[]) => r[0] === 'Keyword')![1];
+    const before = kw(tryMsg(c, root));
+    setHue(root, '30');
+    expect(kw(tryMsg(c, lab.render(c)))).not.toBe(before);
+  });
+
+  it('{#save-as-set} Save New Set posts the code colors as drawn, from the palette', () => {
+    const c = ctx();
+    const root = lab.render(c);
+    const name = root.querySelector<HTMLInputElement>('.gb-ss-new-name')!;
+    name.value = 'Mine';
+    buttonFor(root, 'Save New Set').click();
+    const msg = c.post.mock.calls.find((call: any[]) => call[0].type === 'saveSyntaxSet')![0];
+    const built = TB.labSettings(tryMsg(c, root).entry, tryMsg(c, root).chrome, {});
+    const sw = TB.swatches(tryMsg(c, root).entry, tryMsg(c, root).chrome, {});
+    const fg = built.colors['editor.foreground'];
+    const comment = built.tokenColors.find((r: any) => r.name === 'Comment').settings.foreground;
+    expect(msg.name).toBe('Mine');
+    expect(msg.colors).toEqual({
+      keyword: sw.kw, function: sw.fn, string: sw.str, type: sw.type, number: sw.num, comment,
+      tag: fg, attribute: fg, variable: fg, property: fg, constant: sw.num, operator: fg, regex: sw.str,
+    });
+  });
+
+  it('Enter in the new set\'s name field saves it like Save New Set, and the field asks for a name', () => {
+    const c = ctx();
+    const root = lab.render(c);
+    const name = root.querySelector<HTMLInputElement>('.gb-ss-new-name')!;
+    expect(name.placeholder).toBe('Enter name for new syntax set');
+    name.value = 'Typed';
+    name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(c.post.mock.calls.filter((call: any[]) => call[0].type === 'saveSyntaxSet').map((call: any[]) => call[0].name)).toEqual(['Typed']);
+    expect(name.value).toBe('');
+  });
+
+  it('{#save-keeps-set} Save theme carries the set, and loading a saved theme on a set puts the Lab on it', () => {
+    const c = ctx({ syntaxSets: SETS, ui: { syntaxSet: 's1' } });
+    const root = lab.render(c);
+    const name = root.querySelector<HTMLInputElement>('.gb-pl-name')!;
+    name.value = 'On Night';
+    name.dispatchEvent(new Event('input'));
+    buttonFor(root, 'Save theme').click();
+    const saved = c.post.mock.calls.find((call: any[]) => call[0].type === 'saveTheme')![0];
+    expect(saved.design.syntaxSet).toBe('s1');
+    const fresh: any = ctx({ syntaxSets: SETS });
+    (lab as any).loadSaved(fresh.ui, { name: 'On Night', design: saved.design });
+    expect(fresh.ui.syntaxSet).toBe('s1');
+    (lab as any).loadSaved(fresh.ui, { name: 'Plain', design: { ...saved.design, syntaxSet: undefined } });
+    expect(fresh.ui).not.toHaveProperty('syntaxSet');
+  });
+
+  it('puts each set color\'s swatch first in one cell with its name, and a click on a code word outlines the cell that colors it', () => {
+    const c = ctx({ syntaxSets: SETS, ui: { syntaxSet: 's1' } });
+    const root = lab.render(c);
+    const fnCell = root.querySelector<HTMLElement>('.gb-ss-color[data-key="function"]')!;
+    expect(fnCell.firstElementChild!.classList.contains('gb-cp-trigger')).toBe(true);
+    expect(fnCell.querySelector('.gb-ss-l')!.textContent).toBe('Functions');
+    const word = root.querySelector<HTMLElement>('.gb-rf-code [data-swatch="fn"]')!;
+    expect(word.title).toBe('Functions: click to show the color that draws it');
+    word.click();
+    expect([...root.querySelectorAll('.gb-ss-hl')]).toEqual([fnCell]);
+    root.querySelector<HTMLElement>('.gb-rf-code [data-rule="Tag"]')!.click();
+    expect([...root.querySelectorAll('.gb-ss-hl')]).toEqual([root.querySelector('.gb-ss-color[data-key="tag"]')]);
+  });
+
+  it('on a set, the code sample shows every set color, and a click on any colored piece outlines its cell', () => {
+    const root = lab.render(ctx({ syntaxSets: SETS, ui: { syntaxSet: 's1' } }));
+    const KEY: Record<string, string> = {
+      kw: 'keyword', fn: 'function', str: 'string', type: 'type', num: 'number', Comment: 'comment', Tag: 'tag', Attribute: 'attribute',
+      Variable: 'variable', Property: 'property', Constant: 'constant', Operator: 'operator', Regex: 'regex', 'Keyword operator': 'keyword',
+    };
+    const pieces = [...root.querySelectorAll<HTMLElement>('.gb-rf-code [data-swatch], .gb-rf-code [data-rule]')];
+    const keys = new Set(pieces.map(p => KEY[p.dataset.swatch || p.dataset.rule || '']));
+    expect([...keys].sort()).toEqual(Object.keys(COLORS).sort());
+    for (const p of pieces) {
+      p.click();
+      const key = KEY[p.dataset.swatch || p.dataset.rule || ''];
+      expect({ text: p.textContent, outlined: [...root.querySelectorAll<HTMLElement>('.gb-ss-hl')].map(el => el.dataset.key) }).toEqual({ text: p.textContent, outlined: [key] });
+    }
+    // Brackets and plain text stay uncolored and say why.
+    const plain = [...root.querySelectorAll<HTMLElement>('.gb-rf-code .gb-rf-code-plain')];
+    expect(plain.map(p => p.textContent)).toEqual(expect.arrayContaining(['{', '}', '(', ')', 'Go']));
+    expect(plain.every(p => /never part of a syntax set/.test(p.title))).toBe(true);
+  });
+
+  it('on From this palette, an operator VS Code draws as a keyword points at the Keywords row; an accessor has no row', () => {
+    const root = lab.render(ctx());
+    const plus = [...root.querySelectorAll<HTMLElement>('.gb-rf-code [data-rule="Operator"]')].find(p => p.textContent === '+')!;
+    plus.click();
+    expect([...root.querySelectorAll('.gb-ss-hl')]).toEqual([root.querySelector('.gb-rf-syntax[data-swatch="kw"]')!.closest('.gb-rf-pick')]);
+    const dot = [...root.querySelectorAll<HTMLElement>('.gb-rf-code [data-rule="Operator"]')].find(p => p.textContent === '.')!;
+    expect(dot.title).toMatch(/editor text color on From this palette; a syntax set can color it/);
+    dot.click();
+    expect(root.querySelectorAll('.gb-ss-hl')).toHaveLength(0);
+  });
+
+  it('on a dark palette, each Colors option shows the color it would draw, which differs from the raw palette color', () => {
+    const DARK = ['#401459', '#53286e', '#6a3f86', '#81569f', '#996db9'];
+    const root = lab.render(ctx({ ui: { mode: 'pasted', pasted: DARK, syntax: [4, 1, 0, 3, 4] } }));
+    const options = [...root.querySelectorAll<HTMLButtonElement>('.gb-rf-syntax[data-swatch="str"] .gb-rf-swatch-opt')];
+    const shown = options.map(o => o.querySelector<HTMLElement>('.gb-rf-opt-aa')!.dataset.color);
+    const drawn = DARK.map((_, j) => {
+      const order = [4, 1, 0, 3, 4];
+      order[2] = j;
+      return TB.swatches({ colors: DARK, base: DARK[0] }, { index: 0, surfaces: 'neutral', frame: { index: 0, style: 'filled' }, syntax: order }, {}).str;
+    });
+    expect(shown).toEqual(drawn);
+    // Every dark color is lifted for readability, so no option draws its raw palette color.
+    expect(shown.filter((hex, j) => hex === DARK[j])).toEqual([]);
+    expect(options.map(o => GB.toHex(GB.parseColor(o.style.borderBottomColor)))).toEqual(DARK);
+  });
+
+  it('on From this palette, a click on a code word outlines its Colors pick; a comment has none to show', () => {
+    const root = lab.render(ctx());
+    root.querySelector<HTMLElement>('.gb-rf-code [data-swatch="str"]')!.click();
+    expect([...root.querySelectorAll('.gb-ss-hl')]).toEqual([root.querySelector('.gb-rf-syntax[data-swatch="str"]')!.closest('.gb-rf-pick')]);
+    const comment = root.querySelector<HTMLElement>('.gb-rf-code [data-rule="Comment"]')!;
+    expect(comment.title).toMatch(/muted text color/);
+    comment.click();
+    expect(root.querySelectorAll('.gb-ss-hl')).toHaveLength(0);
+  });
+
+  it('shows how many saved themes use the set, and posts Make default and Delete for it', () => {
+    const library = [{ id: 't1', name: 'A', slot: 1, design: { syntaxSet: 's1' }, savedAt: '' }, { id: 't2', name: 'B', slot: 2, design: {}, savedAt: '' }];
+    const c = ctx({ syntaxSets: SETS, library, ui: { syntaxSet: 's1' } });
+    const root = lab.render(c);
+    expect(root.querySelector('.gb-ss-use')!.textContent).toMatch(/^Used by 1 saved theme\./);
+    expect(root.querySelectorAll('.gb-ss-color')).toHaveLength(13);
+    buttonFor(root, 'Make default').click();
+    buttonFor(root, 'Delete set').click();
+    const types = c.post.mock.calls.map((call: any[]) => call[0]).filter((m: any) => m.type !== 'previewHighlight');
+    expect(types).toEqual([{ type: 'setDefaultSyntaxSet', id: 's1' }, { type: 'deleteSyntaxSet', id: 's1' }]);
   });
 });
 
-// Last in the file: these leave palette.js's module-level draft name set.
 describe('Palette Lab Name across palette changes', () => {
   const BASE = { mode: 'generated', rule: 'triad', hue: 30, lightness: 0.7, chroma: 0.12, chromeIndex: 0, surfaces: 'neutral' };
   const nameOf = (root: HTMLElement) => (root.querySelector('.gb-bar .gb-pl-name') as HTMLInputElement).value;
@@ -2108,17 +2110,20 @@ describe('Palette Lab Roles: what each role colors', () => {
     expect(border.querySelector('.gb-role-count')!.textContent).toBe(`${TB.KEY_GROUPS.border.length} colors`);
   });
 
-  it('{#role-hover-outline} pointing at a role asks the preview to outline its colors; leaving goes back to the open role, or to none', () => {
+  it('{#role-open-outline} pointing at or focusing a role leaves the preview alone; opening one outlines its colors, closing it clears them', () => {
     const c: any = ctx();
     const root = lab.render(c);
-    rowOf(root, 'border').dispatchEvent(new MouseEvent('mouseenter'));
-    rowOf(root, 'border').dispatchEvent(new MouseEvent('mouseleave'));
-    expect(highlights(c.post)).toEqual([TB.KEY_GROUPS.border, []]);
-    // An open role stays outlined after the pointer leaves another row.
+    const before = highlights(c.post).length;
+    for (const ev of ['mouseenter', 'mouseleave', 'focusin', 'focusout']) {
+      rowOf(root, 'border').dispatchEvent(new Event(ev, { bubbles: true }));
+    }
+    expect(highlights(c.post).length).toBe(before);
     rowOf(root, 'raised').querySelector<HTMLButtonElement>('.gb-role-chip')!.click();
+    expect(highlights(c.post).slice(-1)).toEqual([TB.KEY_GROUPS.raised]);
     rowOf(root, 'divider').dispatchEvent(new MouseEvent('mouseenter'));
-    rowOf(root, 'divider').dispatchEvent(new MouseEvent('mouseleave'));
-    expect(highlights(c.post).slice(2)).toEqual([TB.KEY_GROUPS.raised, TB.KEY_GROUPS.divider, TB.KEY_GROUPS.raised]);
+    expect(highlights(c.post).slice(-1)).toEqual([TB.KEY_GROUPS.raised]);
+    rowOf(root, 'raised').querySelector<HTMLButtonElement>('.gb-role-chip')!.click();
+    expect(highlights(c.post).slice(-1)).toEqual([[]]);
   });
 });
 
@@ -2201,5 +2206,212 @@ describe('Palette Lab Edit dock: plain names and samples', () => {
     expect(sample.dataset.kind).toBe('text');
     expect(sample.title).toContain('Error foreground on the editor background, as text');
     expect([...root.querySelectorAll('.gb-dock button')].some(b => /^Edits \(/.test(b.textContent || ''))).toBe(false);
+  });
+});
+
+describe('Palette Lab syntax set starters', () => {
+  const KEYS: string[] = TB.SYNTAX_SET_KEYS.slice();
+  const DRACULA = TB.SYNTAX_SCHEMES.find((s: any) => s.id === 'dracula');
+  const NORD = TB.SYNTAX_SCHEMES.find((s: any) => s.id === 'nord');
+  const all = (hex: string, over: Record<string, string> = {}) => ({ ...Object.fromEntries(KEYS.map(k => [k, hex])), ...over });
+  const INSTALLED = [
+    { id: 'Readable', label: 'Readable Dark', extension: 'Fixture Themes', colors: all('#d4d4d4') },
+    { id: 'Dim', label: 'Dim Comments', extension: 'Fixture Themes', colors: all('#d4d4d4', { comment: '#333333' }) },
+  ];
+  const syntaxBox = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-roles .gb-rf[data-family="syntax"]')!;
+  const groupButtons = (root: HTMLElement) => [...syntaxBox(root).querySelectorAll<HTMLButtonElement>('.gb-ss-group')];
+  const shownGroup = (root: HTMLElement) => groupButtons(root).find(b => b.getAttribute('aria-pressed') === 'true')!.dataset.group;
+  /** Shows the Start set from group `id` (installed, schemes or palette), as a user would. */
+  const showGroup = (root: HTMLElement, id: string) => {
+    const b = groupButtons(root).find(x => x.dataset.group === id)!;
+    if (b.getAttribute('aria-pressed') !== 'true') { b.click(); }
+  };
+  const chips =(root: HTMLElement) => [...syntaxBox(root).querySelectorAll<HTMLButtonElement>('.gb-ss-chip')];
+  const chipName = (chip: HTMLElement) => chip.querySelector('.gb-ex-name')!.textContent;
+  const moreButton = (root: HTMLElement) => syntaxBox(root).querySelector<HTMLButtonElement>('.gb-ss-more');
+  /** Picks the Start set from chip whose key is `value`, showing its group (and Show all) first, as a user would. */
+  const pickStarter = (root: HTMLElement, value: string) => {
+    showGroup(root, value.startsWith('installed:') ? 'installed' : value.startsWith('scheme:') ? 'schemes' : 'palette');
+    let chip = chips(root).find(c => c.dataset.key === value);
+    if (!chip && moreButton(root)) {
+      moreButton(root)!.click();
+      chip = chips(root).find(c => c.dataset.key === value);
+    }
+    expect(chip).toBeDefined();
+    chip!.click();
+  };
+  const draftLine = (root: HTMLElement) => syntaxBox(root).querySelector('.gb-ss-draft-line');
+  const draftPicker = (root: HTMLElement, k: string) => syntaxBox(root).querySelector<HTMLElement>(`.gb-ss-draft .gb-ss-color[data-key="${k}"] .gb-cp-trigger`)!;
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
+  const posted = (c: any) => c.post.mock.calls.map((call: any[]) => call[0]);
+  const installedKey = (t: any) => `installed:${t.extension}/${t.id}`;
+
+  it('{#menu-groups} {#chips-groups} Start set from shows Installed themes, Well-known schemes and From your palette, in that order, as chips', () => {
+    const root = lab.render(ctx({ installedStarters: INSTALLED }));
+    expect(groupButtons(root).map(b => b.firstChild!.textContent!.trim())).toEqual(['Installed themes', 'Well-known schemes', 'From your palette']);
+    expect(groupButtons(root).map(b => b.querySelector('.gb-ss-group-n')!.textContent)).toEqual(['2', String(TB.SYNTAX_SCHEMES.length), '2']);
+    expect(shownGroup(root)).toBe('installed');
+    expect(chips(root).map(chipName)).toEqual(INSTALLED.map(t => t.label));
+    showGroup(root, 'palette');
+    expect(chips(root).map(chipName)).toEqual(['Quiet', 'Harmony']);
+    // It sits right under the Code colors row.
+    const rows = [...syntaxBox(root).querySelectorAll('.gb-rf-set')];
+    expect(rows.findIndex(r => r.querySelector('.gb-ss-groups'))).toBe(rows.findIndex(r => r.querySelector('.gb-ke-seg[data-value="palette"]')) + 1);
+
+    const empty = lab.render(ctx({ installedStarters: [] }));
+    expect(shownGroup(empty)).toBe('schemes');
+    showGroup(empty, 'installed');
+    expect(chips(empty)).toEqual([]);
+    expect(syntaxBox(empty).querySelector('.gb-ss-start-about')!.textContent).toBe('No dark themes installed');
+  });
+
+  it('{#schemes-credited} each Well-known schemes chip names its scheme, author, license and source', () => {
+    const root = lab.render(ctx());
+    showGroup(root, 'schemes');
+    const shown = chips(root);
+    expect(shown.map(chipName)).toEqual(TB.SYNTAX_SCHEMES.map((s: any) => s.name));
+    for (const [i, s] of TB.SYNTAX_SCHEMES.entries()) {
+      const title = shown[i].title;
+      for (const part of [s.name, s.author, s.license, s.url]) { expect([s.id, title.includes(part)]).toEqual([s.id, true]); }
+      expect(shown[i].querySelector('.gb-ex-about')!.textContent).toBe(`${s.author}, ${s.license}`);
+    }
+  });
+
+  it('{#chips-draw} a chip draws three lines of code in the starter\'s colors, lifted as a theme draws them', () => {
+    const root = lab.render(ctx({ installedStarters: INSTALLED }));
+    showGroup(root, 'schemes');
+    const chip = chips(root).find(c => c.dataset.key === 'scheme:dracula')!;
+    const word = (kind: string) => chip.querySelector<HTMLElement>(`.gb-ss-chip-code [data-kind="${kind}"]`)!;
+    expect(word('keyword').dataset.color).toBe(TB.setColor(DRACULA.colors.keyword));
+    expect(word('keyword').style.color).toBe(rgb(TB.setColor(DRACULA.colors.keyword)));
+    expect(word('comment').dataset.color).toBe(TB.setColor(DRACULA.colors.comment));
+    expect(TB.setColor(DRACULA.colors.comment)).not.toBe(DRACULA.colors.comment);
+    expect(chip.querySelectorAll('.gb-ss-chip-code > span')).toHaveLength(3);
+    // An installed theme's second line says how many of its colors are lightened.
+    showGroup(root, 'installed');
+    expect(chips(root).map(c => c.querySelector('.gb-ex-about')!.textContent)).toEqual(['Reads as is', '1 lightened to read']);
+  });
+
+  it('{#chips-more} a group with more than 8 starters shows 8 and Show all, which shows them all and back', () => {
+    const many = Array.from({ length: 11 }, (_, i) => ({ id: `T${i}`, label: `Theme ${i}`, extension: 'Many', colors: all('#d4d4d4') }));
+    const root = lab.render(ctx({ installedStarters: many }));
+    expect(chips(root)).toHaveLength(8);
+    expect(moreButton(root)!.textContent).toBe('Show all 11');
+    moreButton(root)!.click();
+    expect(chips(root).map(chipName)).toEqual(many.map(t => t.label));
+    expect(moreButton(root)!.textContent).toBe('Show fewer');
+    moreButton(root)!.click();
+    expect(chips(root)).toHaveLength(8);
+    showGroup(root, 'schemes');
+    expect(moreButton(root)).toBeNull();
+  });
+
+  it('{#draft-shows} picking Dracula shows its draft line, its 13 colors in pickers, and the sample in the colors the builder draws', () => {
+    const c = ctx();
+    const root = lab.render(c);
+    pickStarter(root, 'scheme:dracula');
+    expect(draftLine(root)!.textContent).toBe('Unsaved draft from Dracula. Save New Set keeps it.');
+    expect(buttonFor(syntaxBox(root), 'Discard draft')).toBeDefined();
+    expect(KEYS.map(k => [k, triggerColor(draftPicker(root, k))])).toEqual(KEYS.map(k => [k, DRACULA.colors[k]]));
+    const code = syntaxBox(root).querySelector<HTMLElement>('pre.gb-rf-code')!;
+    expect(code.querySelector<HTMLElement>('[data-swatch="str"]')!.style.color).toBe(rgb(TB.setColor(DRACULA.colors.string)));
+    expect(code.querySelector<HTMLElement>('[data-rule="Comment"]')!.style.color).toBe(rgb(TB.setColor(DRACULA.colors.comment)));
+    // The Save New Set field starts with the starter's name, and the picked chip is marked pressed.
+    expect(syntaxBox(root).querySelector<HTMLInputElement>('.gb-ss-new-name')!.value).toBe('Dracula');
+    expect(chips(root).filter(c => c.getAttribute('aria-pressed') === 'true').map(c => c.dataset.key)).toEqual(['scheme:dracula']);
+  });
+
+  it('{#draft-not-saved-t3} {#chips-not-saved} switching groups, Show all, picking a starter and editing it save nothing and send no draft color', () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({ id: `T${i}`, label: `Theme ${i}`, extension: 'Many', colors: all('#d4d4d4') }));
+    const c = { ...ctx({ installedStarters: [...INSTALLED, ...many] }), save: jest.fn() };
+    const root = lab.render(c);
+    const before = JSON.parse(JSON.stringify(c.ui));
+    c.post.mockClear();
+    c.save.mockClear();
+    moreButton(root)!.click();
+    showGroup(root, 'palette');
+    showGroup(root, 'installed');
+    expect(c.post).not.toHaveBeenCalled();
+    pickStarter(root, 'scheme:nord');
+    expect(c.post).not.toHaveBeenCalled();
+    pickColor(draftPicker(root, 'comment'), '#abcdef');
+    expect(triggerColor(draftPicker(root, 'comment'))).toBe('#abcdef');
+    pickStarter(root, 'recipe:harmony');
+    pickStarter(root, installedKey(INSTALLED[0]));
+    expect(c.ui).toEqual(before);
+    expect(c.save).not.toHaveBeenCalled();
+    const draftColors = new Set([...Object.values(NORD.colors), '#abcdef']);
+    const carries = (m: any) => JSON.stringify(m).toLowerCase().match(/#[0-9a-f]{6}/g)?.some(hex => draftColors.has(hex));
+    const sent = posted(c);
+    expect(sent.filter((m: any) => ['saveSyntaxSet', 'applyPalette', 'previewState'].includes(m.type) && carries(m))).toEqual([]);
+    expect(sent.filter((m: any) => m.type === 'previewHighlight')).toEqual([]);
+  });
+
+  it('{#draft-dropped} Discard draft, a Code colors change and a page reload drop the draft; a redraw keeps it', () => {
+    const SETS = [{ id: 's1', name: 'Mine', colors: NORD.colors, isDefault: false, savedAt: '' }];
+    const c = ctx({ syntaxSets: SETS });
+    let root = lab.render(c);
+    pickStarter(root, 'scheme:dracula');
+    expect(draftLine(root)).not.toBeNull();
+    root = lab.render(c);
+    expect(draftLine(root)).not.toBeNull();
+    buttonFor(syntaxBox(root), 'Discard draft').click();
+    expect(draftLine(root)).toBeNull();
+
+    pickStarter(root, 'scheme:dracula');
+    syntaxBox(root).querySelector<HTMLButtonElement>('.gb-ke-seg[data-value="s1"]')!.click();
+    expect(draftLine(root)).toBeNull();
+    expect(c.ui).toMatchObject({ syntaxSet: 's1' });
+
+    pickStarter(root, 'recipe:quiet');
+    expect(draftLine(root)).not.toBeNull();
+    // A reload evaluates the page script again; the same state renders with no draft.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'media', 'palette.js'), 'utf8');
+    new Function(src)();
+    const reloaded: Lab = (window as any).GBPalette;
+    try {
+      expect(reloaded).not.toBe(lab);
+      expect(draftLine(reloaded.render(c))).toBeNull();
+    } finally {
+      (window as any).GBPalette = lab;
+    }
+  });
+
+  it('{#draft-save-t3} Save New Set on a Nord draft posts the draft\'s colors with a changed comment, then drops the draft', () => {
+    const c = ctx();
+    const root = lab.render(c);
+    const source = JSON.stringify((c.ui as any).syntaxSet);
+    pickStarter(root, 'scheme:nord');
+    pickColor(draftPicker(root, 'comment'), '#8899aa');
+    c.post.mockClear();
+    buttonFor(syntaxBox(root), 'Save New Set').click();
+    const saves = posted(c).filter((m: any) => m.type === 'saveSyntaxSet');
+    expect(saves).toHaveLength(1);
+    expect(saves[0].name).toBe('Nord');
+    expect(saves[0].id).toBeUndefined();
+    expect(saves[0].colors).toEqual({ ...NORD.colors, comment: '#8899aa' });
+    expect(draftLine(root)).toBeNull();
+    expect(JSON.stringify((c.ui as any).syntaxSet)).toBe(source);
+  });
+
+  it('{#lift-note-t3} a draft names each color the builder lightens, and a readable draft names none', () => {
+    const c = ctx({ installedStarters: INSTALLED });
+    const root = lab.render(c);
+    pickStarter(root, installedKey(INSTALLED[1]));
+    const lift = syntaxBox(root).querySelector('.gb-ss-lift');
+    expect(lift).not.toBeNull();
+    expect(lift!.textContent).toMatch(/^Lightened to stay readable on the editor background \(4\.5:1\): Comments\. /);
+    pickStarter(root, installedKey(INSTALLED[0]));
+    expect(syntaxBox(root).querySelector('.gb-ss-lift')).toBeNull();
+    expect(draftLine(root)!.textContent).toContain('Readable Dark');
+  });
+
+  it('recipes draft from the palette drawn now: Quiet keeps its keywords in the editor text color', () => {
+    const c = ctx();
+    const root = lab.render(c);
+    pickStarter(root, 'recipe:quiet');
+    expect(draftLine(root)!.textContent).toBe('Unsaved draft from Quiet, from your palette. Save New Set keeps it.');
+    expect(triggerColor(draftPicker(root, 'keyword'))).toBe(triggerColor(draftPicker(root, 'operator')));
+    expect(triggerColor(draftPicker(root, 'string'))).toBe(triggerColor(draftPicker(root, 'regex')));
   });
 });

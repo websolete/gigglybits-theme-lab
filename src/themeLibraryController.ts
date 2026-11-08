@@ -1,20 +1,20 @@
 // The VS Code side of the theme library: reading and writing gigglybits.library, writing each
 // bound theme's colors into user settings scoped to its slot, the delete confirmation, the
-// slot quick pick, Use in this project / Use everywhere, GigglyBits: Choose Theme, and the style
-// groups in gigglybits.groups, whose every change rewrites every bound slot.
+// slot quick pick, Use in this project / Use everywhere, GigglyBits: Choose Theme, and the syntax
+// sets in gigglybits.syntaxSets, whose every change rewrites every bound slot.
 // Every decision is made in src/themeLibrary.ts, which jest tests without the extension host.
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { GroupFamily, slotLabel } from '../scripts/theme-builder';
+import { slotLabel } from '../scripts/theme-builder';
 import {
-  activeGroups, bindTheme, clearSlot, deleteGroup, deleteTheme, Design, freshestSetting, LibraryResult, parseGroups, parseLibrary,
-  projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveGroup, saveTheme, setGroupOn, settingsFilesFor, StyleGroup,
-  writeAllSlots, writeSlot,
+  bindTheme, clearSlot, deleteSyntaxSet, deleteTheme, Design, freshestSetting, LibraryResult, parseLibrary, parseSyntaxSets,
+  projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveSyntaxSet, saveTheme, setDefaultSyntaxSet, settingsFilesFor, SyntaxSet,
+  themesUsingSyntaxSet, writeAllSlots, writeSlot,
 } from './themeLibrary';
 import { oldFolderColor } from './identity';
 
 const LIBRARY = 'gigglybits.library';
-const GROUPS = 'gigglybits.groups';
+const SYNTAX_SETS = 'gigglybits.syntaxSets';
 const NO_FOLDER = 'Open a folder to use a theme in this project.';
 
 /** Where Use puts a saved theme: this folder's workbench.colorTheme, or the user one. */
@@ -64,41 +64,47 @@ export class ThemeLibraryController {
     return parseLibrary(this.config().inspect(LIBRARY)?.globalValue);
   }
 
-  /** The style groups, from the user-level gigglybits.groups. */
-  groups(): StyleGroup[] {
-    return parseGroups(this.config().inspect(GROUPS)?.globalValue);
+  /** The syntax sets, from the user-level gigglybits.syntaxSets. */
+  syntaxSets(): SyntaxSet[] {
+    return parseSyntaxSets(this.config().inspect(SYNTAX_SETS)?.globalValue);
   }
 
   hasFolder(): boolean {
     return !!vscode.workspace.workspaceFolders?.length;
   }
 
-  /** Saves a style group under name (saveGroup), then rewrites every bound slot. */
-  async saveGroup(name: string, family: GroupFamily, roles: Record<string, string>): Promise<void> {
-    const result = saveGroup(await this.freshGroups(), { name, family, roles, now: new Date().toISOString() });
-    await this.writeGroups(result.groups);
-    vscode.window.setStatusBarMessage(`Saved style group "${result.group.name}"`, 3000);
+  /** Saves a syntax set (saveSyntaxSet: updates id, else adds one), then rewrites every bound slot. */
+  async saveSyntaxSet(input: { id?: string; name: string; colors: Record<string, string> }): Promise<void> {
+    const result = saveSyntaxSet(await this.freshSyntaxSets(), { ...input, now: new Date().toISOString() });
+    await this.writeSyntaxSets(result.sets);
+    vscode.window.setStatusBarMessage(`Saved syntax set "${result.set.name}"`, 3000);
   }
 
-  /** Switches the group id on or off (one on per family), then rewrites every bound slot. */
-  async setGroupOn(id: string, on: boolean): Promise<void> {
-    const groups = await this.freshGroups();
-    if (!groups.some(g => g.id === id)) { return; }
-    await this.writeGroups(setGroupOn(groups, id, on));
+  /** Makes the set id the default for new designs, or clears the default when id is null. */
+  async setDefaultSyntaxSet(id: string | null): Promise<void> {
+    await this.writeSyntaxSets(setDefaultSyntaxSet(await this.freshSyntaxSets(), id));
   }
 
-  /** Deletes the group id after a modal confirmation, then rewrites every bound slot. */
-  async deleteGroup(id: string): Promise<void> {
-    const group = (await this.freshGroups()).find(g => g.id === id);
-    if (!group) { return; }
-    const choice = await vscode.window.showWarningMessage(
-      `Delete the style group "${group.name}"?`,
-      { modal: true, detail: group.on ? 'It is on, so every saved theme goes back to its own style for these colors.' : undefined },
-      'Delete',
-    );
-    if (choice !== 'Delete') { return; }
+  /**
+   * Deletes the set id. When saved themes use it, a modal names the set and how many, and the
+   * confirmed delete moves those themes to From this palette; then every bound slot is rewritten.
+   */
+  async deleteSyntaxSet(id: string): Promise<void> {
+    const set = (await this.freshSyntaxSets()).find(s => s.id === id);
+    if (!set) { return; }
+    const using = themesUsingSyntaxSet(await this.freshLibrary(), id);
+    if (using) {
+      const choice = await vscode.window.showWarningMessage(
+        `Delete the syntax set "${set.name}"?`,
+        { modal: true, detail: `${using} saved theme${using === 1 ? ' uses' : 's use'} it and will take their code colors from their palette again.` },
+        'Delete',
+      );
+      if (choice !== 'Delete') { return; }
+    }
     // Read again: the modal may have stayed open while another window saved.
-    await this.writeGroups(deleteGroup(await this.freshGroups(), id));
+    const result = deleteSyntaxSet(await this.freshSyntaxSets(), await this.freshLibrary(), id);
+    if (result.cleared) { await this.writeLibrary(result.library); }
+    await this.writeSyntaxSets(result.sets);
   }
 
   /** Saves design under name, binding a new theme to a slot and writing its slot's colors. */
@@ -252,15 +258,15 @@ export class ThemeLibraryController {
     return parseLibrary(await this.fresh(LIBRARY, 'library'));
   }
 
-  /** The style groups as the settings file holds them now; application scope, like the library. */
-  private async freshGroups(): Promise<StyleGroup[]> {
-    return parseGroups(await this.fresh(GROUPS, 'library'));
+  /** The syntax sets as the settings file holds them now; application scope, like the library. */
+  private async freshSyntaxSets(): Promise<SyntaxSet[]> {
+    return parseSyntaxSets(await this.fresh(SYNTAX_SETS, 'library'));
   }
 
-  /** Writes the groups, then every bound slot through writeAllSlots on fresh slot values. */
-  private async writeGroups(groups: StyleGroup[]): Promise<void> {
-    await this.config().update(GROUPS, groups, vscode.ConfigurationTarget.Global);
-    await this.writeSlotValues(writeAllSlots(await this.slotValues(), await this.freshLibrary(), groups));
+  /** Writes the sets, then every bound slot through writeAllSlots on fresh slot values. */
+  private async writeSyntaxSets(sets: SyntaxSet[]): Promise<void> {
+    await this.config().update(SYNTAX_SETS, sets, vscode.ConfigurationTarget.Global);
+    await this.writeSlotValues(writeAllSlots(await this.slotValues(), await this.freshLibrary(), sets));
   }
 
   private async slotValues(): Promise<{ colors: unknown; tokens: unknown }> {
@@ -281,9 +287,9 @@ export class ThemeLibraryController {
     await this.config().update('editor.tokenColorCustomizations', next.tokens, Global);
   }
 
-  /** Writes theme's slot block with the groups that are on. */
+  /** Writes theme's slot block, with its syntax set's colors when it names one. */
   private async writeSlotSettings(theme: SavedTheme): Promise<void> {
-    await this.writeSlotValues(writeSlot(await this.slotValues(), theme, activeGroups(await this.freshGroups())));
+    await this.writeSlotValues(writeSlot(await this.slotValues(), theme, await this.freshSyntaxSets()));
   }
 
   private async runSafely(action: () => Promise<void>): Promise<void> {
@@ -298,9 +304,9 @@ export class ThemeLibraryController {
   saveSafely(name: string, design: Design): Promise<void> { return this.runSafely(() => this.save(name, design)); }
   useSafely(id: string, where: UseTarget): Promise<void> { return this.runSafely(() => this.use(id, where)); }
   deleteSafely(id: string): Promise<void> { return this.runSafely(() => this.delete(id)); }
-  saveGroupSafely(name: string, family: GroupFamily, roles: Record<string, string>): Promise<void> {
-    return this.runSafely(() => this.saveGroup(name, family, roles));
+  saveSyntaxSetSafely(input: { id?: string; name: string; colors: Record<string, string> }): Promise<void> {
+    return this.runSafely(() => this.saveSyntaxSet(input));
   }
-  setGroupOnSafely(id: string, on: boolean): Promise<void> { return this.runSafely(() => this.setGroupOn(id, on)); }
-  deleteGroupSafely(id: string): Promise<void> { return this.runSafely(() => this.deleteGroup(id)); }
+  setDefaultSyntaxSetSafely(id: string | null): Promise<void> { return this.runSafely(() => this.setDefaultSyntaxSet(id)); }
+  deleteSyntaxSetSafely(id: string): Promise<void> { return this.runSafely(() => this.deleteSyntaxSet(id)); }
 }

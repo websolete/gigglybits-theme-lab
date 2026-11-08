@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { parse, ParseError } from 'jsonc-parser';
 import {
-  AccentGroups, baseColor, ChromeChoice, FRAME_KEYS, GROUP_FAMILIES, GroupFamily, LabSettings, labSettings, SLOT_COUNT, slotLabel, StyleGroup as BuilderGroup, TextLevel,
+  AccentGroups, baseColor, ChromeChoice, cleanChrome, FRAME_KEYS, LabSettings, labSettings, SLOT_COUNT, slotLabel, SyntaxColors, SYNTAX_SET_KEYS, TextLevel,
 } from '../scripts/theme-builder';
 import { parseTryRecord, TryFrame } from './labStart';
 import { withoutIdentity } from './identity';
@@ -37,16 +37,25 @@ export interface Design {
   text?: TextLevel;
   /** Accent groups with their own color (step 3), present only when any has one. */
   accentGroups?: AccentGroups;
+  /** The id of the syntax set the design's code colors come from; absent means From this palette. */
+  syntaxSet?: string;
 }
 
-/** The Roles step's settings and the accent groups of a design, for the chrome choice the builder reads. */
-const roleChrome = (d: Design): Pick<ChromeChoice, 'color' | 'syntax' | 'depth' | 'text' | 'accentGroups'> => ({
-  ...(d.accentColor ? { color: d.accentColor } : {}),
-  ...(d.syntax ? { syntax: d.syntax } : {}),
-  ...(d.depth !== undefined ? { depth: d.depth } : {}),
-  ...(d.text ? { text: d.text } : {}),
-  ...(d.accentGroups ? { accentGroups: d.accentGroups } : {}),
-});
+/**
+ * The Roles step's settings and the accent groups of a design, for the chrome choice the builder
+ * reads, with the colors of the syntax set it names when that set exists in `sets`.
+ */
+const roleChrome = (d: Design, sets: readonly SyntaxSet[] = []): Pick<ChromeChoice, 'color' | 'syntax' | 'depth' | 'text' | 'accentGroups' | 'syntaxColors'> => {
+  const syntaxColors = syntaxColorsFor(d, sets);
+  return {
+    ...(d.accentColor ? { color: d.accentColor } : {}),
+    ...(d.syntax ? { syntax: d.syntax } : {}),
+    ...(d.depth !== undefined ? { depth: d.depth } : {}),
+    ...(d.text ? { text: d.text } : {}),
+    ...(d.accentGroups ? { accentGroups: d.accentGroups } : {}),
+    ...(syntaxColors ? { syntaxColors } : {}),
+  };
+};
 
 export interface SavedTheme {
   id: string;
@@ -54,11 +63,6 @@ export interface SavedTheme {
   /** The bound slot, 1 to SLOT_COUNT, or null when the theme has none. */
   slot: number | null;
   design: Design;
-  /**
-   * Style groups this theme names for itself; always [], because per-theme groups are
-   * deferred. The groups that are on apply to every saved theme (gigglybits.groups).
-   */
-  groups: string[];
   savedAt: string;
 }
 
@@ -94,6 +98,7 @@ export function parseDesign(value: unknown): Design | undefined {
     ...(record.depth !== undefined ? { depth: record.depth } : {}),
     ...(record.text ? { text: record.text } : {}),
     ...(record.accentGroups ? { accentGroups: record.accentGroups } : {}),
+    ...(typeof value.syntaxSet === 'string' && value.syntaxSet ? { syntaxSet: value.syntaxSet } : {}),
   };
   if (record.mode === 'generated') {
     Object.assign(design, { rule: record.rule, hue: record.hue, lightness: record.lightness, chroma: record.chroma });
@@ -105,7 +110,10 @@ export function parseDesign(value: unknown): Design | undefined {
 
 const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= SLOT_COUNT;
 
-/** The valid saved themes in value, in order; anything else is dropped. A missing groups becomes []. */
+/**
+ * The valid saved themes in value, in order; anything else is dropped. A `groups` field, written
+ * while style groups existed (retired 2026-11-07), is ignored.
+ */
 export function parseLibrary(value: unknown): SavedTheme[] {
   if (!Array.isArray(value)) {
     return [];
@@ -118,17 +126,11 @@ export function parseLibrary(value: unknown): SavedTheme[] {
     if (item.slot !== null && !isSlot(item.slot)) { continue; }
     const design = parseDesign(item.design);
     if (!design) { continue; }
-    let groups: string[] = [];
-    if (item.groups !== undefined) {
-      if (!Array.isArray(item.groups) || !item.groups.every(g => typeof g === 'string')) { continue; }
-      groups = item.groups.slice() as string[];
-    }
     themes.push({
       id: item.id,
       name,
       slot: item.slot as number | null,
       design,
-      groups,
       savedAt: typeof item.savedAt === 'string' ? item.savedAt : '',
     });
   }
@@ -170,14 +172,14 @@ function claimSlot(library: SavedTheme[], unbindId?: string): { library: SavedTh
 export function saveTheme(library: SavedTheme[], input: { name: string; design: Design; now: string }, unbindId?: string): LibraryResult {
   const match = library.find(t => sameName(t.name, input.name));
   if (match) {
-    const theme: SavedTheme = { ...match, design: input.design, savedAt: input.now, groups: match.groups ?? [] };
+    const theme: SavedTheme = { id: match.id, name: match.name, slot: match.slot, design: input.design, savedAt: input.now };
     return { library: library.map(t => (t === match ? theme : t)), theme };
   }
   const claim = claimSlot(library, unbindId);
   if (!claim) {
     return { needsSlot: true };
   }
-  const theme: SavedTheme = { id: randomUUID(), name: input.name.trim(), slot: claim.slot, design: input.design, groups: [], savedAt: input.now };
+  const theme: SavedTheme = { id: randomUUID(), name: input.name.trim(), slot: claim.slot, design: input.design, savedAt: input.now };
   return { library: [...claim.library, theme], theme };
 }
 
@@ -204,90 +206,95 @@ export function deleteTheme(library: SavedTheme[], id: string): { library: Saved
   return { library: library.filter(t => t.id !== id), freedSlot: theme?.slot ?? null };
 }
 
-/** The settings a theme's slot carries: the same colors and token rules the Lab builds, with groups applied. */
-export function slotSettings(theme: SavedTheme, groups: readonly BuilderGroup[] = []): LabSettings {
+/** The settings a theme's slot carries: the same colors and token rules the Lab builds, its syntax set's colors included. */
+export function slotSettings(theme: SavedTheme, sets: readonly SyntaxSet[] = []): LabSettings {
   const d = theme.design;
-  return labSettings({ name: theme.name, colors: d.colors, base: baseColor(d) }, { index: d.chromeIndex, surfaces: d.surfaces, frame: d.frame, ...roleChrome(d) }, d.edits, groups);
+  return labSettings({ name: theme.name, colors: d.colors, base: baseColor(d) }, { index: d.chromeIndex, surfaces: d.surfaces, frame: d.frame, ...roleChrome(d, sets) }, d.edits);
 }
 
-// ------------------------------------------------------------------ style groups
+// ------------------------------------------------------------------ syntax sets
 //
-// A style group maps a widget family's colors to Editor roles of the theme builder. Groups live
-// in the user-only setting gigglybits.groups; one that is on applies to every saved theme's slot,
-// drawn from that theme's own swatches. At most one group per family is on.
+// A syntax set is a named set of fixed code colors (themeBuilder.js SYNTAX_SET_KEYS), kept in the
+// user-only setting gigglybits.syntaxSets. A saved theme names the set it uses by id in its
+// design; its slot is built with that set's colors, so changing a set changes every theme on it.
+// Style groups (gigglybits.groups) are retired: syntax sets replace their Editor text family.
 
-/** A saved style group: the builder's { family, roles } with its name and whether it is on. */
-export interface StyleGroup extends BuilderGroup {
+/** A saved syntax set. At most one is the default for new designs. */
+export interface SyntaxSet {
   id: string;
   name: string;
-  on: boolean;
+  colors: SyntaxColors;
+  isDefault: boolean;
   savedAt: string;
 }
 
-const isFamily = (v: unknown): v is GroupFamily => typeof v === 'string' && Object.prototype.hasOwnProperty.call(GROUP_FAMILIES, v);
-
-/** The valid groups in value, in order; anything else is dropped. */
-export function parseGroups(value: unknown): StyleGroup[] {
+/** The valid syntax sets in value, in order; anything else is dropped. Only the first set marked default stays default. */
+export function parseSyntaxSets(value: unknown): SyntaxSet[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  const groups: StyleGroup[] = [];
+  const sets: SyntaxSet[] = [];
+  let sawDefault = false;
   for (const item of value) {
     if (!isObject(item)) { continue; }
     const name = typeof item.name === 'string' ? item.name.trim() : '';
-    if (typeof item.id !== 'string' || !item.id || !name || !isFamily(item.family) || typeof item.on !== 'boolean') { continue; }
-    const roles = item.roles;
-    if (!isObject(roles) || !Object.values(roles).every(v => typeof v === 'string')) { continue; }
-    groups.push({
-      id: item.id,
-      name,
-      family: item.family,
-      roles: { ...(roles as Record<string, string>) },
-      on: item.on,
-      savedAt: typeof item.savedAt === 'string' ? item.savedAt : '',
-    });
+    if (typeof item.id !== 'string' || !item.id || !name) { continue; }
+    const colors = cleanChrome({ syntaxColors: item.colors }).syntaxColors;
+    if (!colors) { continue; }
+    const isDefault: boolean = item.isDefault === true && !sawDefault;
+    sawDefault = sawDefault || isDefault;
+    sets.push({ id: item.id, name, colors, isDefault, savedAt: typeof item.savedAt === 'string' ? item.savedAt : '' });
   }
-  return groups;
+  return sets;
 }
 
 /**
- * Saves a group. One of the same family with the same name (trimmed, case-insensitive) keeps
- * its id and on and takes the new roles; any other name is added as a new group that is off.
+ * Saves a set: the set with input.id takes the new name and colors; without a matching id it is
+ * added with a new id, not the default. Throws when colors lacks a SYNTAX_SET_KEYS color.
  */
-export function saveGroup(
-  groups: StyleGroup[],
-  input: { name: string; family: GroupFamily; roles: Record<string, string>; now: string },
-): { groups: StyleGroup[]; group: StyleGroup } {
-  const roles = { ...input.roles };
-  const match = groups.find(g => g.family === input.family && sameName(g.name, input.name));
+export function saveSyntaxSet(
+  sets: SyntaxSet[],
+  input: { id?: string; name: string; colors: Record<string, string>; now: string },
+): { sets: SyntaxSet[]; set: SyntaxSet } {
+  const colors = cleanChrome({ syntaxColors: input.colors }).syntaxColors;
+  if (!colors) {
+    throw new Error(`A syntax set needs a #rrggbb color for each of ${SYNTAX_SET_KEYS.join(', ')}.`);
+  }
+  const match = input.id ? sets.find(s => s.id === input.id) : undefined;
   if (match) {
-    const group: StyleGroup = { ...match, roles, savedAt: input.now };
-    return { groups: groups.map(g => (g === match ? group : g)), group };
+    const set: SyntaxSet = { ...match, name: input.name.trim() || match.name, colors, savedAt: input.now };
+    return { sets: sets.map(s => (s === match ? set : s)), set };
   }
-  const group: StyleGroup = { id: randomUUID(), name: input.name.trim(), family: input.family, roles, on: false, savedAt: input.now };
-  return { groups: [...groups, group], group };
+  const set: SyntaxSet = { id: randomUUID(), name: input.name.trim(), colors, isDefault: false, savedAt: input.now };
+  return { sets: [...sets, set], set };
 }
 
-/** groups with id switched on or off; switching one on switches off every other group of its family. */
-export function setGroupOn(groups: StyleGroup[], id: string, on: boolean): StyleGroup[] {
-  const target = groups.find(g => g.id === id);
-  if (!target) {
-    return groups;
-  }
-  return groups.map(g => {
-    if (g.id === id) { return { ...g, on }; }
-    return on && g.family === target.family && g.on ? { ...g, on: false } : g;
+/** sets with id as the only default, or with no default when id is null or names no set. */
+export function setDefaultSyntaxSet(sets: SyntaxSet[], id: string | null): SyntaxSet[] {
+  return sets.map(s => ({ ...s, isDefault: id !== null && s.id === id }));
+}
+
+/** sets without id, library with syntaxSet removed from every theme that named it, and how many themes that was. */
+export function deleteSyntaxSet(sets: SyntaxSet[], library: SavedTheme[], id: string): { sets: SyntaxSet[]; library: SavedTheme[]; cleared: number } {
+  let cleared = 0;
+  const next = library.map(t => {
+    if (t.design.syntaxSet !== id) { return t; }
+    cleared++;
+    const design = { ...t.design };
+    delete design.syntaxSet;
+    return { ...t, design };
   });
+  return { sets: sets.filter(s => s.id !== id), library: next, cleared };
 }
 
-/** groups without id. */
-export function deleteGroup(groups: StyleGroup[], id: string): StyleGroup[] {
-  return groups.filter(g => g.id !== id);
+/** How many themes in library name the set id. */
+export function themesUsingSyntaxSet(library: SavedTheme[], id: string): number {
+  return library.filter(t => t.design.syntaxSet === id).length;
 }
 
-/** The groups that are on. */
-export function activeGroups(groups: readonly StyleGroup[]): StyleGroup[] {
-  return groups.filter(g => g.on);
+/** The colors of the syntax set design names, or undefined when it names none or one not in sets. */
+export function syntaxColorsFor(design: Design, sets: readonly SyntaxSet[]): SyntaxColors | undefined {
+  return design.syntaxSet ? sets.find(s => s.id === design.syntaxSet)?.colors : undefined;
 }
 
 type Settings = Record<string, unknown>;
@@ -315,27 +322,26 @@ export interface SlotSettingValues {
 
 /**
  * values with theme's slot block written into both settings: its colors, and its token rules as
- * textMateRules, with the active groups applied.
+ * textMateRules, with its syntax set's colors when it names one in `sets`.
  */
-export function writeSlot(values: SlotSettingValues, theme: SavedTheme, groups: readonly BuilderGroup[] = []): { colors: Settings; tokens: Settings } {
+export function writeSlot(values: SlotSettingValues, theme: SavedTheme, sets: readonly SyntaxSet[] = []): { colors: Settings; tokens: Settings } {
   if (theme.slot === null) {
     throw new Error(`${theme.name} has no slot.`);
   }
   const label = slotLabel(theme.slot);
-  const settings = everywhereSettings(theme, groups);
+  const settings = everywhereSettings(theme, sets);
   return {
     colors: withScope(values.colors, label, settings.colors),
     tokens: withScope(values.tokens, label, { textMateRules: settings.tokenColors }),
   };
 }
 
-/** values with every bound theme's slot block rewritten through writeSlot, with the groups of `groups` that are on. */
-export function writeAllSlots(values: SlotSettingValues, library: SavedTheme[], groups: readonly StyleGroup[]): { colors: Settings; tokens: Settings } {
-  const active = activeGroups(groups);
+/** values with every bound theme's slot block rewritten through writeSlot, each with the syntax set it names in `sets`. */
+export function writeAllSlots(values: SlotSettingValues, library: SavedTheme[], sets: readonly SyntaxSet[] = []): { colors: Settings; tokens: Settings } {
   let next = { colors: { ...(isObject(values.colors) ? values.colors : {}) }, tokens: { ...(isObject(values.tokens) ? values.tokens : {}) } };
   for (const theme of library) {
     if (theme.slot !== null) {
-      next = writeSlot(next, theme, active);
+      next = writeSlot(next, theme, sets);
     }
   }
   return next;
@@ -362,15 +368,14 @@ function editorEdits(edits: Design['edits']): Design['edits'] {
 
 /**
  * What a theme's slot carries in user settings, for Use everywhere: its Editor colors, with a
- * Dark frame following its accent, and the active groups applied.
+ * Dark frame following its accent, and its syntax set's colors when it names one in `sets`.
  */
-export function everywhereSettings(theme: SavedTheme, groups: readonly BuilderGroup[] = []): LabSettings {
+export function everywhereSettings(theme: SavedTheme, sets: readonly SyntaxSet[] = []): LabSettings {
   const d = theme.design;
   return labSettings(
     { name: theme.name, colors: d.colors, base: baseColor(d) },
-    { index: d.chromeIndex, surfaces: d.surfaces, frame: d.accentColor ? { color: d.accentColor, style: 'dark' } : { index: d.chromeIndex, style: 'dark' }, ...roleChrome(d) },
-    editorEdits(d.edits),
-    groups);
+    { index: d.chromeIndex, surfaces: d.surfaces, frame: d.accentColor ? { color: d.accentColor, style: 'dark' } : { index: d.chromeIndex, style: 'dark' }, ...roleChrome(d, sets) },
+    editorEdits(d.edits));
 }
 
 /** The frame Use in this project gives the folder: the FRAME_KEYS of the theme's full colors. */

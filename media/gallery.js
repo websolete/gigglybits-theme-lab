@@ -1,6 +1,7 @@
 // @ts-check
-// Element gallery for the Palette Inspector: mock VS Code widgets drawn with the live
-// --vscode-* variables, one card per widget family, each state drawn side by side.
+// Element gallery: mock VS Code widgets drawn with the live --vscode-* variables, one card per
+// widget family, each state drawn side by side. The Theme Preview window draws its Workbench
+// and Widgets sections with renderParts; render, with key chips and definitions, backs the tests.
 //
 // Every painted part records the color keys it uses in data-keys, which drives the
 // card's key chips, its definitions table, the hover linking between the two, and the
@@ -185,7 +186,7 @@
           : { fg: 'panelTitle.activeForeground', bdB: 'panelTitle.activeBorder' };
         const title = region(P('div', 'wb-title', { bg: 'titleBar.activeBackground', fg: 'titleBar.activeForeground', bdB: 'titleBar.border' },
           S('wb-menu', 'File   Edit   Selection   View'),
-          P('div', 'wb-cc', { bg: 'commandCenter.background', fg: 'commandCenter.foreground', bd: 'commandCenter.border' }, I('search'), ' gigglybits-vscode-theme'),
+          P('div', 'wb-cc', { bg: 'commandCenter.background', fg: 'commandCenter.foreground', bd: 'commandCenter.border' }, I('search'), ' gigglybits-theme-lab'),
           S('wb-spacer')), 'titleBar');
         // workbench.activityBar.location: 'default' is the bar at the window's edge; 'top' and
         // 'bottom' put its icons in a row at that end of the side bar; 'hidden' draws none.
@@ -212,7 +213,7 @@
           D('wb-tree',
             treeRow(0, 'folder-opened', 'src', null, { twistie: 'chevron-down' }),
             treeRow(1, 'file-code', 'extension.ts', { bg: 'list.activeSelectionBackground', fg: 'list.activeSelectionForeground' }),
-            treeRow(1, 'file-code', 'paletteInspectorPanel.ts', { fg: 'gitDecoration.modifiedResourceForeground' }, { trail: 'M' }),
+            treeRow(1, 'file-code', 'themePreviewPanel.ts', { fg: 'gitDecoration.modifiedResourceForeground' }, { trail: 'M' }),
             treeRow(1, 'file-code', 'themeSource.ts', { bg: 'list.hoverBackground', fg: 'list.hoverForeground' }),
             treeRow(0, 'folder', 'media', null, { twistie: 'chevron-right' }),
             treeRow(0, 'file', 'package.json', { fg: 'gitDecoration.untrackedResourceForeground' }, { trail: 'U' })),
@@ -421,7 +422,7 @@
       render: () => P('div', 'gb-surface gb-surface-flush', { bg: 'sideBar.background', fg: 'sideBar.foreground' },
         labeled(
           ['section header', P('div', 'wb-section', { bg: 'sideBarSectionHeader.background', fg: 'sideBarSectionHeader.foreground', bdT: 'sideBarSectionHeader.border' }, I('chevron-down'), ' Outline')],
-          ['normal', treeRow(1, 'symbol-class', 'PaletteInspectorPanel', null, { guides: true, iconSpec: { fg: 'symbolIcon.classForeground' } })],
+          ['normal', treeRow(1, 'symbol-class', 'ThemePreviewPanel', null, { guides: true, iconSpec: { fg: 'symbolIcon.classForeground' } })],
           ['hover', treeRow(2, 'symbol-method', 'show', { bg: 'list.hoverBackground', fg: 'list.hoverForeground' }, { guides: true, iconSpec: { fg: 'symbolIcon.methodForeground' } })],
           ['focused', treeRow(2, 'symbol-method', 'revive', { bg: 'list.focusBackground', fg: 'list.focusForeground', ol: 'list.focusOutline' }, { guides: true, iconSpec: { fg: 'symbolIcon.methodForeground' } })],
           ['selected', treeRow(2, 'symbol-method', 'refresh', { bg: 'list.activeSelectionBackground', fg: 'list.activeSelectionForeground', ol: 'list.focusAndSelectionOutline' }, { guides: true, iconSpec: { fg: 'list.activeSelectionIconForeground' } })],
@@ -1151,7 +1152,7 @@
   }
 
   /**
-   * The previews alone, without the inspector's chips and definitions, for the Theme Lab.
+   * The previews alone, without the cards' chips and definitions, for the Theme Preview window.
    * context needs only { model: { byKey }, tokens }, plus modernUI ({ modern, uppercase,
    * tabStyle, activityBar }) to draw the modern workbench or move the activity bar; without it
    * the drawing is the classic one with the activity bar at the side. ids
@@ -1210,7 +1211,7 @@
     return { nodes, count, extensions: groups.length };
   }
 
-  // @ts-ignore attach for inspector.js
+  // @ts-ignore attach for palette.js and the tests
   window.GBGallery = {
     render, renderContributions, renderParts,
     cards: CATALOG.map(def => ({ id: def.id, title: def.title })),

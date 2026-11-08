@@ -1,8 +1,8 @@
 // src/themeLibrary.ts: the saved theme library, its slots, and the settings each slot carries.
 import {
-  activeGroups, bindTheme, clearSlot, deleteGroup, deleteTheme, Design, everywhereSettings, freshestSetting, parseGroups, parseLibrary,
-  projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveGroup, saveTheme, setGroupOn, settingsFilesFor, slotSettings, StyleGroup,
-  withoutScope, withProjectFrame, withScope, writeAllSlots, writeSlot,
+  bindTheme, clearSlot, deleteSyntaxSet, deleteTheme, Design, everywhereSettings, freshestSetting, parseDesign, parseLibrary, parseSyntaxSets,
+  projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveSyntaxSet, saveTheme, setDefaultSyntaxSet, settingsFilesFor, slotSettings, SyntaxSet,
+  themesUsingSyntaxSet, withoutScope, withProjectFrame, withScope, writeAllSlots, writeSlot,
 } from '../src/themeLibrary';
 import * as path from 'path';
 import { identityOverlay, IDENTITY_KEYS, IDENTITY_REGIONS, withIdentity } from '../src/identity';
@@ -37,15 +37,16 @@ describe('slot names', () => {
 });
 
 describe('parseLibrary', () => {
-  const valid = { id: 'a', name: 'Alpha', slot: 1, design: DESIGN, groups: ['tabs'], savedAt: NOW };
+  const valid = { id: 'a', name: 'Alpha', slot: 1, design: DESIGN, savedAt: NOW };
 
-  it('keeps a valid theme and adds groups [] to one without groups', () => {
-    const noGroups: Record<string, unknown> = { ...valid, id: 'b', name: 'Beta', slot: null };
-    delete noGroups.groups;
-    const library = parseLibrary([valid, noGroups]);
+  it('keeps a valid theme', () => {
+    const library = parseLibrary([valid, { ...valid, id: 'b', name: 'Beta', slot: null }]);
     expect(library).toHaveLength(2);
     expect(library[0]).toEqual(valid);
-    expect(library[1].groups).toEqual([]);
+  });
+
+  it('{#old-groups-tolerated} keeps a theme saved with a groups field from the retired style groups', () => {
+    expect(parseLibrary([{ ...valid, groups: ['x'] }])).toEqual([valid]);
   });
 
   it.each([
@@ -64,7 +65,7 @@ describe('parseLibrary', () => {
 describe('saveTheme', () => {
   it('slots new names in order and updates a theme saved under the same name', () => {
     let library = saved([], 'Alpha');
-    expect(library[0]).toMatchObject({ name: 'Alpha', slot: 1, groups: [] });
+    expect(library[0]).toMatchObject({ name: 'Alpha', slot: 1 });
     const alphaId = library[0].id;
     library = saved(library, 'Beta');
     expect(byName(library, 'Beta').slot).toBe(2);
@@ -146,7 +147,7 @@ describe('the controller settings edits', () => {
 
 describe('Use everywhere applies the Editor colors; the frame belongs to the project', () => {
   const FILLED: Design = { ...DESIGN, frame: { index: 2, style: 'filled' }, edits: { swatches: { accent: '#ff8800', frameBg: '#abcdef' }, keys: {} } };
-  const theme = (design: Design, slot = 1): SavedTheme => ({ id: 'f', name: 'Framed', slot, design, groups: [], savedAt: NOW });
+  const theme = (design: Design, slot = 1): SavedTheme => ({ id: 'f', name: 'Framed', slot, design, savedAt: NOW });
   const darkOf = (design: Design) => TB.labSettings({ name: 'Framed', colors: design.colors },
     { index: design.chromeIndex, surfaces: design.surfaces, frame: { index: design.chromeIndex, style: 'dark' } }, { swatches: { accent: '#ff8800' }, keys: {} });
 
@@ -197,7 +198,7 @@ describe('Use everywhere applies the Editor colors; the frame belongs to the pro
 describe('saves build on the settings file', () => {
   const NEWER = { ...DESIGN, frame: { index: 0, style: 'filled' as const } };
   const OLDER = { ...DESIGN, frame: { index: 0, style: 'dark' as const } };
-  const alpha = (design: Design, savedAt: string) => ({ id: 'a', name: 'Alpha', slot: 1, design, groups: [], savedAt });
+  const alpha = (design: Design, savedAt: string) => ({ id: 'a', name: 'Alpha', slot: 1, design, savedAt });
   const fileText = `{\n  // saved by another window\n  "gigglybits.library": ${JSON.stringify([alpha(NEWER, '2026-11-04T19:05:00.000Z')])},\n}\n`;
   const staleConfig = [alpha(OLDER, '2026-11-04T18:54:58.000Z')];
 
@@ -228,84 +229,86 @@ describe('saves build on the settings file', () => {
   });
 });
 
-describe('style groups', () => {
-  const group = (over: Partial<StyleGroup>): StyleGroup =>
-    ({ id: 'g', name: 'Calm', family: 'buttons', roles: { 'button.background': 'raised' }, on: false, savedAt: NOW, ...over });
-  const savedGroup = (groups: StyleGroup[], name: string, family: StyleGroup['family'], roles: Record<string, string>) =>
-    saveGroup(groups, { name, family, roles, now: NOW });
+describe('syntax sets', () => {
+  const COLORS = {
+    keyword: '#c792ea', function: '#82aaff', string: '#c3e88d', type: '#ffcb6b', number: '#f78c6c', comment: '#7f848e',
+    tag: '#f07178', attribute: '#ffcb6b', variable: '#eeffff', property: '#b2ccd6', constant: '#ff9cac', operator: '#89ddff', regex: '#c17e70',
+  };
+  const RULES = ['Keyword', 'Function', 'String', 'Type', 'Number', 'Comment', 'Tag', 'Attribute', 'Variable', 'Property', 'Constant', 'Operator', 'Regex'];
+  const set = (over: Partial<SyntaxSet> = {}): SyntaxSet => ({ id: 's1', name: 'Mine', colors: { ...COLORS }, isDefault: false, savedAt: NOW, ...over });
+  const plain = (colors: string[], syntaxSet?: string): Design => ({ ...DESIGN, colors, edits: { swatches: {}, keys: {} }, ...(syntaxSet ? { syntaxSet } : {}) });
+  const rulesOf = (written: { tokens: Record<string, unknown> }, theme: SavedTheme) =>
+    ((written.tokens[`[GigglyBits Theme ${theme.slot}]`] as { textMateRules: { name: string; settings: { foreground: string } }[] }).textMateRules);
+  const fg = (written: { tokens: Record<string, unknown> }, theme: SavedTheme, name: string) =>
+    rulesOf(written, theme).find(r => r.name === name)?.settings.foreground;
+  const values = { colors: { '[Other]': { a: 1 } }, tokens: {} };
 
-  it('parseGroups keeps a valid group and drops one with an unknown family, a numeric role value or no name', () => {
-    const valid = group({});
-    const parsed = parseGroups([
-      valid,
-      { ...valid, id: 'm', family: 'menus' },
-      { ...valid, id: 'n', roles: { 'button.background': 3 } },
-      { ...valid, id: 'x', name: '' },
-    ]);
-    expect(parsed).toEqual([valid]);
-    expect(parseGroups(undefined)).toEqual([]);
+  it('{#slot-same-across-palettes} two bound themes with different palettes on the same set write identical code foregrounds', () => {
+    const library = saved(saved([], 'Alpha', plain(['#20c3d9', '#dc8fd5', '#ceaa3e'], 's1')), 'Beta', plain(['#cc3300', '#33cc66', '#3366cc'], 's1'));
+    const written = writeAllSlots(values, library, [set()]);
+    const [alpha, beta] = library;
+    expect(RULES.map(r => fg(written, beta, r))).toEqual(RULES.map(r => fg(written, alpha, r)));
+    expect(fg(written, alpha, 'Tag')).toBe(COLORS.tag);
+    // Without the set the two palettes write different keyword colors.
+    const bare = writeAllSlots(values, library, []);
+    expect(fg(bare, alpha, 'Keyword')).not.toBe(fg(bare, beta, 'Keyword'));
   });
 
-  it('switching on a second tabs group switches the first off and leaves a buttons group on', () => {
-    let groups = savedGroup([], 'Tabs A', 'tabs', { 'tab.activeBackground': 'raised' }).groups;
-    groups = savedGroup(groups, 'Buttons', 'buttons', { 'button.background': 'raised' }).groups;
-    const tabsA = groups[0].id;
-    const buttonsId = groups[1].id;
-    groups = setGroupOn(setGroupOn(groups, tabsA, true), buttonsId, true);
-    const tabsB = savedGroup(groups, 'Tabs B', 'tabs', { 'tab.activeBackground': 'deep' });
-    expect(tabsB.group.on).toBe(false);
-    groups = setGroupOn(tabsB.groups, tabsB.group.id, true);
-    expect(groups.map(g => [g.name, g.on])).toEqual([['Tabs A', false], ['Buttons', true], ['Tabs B', true]]);
-    expect(activeGroups(groups).map(g => g.name)).toEqual(['Buttons', 'Tabs B']);
-    expect(deleteGroup(groups, tabsA).map(g => g.name)).toEqual(['Buttons', 'Tabs B']);
+  it('{#set-change-rewrites} changing a set rewrites every theme on it and leaves a theme on its palette alone', () => {
+    let library = saved([], 'Alpha', plain(['#20c3d9', '#dc8fd5', '#ceaa3e'], 's1'));
+    library = saved(library, 'Beta', plain(['#cc3300', '#33cc66', '#3366cc'], 's1'));
+    library = saved(library, 'Gamma', plain(['#aa66ff', '#66ffaa', '#ffaa66']));
+    const before = writeAllSlots(values, library, [set()]);
+    const changed = saveSyntaxSet([set()], { id: 's1', name: 'Mine', colors: { ...COLORS, keyword: '#ff79c6' }, now: NOW }).sets;
+    const after = writeAllSlots(before, library, changed);
+    expect([fg(after, byName(library, 'Alpha'), 'Keyword'), fg(after, byName(library, 'Beta'), 'Keyword')]).toEqual(['#ff79c6', '#ff79c6']);
+    expect(fg(before, byName(library, 'Alpha'), 'Keyword')).toBe(COLORS.keyword);
+    expect(rulesOf(after, byName(library, 'Gamma'))).toEqual(rulesOf(before, byName(library, 'Gamma')));
   });
 
-  it('re-saving a group under the same name and family keeps its id and on', () => {
-    const first = savedGroup([], 'Calm buttons', 'buttons', { 'button.background': 'raised' });
-    const on = setGroupOn(first.groups, first.group.id, true);
-    const again = savedGroup(on, ' calm BUTTONS ', 'buttons', { 'button.background': 'deep' });
-    expect(again.groups).toHaveLength(1);
-    expect(again.group).toMatchObject({ id: first.group.id, on: true, roles: { 'button.background': 'deep' } });
+  it('{#missing-set-falls-back} a theme naming an unknown set builds as the same theme without syntaxSet', () => {
+    const named: SavedTheme = { id: 't', name: 'T', slot: 1, design: { ...DESIGN, syntaxSet: 'gone' }, savedAt: NOW };
+    const bare: SavedTheme = { ...named, design: { ...DESIGN } };
+    expect(slotSettings(named, [set()])).toEqual(slotSettings(bare, [set()]));
   });
 
-  describe('writeAllSlots', () => {
-    const plain = (colors: string[]): Design => ({ ...DESIGN, colors, edits: { swatches: {}, keys: {} } });
-    const ALPHA = plain(['#20c3d9', '#dc8fd5', '#ceaa3e']);
-    const BETA = plain(['#cc3300', '#33cc66', '#3366cc']);
-    const library = saved(saved([], 'Alpha', ALPHA), 'Beta', BETA);
-    const swatch = (theme: SavedTheme, name: string) =>
-      TB.swatches({ name: theme.name, colors: theme.design.colors }, { index: theme.design.chromeIndex, surfaces: theme.design.surfaces })[name];
-    const button = (written: { colors: Record<string, unknown> }, theme: SavedTheme) =>
-      (written.colors[`[GigglyBits Theme ${theme.slot}]`] as Record<string, string>)['button.background'];
-    const values = { colors: { '[Other]': { a: 1 } }, tokens: {} };
+  it('{#delete-set-clears-themes} deleting a set two of three themes use clears it from those two and counts them', () => {
+    let library = saved([], 'Alpha', plain(['#20c3d9'], 's1'));
+    library = saved(library, 'Beta', plain(['#cc3300'], 's1'));
+    library = saved(library, 'Gamma', plain(['#aa66ff'], 's2'));
+    const result = deleteSyntaxSet([set(), set({ id: 's2', name: 'Other' })], library, 's1');
+    expect(result.cleared).toBe(2);
+    expect(result.library.map(t => t.design.syntaxSet)).toEqual([undefined, undefined, 's2']);
+    expect(result.sets.map(s => s.id)).toEqual(['s2']);
+    expect(themesUsingSyntaxSet(library, 's1')).toBe(2);
+  });
 
-    const first = savedGroup([], 'Calm buttons', 'buttons', { 'button.background': 'raised' });
-    const groupsOn = setGroupOn(first.groups, first.group.id, true);
-    const written = writeAllSlots(values, library, groupsOn);
+  it('{#one-default} parsing two sets marked default keeps only the first as default', () => {
+    const parsed = parseSyntaxSets([set({ id: 'a', isDefault: true }), set({ id: 'b', isDefault: true })]);
+    expect(parsed.map(s => s.isDefault)).toEqual([true, false]);
+  });
 
-    it("carries a group that is on into every bound slot, each in its own theme's raised swatch", () => {
-      const [alpha, beta] = library;
-      expect(button(written, alpha)).toBe(swatch(alpha, 'raised'));
-      expect(button(written, beta)).toBe(swatch(beta, 'raised'));
-      expect(button(written, alpha)).not.toBe(button(written, beta));
-      expect(button(written, alpha)).not.toBe(swatch(alpha, 'accent'));
-      expect(written.colors['[Other]']).toEqual({ a: 1 });
-    });
+  it('parseSyntaxSets drops a set with a missing color, a bad hex or no name; setDefaultSyntaxSet keeps one default or none', () => {
+    const noRegex: Record<string, string> = { ...COLORS };
+    delete noRegex.regex;
+    const parsed = parseSyntaxSets([set(), set({ id: 'x', colors: noRegex as SyntaxSet['colors'] }), set({ id: 'y', colors: { ...COLORS, tag: 'red' } }), set({ id: 'z', name: ' ' })]);
+    expect(parsed.map(s => s.id)).toEqual(['s1']);
+    expect(parseSyntaxSets(undefined)).toEqual([]);
+    const two = [set({ id: 'a', isDefault: true }), set({ id: 'b' })];
+    expect(setDefaultSyntaxSet(two, 'b').map(s => s.isDefault)).toEqual([false, true]);
+    expect(setDefaultSyntaxSet(two, null).map(s => s.isDefault)).toEqual([false, false]);
+  });
 
-    it('re-saving the group with another role changes button.background in every bound slot block', () => {
-      const resaved = savedGroup(groupsOn, 'Calm buttons', 'buttons', { 'button.background': 'deep' }).groups;
-      const rewritten = writeAllSlots(written, library, resaved);
-      for (const theme of library) {
-        expect({ theme: theme.name, value: button(rewritten, theme) }).toEqual({ theme: theme.name, value: swatch(theme, 'deep') });
-        expect(button(rewritten, theme)).not.toBe(button(written, theme));
-      }
-    });
+  it('saveSyntaxSet adds a new set that is not the default and refuses one missing a color', () => {
+    const added = saveSyntaxSet([], { name: ' Night ', colors: COLORS, now: NOW });
+    expect(added.set).toMatchObject({ name: 'Night', isDefault: false, colors: COLORS });
+    expect(added.sets).toHaveLength(1);
+    expect(() => saveSyntaxSet([], { name: 'Bad', colors: { keyword: '#ffffff' }, now: NOW })).toThrow(/regex/);
+  });
 
-    it('a group switched off gives the same blocks as no groups', () => {
-      const off = setGroupOn(groupsOn, first.group.id, false);
-      expect(writeAllSlots(written, library, off)).toEqual(writeAllSlots(written, library, []));
-      for (const theme of library) { expect(button(writeAllSlots(written, library, off), theme)).toBe(swatch(theme, 'accent')); }
-    });
+  it('parseDesign keeps a syntaxSet id and drops an empty one', () => {
+    expect(parseDesign({ ...DESIGN, syntaxSet: 's1' })?.syntaxSet).toBe('s1');
+    expect(parseDesign({ ...DESIGN, syntaxSet: '' })?.syntaxSet).toBeUndefined();
   });
 });
 
@@ -323,7 +326,7 @@ describe('withScope and withoutScope', () => {
 });
 
 describe('slot settings and the Roles step settings', () => {
-  const theme = (design: Design): SavedTheme => ({ id: 't', name: 'T', slot: 1, design, groups: [], savedAt: '2026-11-06T00:00:00.000Z' });
+  const theme = (design: Design): SavedTheme => ({ id: 't', name: 'T', slot: 1, design, savedAt: '2026-11-06T00:00:00.000Z' });
 
   it('{#slot-uses} builds a slot with the design\'s depth, as labSettings does', () => {
     const plain = slotSettings(theme(DESIGN)).colors['sideBar.background'];
@@ -341,7 +344,7 @@ describe('slot settings and the Roles step settings', () => {
     const { parseDesign } = require('../src/themeLibrary');
     const design = parseDesign(read('design-baseline.json'));
     const expected = read('design-baseline-settings.json');
-    const actual = slotSettings({ id: 'baseline', name: 'Baseline', slot: 1, design, groups: [], savedAt: '2026-11-06T00:00:00.000Z' });
+    const actual = slotSettings({ id: 'baseline', name: 'Baseline', slot: 1, design, savedAt: '2026-11-06T00:00:00.000Z' });
     // Every color the baseline holds is set and unchanged; a color added to the theme since is
     // an addition, not a change to the old design.
     const kept = Object.fromEntries(Object.keys(expected.colors).map(k => [k, actual.colors[k]]));
@@ -353,7 +356,7 @@ describe('slot settings and the Roles step settings', () => {
 describe('a saved custom accent', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const GB = require('../media/shared.js');
-  const theme = (design: Design): SavedTheme => ({ id: 't', name: 'T', slot: 1, design, groups: [], savedAt: '2026-11-06T00:00:00.000Z' });
+  const theme = (design: Design): SavedTheme => ({ id: 't', name: 'T', slot: 1, design, savedAt: '2026-11-06T00:00:00.000Z' });
 
   it('{#saved-accent-color} builds the slot and Use everywhere from the custom accent, with the Dark frame following it', () => {
     const base = GB.oklchToHex({ l: 0.75, c: 0.13, h: 210 });

@@ -27,6 +27,10 @@ const inspected: Record<string, unknown> = {};
 const updates: Array<{ key: string; value: unknown; target: unknown }> = [];
 /** Every status bar message shown, in order. */
 const statusMessages: string[] = [];
+/** What vscode.extensions.all returns, and every extensions.onDidChange listener; fireExtensionsChanged calls them. */
+const installedExtensions: any[] = [];
+const extensionListeners: Array<() => void> = [];
+const fireExtensionsChanged = () => { for (const fn of extensionListeners) { fn(); } };
 
 jest.mock('vscode', () => {
   const disposable = { dispose: () => undefined };
@@ -79,6 +83,10 @@ jest.mock('vscode', () => {
     commands: {
       executeCommand: async (command: string) => { executed.push(command); },
     },
+    extensions: {
+      get all() { return installedExtensions; },
+      onDidChange: (fn: () => void) => { extensionListeners.push(fn); return disposable; },
+    },
   };
 });
 
@@ -86,10 +94,12 @@ jest.mock('vscode', () => {
 import { ThemeLabPanel, tryThemeTarget } from '../src/themeLabPanel';
 import { hasWebviewTab, ThemePreviewPanel } from '../src/themePreviewPanel';
 import { deactivate } from '../src/extension';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const identity: any = { pin: async () => undefined, current: async () => undefined, onDidChange: () => ({ dispose: () => undefined }) };
 const memento: any = { get: () => undefined, update: async () => undefined };
-const library: any = { library: () => [], groups: () => [], hasFolder: () => false };
+const library: any = { library: () => [], syntaxSets: () => [], hasFolder: () => false };
 const extensionUri: any = { path: '/ext', fsPath: '/ext' };
 
 const labs = () => panels.filter(p => p.viewType === 'gigglybits.themeLab');
@@ -99,7 +109,7 @@ describe('Theme Preview window, host side', () => {
   it('Open Preview opens Theme Preview, floats it, and sends a pick to the Theme Lab open at the time', async () => {
     ThemeLabPanel.show(extensionUri, identity, memento, library);
     const first = labs()[0];
-    await first.receive!({ type: 'previewState', palette: { hue: 12 }, groups: [] });
+    await first.receive!({ type: 'previewState', palette: { hue: 12 }, syntaxSets: [] });
     await first.receive!({ type: 'openPreviewWindow' });
     // A compact window of its own, not kept on top.
     expect(executed).toEqual([
@@ -108,7 +118,7 @@ describe('Theme Preview window, host side', () => {
     ]);
     const window = preview();
     await window.receive!({ type: 'ready' });
-    expect(window.posted.filter(m => m.type === 'state')).toEqual([{ type: 'state', palette: { hue: 12 }, groups: [] }]);
+    expect(window.posted.filter(m => m.type === 'state')).toEqual([{ type: 'state', palette: { hue: 12 }, syntaxSets: [] }]);
 
     const part = { card: 'workbench', index: 3, keys: ['button.background'], around: [], label: 'OK', region: null, fixed: null };
     await window.receive!({ type: 'pickPart', part });
@@ -119,11 +129,42 @@ describe('Theme Preview window, host side', () => {
     ThemeLabPanel.show(extensionUri, identity, memento, library);
     const second = labs()[1];
     expect(second).toBeDefined();
-    await second.receive!({ type: 'previewState', palette: { hue: 40 }, groups: [] });
-    expect(window.posted[window.posted.length - 1]).toEqual({ type: 'state', palette: { hue: 40 }, groups: [] });
+    await second.receive!({ type: 'previewState', palette: { hue: 40 }, syntaxSets: [] });
+    expect(window.posted[window.posted.length - 1]).toEqual({ type: 'state', palette: { hue: 40 }, syntaxSets: [] });
     await window.receive!({ type: 'pickPart', part });
     expect(second.posted.filter(m => m.type === 'pickPart')).toEqual([{ type: 'pickPart', part }]);
     expect(first.posted.filter(m => m.type === 'pickPart')).toHaveLength(1);
+  });
+
+  it('{#preview-gets-sets} passes the syntax sets in previewState on to the preview window', async () => {
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    const sets = [{ id: 's1', name: 'Mine', colors: { keyword: '#c792ea' }, isDefault: true, savedAt: '' }];
+    await lab.receive!({ type: 'openPreviewWindow' });
+    const window = preview();
+    await window.receive!({ type: 'ready' });
+    await lab.receive!({ type: 'previewState', palette: { hue: 3 }, syntaxSets: sets });
+    expect(window.posted[window.posted.length - 1]).toEqual({ type: 'state', palette: { hue: 3 }, syntaxSets: sets });
+  });
+
+  it('{#host-routes-sets} routes saveSyntaxSet, deleteSyntaxSet and setDefaultSyntaxSet to the library; a saveGroup message does nothing', async () => {
+    const calls: string[] = [];
+    const routed: any = {
+      ...library,
+      saveSyntaxSetSafely: async (input: unknown) => { calls.push('save ' + JSON.stringify(input)); },
+      deleteSyntaxSetSafely: async (id: unknown) => { calls.push('delete ' + id); },
+      setDefaultSyntaxSetSafely: async (id: unknown) => { calls.push('default ' + id); },
+      saveGroupSafely: async () => { calls.push('group'); },
+    };
+    // A Lab already open is only revealed by show(), so close it to get one on this library.
+    for (const open of labs()) { open.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, routed);
+    const lab = labs()[labs().length - 1];
+    await lab.receive!({ type: 'saveSyntaxSet', id: 's1', name: ' Mine ', colors: { keyword: '#c792ea' } });
+    await lab.receive!({ type: 'deleteSyntaxSet', id: 's1' });
+    await lab.receive!({ type: 'setDefaultSyntaxSet', id: null });
+    await lab.receive!({ type: 'saveGroup', name: 'Old', family: 'tabs', roles: {} } as any);
+    expect(calls).toEqual(['save {"id":"s1","name":"Mine","colors":{"keyword":"#c792ea"}}', 'delete s1', 'default null']);
   });
 
   it('{#opens-detached} a freshly opened Lab opens the floating window on ready, so its preview starts hidden', async () => {
@@ -176,14 +217,36 @@ describe('Theme Preview window, host side', () => {
     expect(revived.posted.filter((m: any) => m.type === 'previewDetached')).toEqual([{ type: 'previewDetached', detached: false }]);
   });
 
-  it('{#ready-order} on ready the Lab posts modernUI, previewDetached, library, start, then identity, and no theme list', async () => {
+  it('{#ready-order} on ready the Lab posts modernUI, previewDetached, library, start, identity, then installedStarters, and no theme list', async () => {
     for (const p of [...panels]) { p.dispose(); }
     const revived = (await import('vscode') as any).window.createWebviewPanel('gigglybits.themeLab');
     ThemeLabPanel.revive(revived, extensionUri, identity, memento, library);
     await revived.receive({ type: 'ready' });
     const types = revived.posted.map((m: any) => m.type);
-    expect(types).toEqual(['modernUI', 'previewDetached', 'library', 'start', 'identity']);
+    expect(types).toEqual(['modernUI', 'previewDetached', 'library', 'start', 'identity', 'installedStarters']);
     expect(types).not.toContain('themes');
+  });
+
+  it('{#host-posts} sends the installed dark themes as starters on ready, and again when extensions change', async () => {
+    const fixture = path.join(__dirname, 'fixtures', 'theme-ext');
+    installedExtensions.length = 0;
+    installedExtensions.push({ id: 'fixture.fixture-theme', extensionPath: fixture, packageJSON: JSON.parse(fs.readFileSync(path.join(fixture, 'package.json'), 'utf8')) });
+    try {
+      for (const p of [...panels]) { p.dispose(); }
+      const revived = (await import('vscode') as any).window.createWebviewPanel('gigglybits.themeLab');
+      ThemeLabPanel.revive(revived, extensionUri, identity, memento, library);
+      const starters = () => revived.posted.filter((m: any) => m.type === 'installedStarters');
+      await revived.receive({ type: 'ready' });
+      expect(starters()).toHaveLength(1);
+      expect(starters()[0].starters.map((s: any) => [s.label, s.colors.keyword])).toEqual([['Fixture Dark (localized)', '#ff8800']]);
+      fireExtensionsChanged();
+      // The listener reads the theme files without being awaited; wait up to 3 s for its post.
+      for (let i = 0; i < 150 && starters().length < 2; i++) { await new Promise(resolve => setTimeout(resolve, 20)); }
+      expect(starters()).toHaveLength(2);
+      expect(starters()[1].starters.map((s: any) => s.label)).toEqual(['Fixture Dark (localized)']);
+    } finally {
+      installedExtensions.length = 0;
+    }
   });
 
   it('a Lab opened while the window is open starts with its preview hidden', async () => {
@@ -248,7 +311,7 @@ describe('Try in VS Code, where the theme switch goes', () => {
     for (const p of [...panels]) { p.dispose(); }
     ThemeLabPanel.show(extensionUri, identity, memento, library);
     const lab = labs()[labs().length - 1];
-    await lab.receive!({ type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null, groups: [] });
+    await lab.receive!({ type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null });
     delete inspected['workbench.colorTheme'];
     expect(updates.filter(u => u.key === 'workbench.colorTheme')).toEqual([{ key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 }]);
     expect(updates.find(u => u.key === 'workbench.colorCustomizations')!.target).toBe(1);
@@ -263,7 +326,7 @@ describe('Try in VS Code, where the theme switch goes', () => {
     for (const p of [...panels]) { p.dispose(); }
     ThemeLabPanel.show(extensionUri, identity, memento, library);
     const lab = labs()[labs().length - 1];
-    await lab.receive!({ type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null, groups: [] });
+    await lab.receive!({ type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null });
     delete inspected['workbench.colorCustomizations'];
     delete inspected['editor.tokenColorCustomizations'];
     const workspaceWrites = updates.filter(u => u.target === 2 && u.key !== 'workbench.colorTheme');
@@ -302,12 +365,12 @@ describe('Theme Preview across a reload', () => {
     ThemeLabPanel.show(extensionUri, identity, memento, library);
     const lab = labs()[labs().length - 1];
     const panel = await restored();
-    ThemePreviewPanel.revive(panel, extensionUri, true, { palette: { hue: 7 }, groups: [] }, ThemeLabPanel.pickFromPreview, ThemeLabPanel.previewClosed);
+    ThemePreviewPanel.revive(panel, extensionUri, true, { palette: { hue: 7 }, syntaxSets: [] }, ThemeLabPanel.pickFromPreview, ThemeLabPanel.previewClosed);
     expect([panel.disposed, ThemePreviewPanel.isOpen()]).toEqual([false, true]);
     // Already in its own window: no move, no compact command.
     expect(executed).toEqual([]);
     await panel.receive!({ type: 'ready' });
-    expect(panel.posted.filter((m: any) => m.type === 'state')).toEqual([{ type: 'state', palette: { hue: 7 }, groups: [] }]);
+    expect(panel.posted.filter((m: any) => m.type === 'state')).toEqual([{ type: 'state', palette: { hue: 7 }, syntaxSets: [] }]);
     const part = { card: 'workbench', index: 1, keys: ['button.background'], around: [], label: 'OK', region: null, fixed: null };
     await panel.receive!({ type: 'pickPart', part });
     expect(lab.posted.filter(m => m.type === 'pickPart')).toEqual([{ type: 'pickPart', part }]);
@@ -345,10 +408,16 @@ describe('Show where, host side', () => {
     await lab.receive!({ type: 'showWhere', keys: ['editorWidget.border', 42] });
     expect(ThemePreviewPanel.isOpen()).toBe(true);
     const window = panels.filter(p => p.viewType === 'gigglybits.themePreview').pop()!;
-    expect(window.posted.filter(m => m.type === 'highlight')).toEqual([{ type: 'highlight', keys: ['editorWidget.border'] }]);
-    // The page may still be loading: its ready gets the outline again.
+    expect(window.posted.filter(m => m.type === 'highlight')).toEqual([{ type: 'highlight', keys: ['editorWidget.border'], scroll: true }]);
+    // The page may still be loading: its ready gets the outline again, still scrolling to it.
     await window.receive!({ type: 'ready' });
-    expect(window.posted.filter(m => m.type === 'highlight')).toHaveLength(2);
+    expect(window.posted.filter(m => m.type === 'highlight')).toEqual([
+      { type: 'highlight', keys: ['editorWidget.border'], scroll: true },
+      { type: 'highlight', keys: ['editorWidget.border'], scroll: true },
+    ]);
+    // Opening a role in the Lab outlines its parts without scrolling the window.
+    await lab.receive!({ type: 'previewHighlight', keys: ['sideBar.background'] });
+    expect(window.posted.filter(m => m.type === 'highlight').pop()).toEqual({ type: 'highlight', keys: ['sideBar.background'], scroll: false });
     for (const p of [...panels]) { p.dispose(); }
   });
 });

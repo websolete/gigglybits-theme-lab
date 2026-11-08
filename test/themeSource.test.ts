@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { captureThemeSnapshot } from '../src/themeSource';
+import { captureThemeSnapshot, listInstalledSyntaxStarters, ownExtensionId } from '../src/themeSource';
 import { ColorThemeKind, mockState, resetMockState } from './__mocks__/vscode';
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'theme-ext');
@@ -196,5 +196,48 @@ describe('semantic highlighting', () => {
     mockState.userSettings['editor.semanticHighlighting.enabled'] = false;
     const snap = await captureThemeSnapshot();
     expect(snap.semanticHighlighting).toMatchObject({ setting: false, effective: false });
+  });
+});
+
+describe('installed dark themes as syntax set starters', () => {
+  it('{#host-list} lists each dark theme with its code colors read through the include chain', async () => {
+    const starters = await listInstalledSyntaxStarters();
+    expect(starters).toHaveLength(1);
+    const [s] = starters;
+    expect(s.id).toBe('Fixture Dark');
+    expect(s.label).toBe('Fixture Dark (localized)');
+    expect(s.extension).toBe('Fixture Themes');
+    expect(s.colors.keyword).toBe('#ff8800');
+    expect(s.colors.comment).toBe('#666666');
+    expect(s.colors.string).toBe('#cccccc');
+  });
+
+  it('{#host-own-excluded} leaves out this extension\'s own dark themes, whatever the letter case of its id', async () => {
+    // The id comes from the repository's package.json, so the check follows the manifest.
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    const id = `${manifest.publisher}.${manifest.name}`;
+    expect(ownExtensionId()).toBe(id.toLowerCase());
+    const own = (extId: string) => ({
+      id: extId,
+      extensionPath: FIXTURE,
+      packageJSON: { contributes: { themes: [{ label: `Own ${extId}`, uiTheme: 'vs-dark', path: './themes/child.json' }] } },
+    });
+    mockState.extensions = [own(id), own(id.toLowerCase())];
+    expect(await listInstalledSyntaxStarters()).toEqual([]);
+    installFixture();
+    mockState.extensions.push(own(id));
+    expect((await listInstalledSyntaxStarters()).map(s => s.label)).toEqual(['Fixture Dark (localized)']);
+    // An extension with another publisher or name is not this one.
+    mockState.extensions.push(own('Websolete.gigglybits-vscode-theme-other'));
+    expect((await listInstalledSyntaxStarters()).map(s => s.label)).toEqual(['Fixture Dark (localized)', 'Own Websolete.gigglybits-vscode-theme-other']);
+  });
+
+  it('leaves out a dark theme that yields no token rules', async () => {
+    mockState.extensions.push({
+      id: 'fixture.no-rules',
+      extensionPath: FIXTURE,
+      packageJSON: { contributes: { themes: [{ label: 'No Rules', uiTheme: 'vs-dark', path: './themes/light.json' }] } },
+    });
+    expect((await listInstalledSyntaxStarters()).map(s => s.label)).toEqual(['Fixture Dark (localized)']);
   });
 });

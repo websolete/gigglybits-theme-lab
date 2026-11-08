@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 // The Theme Preview page (media/themePreview.js with palette.js renderPreview) in jsdom: it
-// draws the Lab state the host sends, with its style groups, redraws on the next state, and
+// draws the Lab state the host sends, with its syntax sets, redraws on the next state, and
 // posts the parts clicked in it for the Lab to edit.
 import * as fs from 'fs';
 import * as path from 'path';
@@ -45,7 +45,7 @@ beforeEach(load);
 afterEach(unload);
 
 const send = (data: any) => window.dispatchEvent(new MessageEvent('message', { data }));
-const sendState = (palette: any, groups: any[] = []) => send({ type: 'state', palette, groups });
+const sendState = (palette: any, syntaxSets: any[] = []) => send({ type: 'state', palette, syntaxSets });
 /** The color the Workbench drawing paints a key in: the drawing redefines the --vscode-* variables. */
 const drawn = (key: string) =>
   document.querySelector<HTMLElement>('.gb-pl-chrome .gb-pl-scope')!.style.getPropertyValue(GB.varFor(key));
@@ -68,12 +68,12 @@ describe('Theme Preview page', () => {
     expect(drawn('button.background')).toBe(second);
   });
 
-  it('draws a state\'s style groups: an on Buttons group mapping button.background to raised', () => {
-    const groups = [{ id: 'g1', name: 'Calm', family: 'buttons', roles: { 'button.background': 'raised' }, on: true, savedAt: '' }];
-    sendState({ rule: 'square', hue: 12 }, groups);
-    const sw = TB.swatches({ colors: SQUARE }, chrome(0));
-    expect(sw.raised).not.toBe(sw.accent);
-    expect(drawn('button.background')).toBe(sw.raised);
+  it('draws a state on a syntax set in the set\'s Functions color', () => {
+    const colors = { keyword: '#c792ea', function: '#82aaff', string: '#c3e88d', type: '#ffcb6b', number: '#f78c6c', comment: '#7f848e', tag: '#f07178', attribute: '#ffcb6b', variable: '#eeffff', property: '#b2ccd6', constant: '#ff9cac', operator: '#89ddff', regex: '#c17e70' };
+    sendState({ rule: 'square', hue: 12, syntaxSet: 's1' }, [{ id: 's1', name: 'Night', colors, isDefault: false, savedAt: '' }]);
+    // symbolIcon.functionForeground takes the Functions role, which a set colors.
+    expect(drawn('symbolIcon.functionForeground')).toBe(colors.function);
+    expect(TB.swatches({ colors: SQUARE }, chrome(0)).fn).not.toBe(colors.function);
   });
 
   it('draws the Workbench then the Widgets on one page with no tabs, whatever preview tab an older Lab state names', () => {
@@ -137,5 +137,20 @@ describe('Theme Preview role outlines', () => {
     expect(lit().length).toBeGreaterThan(0);
     send({ type: 'highlight', keys: [] });
     expect(lit()).toEqual([]);
+  });
+
+  it('{#role-outline-scroll} scrolls to the first outlined part only when the message asks to (Show where)', () => {
+    sendState({ rule: 'square', hue: 12 });
+    const scrolled = jest.fn();
+    (Element.prototype as any).scrollIntoView = scrolled;
+    try {
+      send({ type: 'highlight', keys: ['sideBar.background'] });
+      expect(lit().length).toBeGreaterThan(0);
+      expect(scrolled).not.toHaveBeenCalled();
+      send({ type: 'highlight', keys: ['sideBar.background'], scroll: true });
+      expect(scrolled).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (Element.prototype as any).scrollIntoView;
+    }
   });
 });

@@ -35,7 +35,55 @@ export interface ChromeChoice {
   text?: TextLevel;
   /** Accent groups that take their colors from another palette color or a custom one; missing groups follow the accent. */
   accentGroups?: AccentGroups;
+  /**
+   * A syntax set's colors, resolved by the caller from the set a design names. When every key
+   * holds '#rrggbb', the code colors come from here instead of the palette, lifted to 4.5:1.
+   */
+  syntaxColors?: SyntaxColors;
 }
+
+/** The kinds of code a syntax set colors. */
+export type SyntaxSetKey = 'keyword' | 'function' | 'string' | 'type' | 'number' | 'comment' | 'tag' | 'attribute' | 'variable' | 'property' | 'constant' | 'operator' | 'regex';
+/** One '#rrggbb' per kind of code. */
+export type SyntaxColors = Record<SyntaxSetKey, string>;
+/** Every SyntaxSetKey, in the order the Lab shows them. */
+export const SYNTAX_SET_KEYS: readonly SyntaxSetKey[];
+
+/** value as a syntax set's colors, lower-cased, when it holds every SYNTAX_SET_KEYS key as '#rrggbb'; otherwise null. */
+export function cleanSyntaxColors(value: unknown): SyntaxColors | null;
+
+/** A set color raised until it reads 4.5:1 on the editor background, hue and chroma kept. */
+export function setColor(hex: string): string;
+
+/** A well-known dark scheme bundled as a syntax set starter, credited to its original repository. */
+export interface SyntaxScheme {
+  id: string;
+  name: string;
+  author: string;
+  license: string;
+  url: string;
+  colors: SyntaxColors;
+}
+
+export const SYNTAX_SCHEMES: readonly SyntaxScheme[];
+
+/** The one TextMate scope starterFromRules looks up for each kind. */
+export const STARTER_PROBES: Readonly<Record<SyntaxSetKey, string>>;
+
+/** A theme's token rule as starterFromRules reads it: scope a comma-separated selector list, '(editor default)' for none. */
+export interface StarterRule {
+  scope: string;
+  foreground?: string;
+}
+
+/** A syntax set's 13 colors resolved from token rules by the most specific matching scope. */
+export function starterFromRules(rules: readonly StarterRule[], foreground?: string): SyntaxColors;
+
+/** The 13 colors of the Quiet or Harmony recipe from the drawn swatches, foreground, comment color and base hue. */
+export function recipeColors(id: 'quiet' | 'harmony', palette: { sw: Record<string, string>; foreground: string; comment: string; baseHue: number }): SyntaxColors;
+
+/** The frame's OKLCH hue when its chroma is at least 0.03, else the accent's hue. */
+export function harmonyHue(frameHex: string, accentHex: string): number;
 
 /** An accent group's own color: a palette index, or a custom color (a shift from the base, or an older fixed '#rrggbb'). */
 export type AccentGroupSource = { index: number } | { color: string };
@@ -47,7 +95,7 @@ export type TextLevel = 'soft' | 'standard' | 'high';
 export const TEXT_LEVELS: Readonly<Record<TextLevel, readonly [number, number, number, number]>>;
 
 /** The Roles step's settings in a chrome choice, cleaned; syntax is null for the default order. */
-export function cleanChrome(chrome?: unknown): { syntax: number[] | null; depth: number; text: TextLevel; accentGroups: Record<string, AccentGroupSource> };
+export function cleanChrome(chrome?: unknown): { syntax: number[] | null; depth: number; text: TextLevel; accentGroups: Record<string, AccentGroupSource>; syntaxColors: SyntaxColors | null };
 
 /** The Roles step's families, in order; each swatch belongs to exactly one. */
 export const ROLE_FAMILIES: readonly { id: string; name: string; how: string; roles: readonly string[] }[];
@@ -100,21 +148,6 @@ export interface ColorEdits {
   keys?: Record<string, string>;
 }
 
-/** A widget family a style group can restyle. */
-export type GroupFamily = 'tabs' | 'lists' | 'buttons' | 'editorText';
-
-/** Each family's label, the color keys in it, and the token rule names in it (editorText only). */
-export const GROUP_FAMILIES: Readonly<Record<GroupFamily, { label: string; keys: readonly string[]; tokens: readonly string[] }>>;
-
-/**
- * A style group as the builder applies it: roles maps a key or token rule name of the family
- * to an Editor swatch name, such as 'accent' or 'raised'. Entries outside the family are ignored.
- */
-export interface StyleGroup {
-  family: GroupFamily;
-  roles: Record<string, string>;
-}
-
 export const LAB_THEME_LABEL: string;
 export const LAB_THEME_FILE: string;
 /** How many theme slots the build ships for saved library themes. */
@@ -123,8 +156,8 @@ export const SLOT_COUNT: number;
 export function slotLabel(n: number): string;
 /** 'gigglybits-theme-<n>-color-theme.json', the theme file of slot n. */
 export function slotFile(n: number): string;
-/** The theme's colors and token rules with the style groups applied; a key edit wins over a group. */
-export function labSettings(entry: BuilderEntry, chrome?: ChromeChoice, edits?: ColorEdits, groups?: readonly StyleGroup[]): LabSettings;
+/** The theme's colors and token rules, with the color edits applied. */
+export function labSettings(entry: BuilderEntry, chrome?: ChromeChoice, edits?: ColorEdits): LabSettings;
 /** A key edit value that leaves the key to VS Code's default ('default', as colorCustomizations reads it). */
 export const DEFAULT_COLOR: 'default';
 /** edits with every value that is not a shift or a hex color dropped; a key edit may also be DEFAULT_COLOR. */

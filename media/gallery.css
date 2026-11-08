@@ -361,7 +361,7 @@
 .gb-codeblock { padding: 6px 10px; font-family: var(--vscode-editor-font-family); border-radius: 3px; }
 .gb-quote { padding: 4px 10px; }
 .gb-separator { width: 260px; height: 0; margin: 8px 0; }
-/* A demo box in the borders card; not the .gb-box section wrapper from inspector.css. */
+/* A demo box in the borders card; not the .gb-box section wrapper from base.css. */
 .gb-demo-box { display: inline-block; padding: 6px 12px; border: 1px solid transparent; border-radius: 2px; }
 .gb-sash-demo { position: relative; width: 120px; height: 40px; border: 1px dashed rgba(128, 128, 128, 0.4); }
 .gb-sash { position: absolute; left: 58px; top: 0; bottom: 0; width: 4px; }

@@ -1,5 +1,5 @@
 // @ts-check
-// Helpers shared by the Theme Lab and Palette Inspector webview scripts. Loads as window.GB
+// Helpers shared by the Theme Lab and Theme Preview webview scripts. Loads as window.GB
 // in the webview and as a CommonJS module under Jest, so the pure functions are unit-tested.
 (function (root, factory) {
   const api = factory();

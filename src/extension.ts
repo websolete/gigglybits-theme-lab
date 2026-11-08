@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { PaletteInspectorPanel } from './paletteInspectorPanel';
 import { parseFrameSeed, ThemeLabPanel } from './themeLabPanel';
 import { hasWebviewTab, ThemePreviewPanel } from './themePreviewPanel';
 import { IdentityController } from './identityController';
@@ -15,15 +14,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // An optional { frame, name } starts a project theme from a folder's old color (src/identityController.ts).
     vscode.commands.registerCommand('gigglybits.openThemeLab', (seed?: unknown) =>
       ThemeLabPanel.show(context.extensionUri, identity, context.globalState, library, parseFrameSeed(seed))),
-    vscode.commands.registerCommand('gigglybits.openPaletteInspector', () => PaletteInspectorPanel.show(context.extensionUri)),
     vscode.window.registerWebviewPanelSerializer(ThemeLabPanel.viewType, {
       async deserializeWebviewPanel(panel: vscode.WebviewPanel) {
         ThemeLabPanel.revive(panel, context.extensionUri, identity, context.globalState, library);
-      },
-    }),
-    vscode.window.registerWebviewPanelSerializer(PaletteInspectorPanel.viewType, {
-      async deserializeWebviewPanel(panel: vscode.WebviewPanel) {
-        PaletteInspectorPanel.revive(panel, context.extensionUri);
       },
     }),
     // A Theme Preview from before a reload comes back only with a Theme Lab, open or being

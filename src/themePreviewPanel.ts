@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { affectsModernUI, modernUISettings } from './modernUI';
 
-/** What the Theme Lab page posts as 'previewState': its Palette Lab state and the style groups. */
+/** What the Theme Lab page posts as 'previewState': its Palette Lab state and the syntax sets. */
 export interface PreviewState {
   palette: unknown;
-  groups: unknown;
+  syntaxSets: unknown;
 }
 
 type FromPreview =
@@ -31,7 +31,7 @@ export function labPageHtml(webview: vscode.Webview, extensionUri: vscode.Uri, t
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="${codicons}">
-  <link rel="stylesheet" href="${media('inspector.css')}">
+  <link rel="stylesheet" href="${media('base.css')}">
   <link rel="stylesheet" href="${media('gallery.css')}">
   <link rel="stylesheet" href="${media('themeLab.css')}">
   <link rel="stylesheet" href="${media('palette.css')}">
@@ -80,6 +80,8 @@ export class ThemePreviewPanel {
   private state: PreviewState | undefined;
   /** The keys last outlined, sent again when the page (re)loads. */
   private highlightKeys: string[] = [];
+  /** Whether the last outline asked the page to scroll to it (Show where), sent again with the keys. */
+  private highlightScroll = false;
 
   /**
    * Opens the Theme Preview with `state` and floats it, or reveals the open one. `onPick`
@@ -187,28 +189,30 @@ export class ThemePreviewPanel {
 
   /**
    * Outlines the drawn parts that use any of `keys` in the open Theme Preview, if there is one;
-   * an empty list clears the outlines. The Roles step sends the keys of the role under the
-   * pointer or open, and Show where sends them right after opening the window. Kept, so a page
-   * that is still loading outlines them on its 'ready'.
+   * an empty list clears the outlines. The Roles step sends the open role's keys without
+   * `scroll`, so the page stays where it is; Show where sends them with `scroll` right after
+   * opening the window, and the page scrolls to the first. Kept, so a page that is still loading
+   * outlines them on its 'ready'.
    */
-  static highlight(keys: string[]): void {
+  static highlight(keys: string[], scroll = false): void {
     const open = ThemePreviewPanel.current;
     if (!open) { return; }
     open.highlightKeys = keys;
-    void open.panel.webview.postMessage({ type: 'highlight', keys });
+    open.highlightScroll = scroll;
+    void open.panel.webview.postMessage({ type: 'highlight', keys, scroll });
   }
 
   /** Keeps the state, for a page that loads later, and sends it to the page. */
   private update(state: PreviewState): void {
     this.state = state;
-    void this.panel.webview.postMessage({ type: 'state', palette: state.palette, groups: state.groups });
+    void this.panel.webview.postMessage({ type: 'state', palette: state.palette, syntaxSets: state.syntaxSets });
   }
 
   private onMessage(msg: FromPreview): void {
     if (msg.type === 'ready') {
       this.postModernUI();
       if (this.state) { this.update(this.state); }
-      if (this.highlightKeys.length) { void this.panel.webview.postMessage({ type: 'highlight', keys: this.highlightKeys }); }
+      if (this.highlightKeys.length) { void this.panel.webview.postMessage({ type: 'highlight', keys: this.highlightKeys, scroll: this.highlightScroll }); }
     } else if (msg.type === 'pickPart') {
       this.onPick(msg.part);
     }

@@ -37,7 +37,7 @@ Filled text is black or white, picked against the exact background it sits on, s
 
 ## Key interfaces
 
-- `buildColors(entry, { index, surfaces, frame: { index? | color?, style }, syntax?, depth?, text? }, edits, groups)`, `buildTheme(entry, chrome, edits, groups)` and `labSettings(entry, chrome, edits, groups)` in `media/themeBuilder.js`. `groups` is the style groups, `{ family, roles }` each (default `[]`), applied after the roles and before key edits; no group family holds a `FRAME_KEYS` key, so groups never change the Frame (`docs/specs/theme-library.spec.md`).
+- `buildColors(entry, { index, surfaces, frame: { index? | color?, style }, syntax?, depth?, text?, syntaxColors? }, edits)`, `buildTheme(entry, chrome, edits)` and `labSettings(entry, chrome, edits)` in `media/themeBuilder.js`. `syntaxColors` is a syntax set's colors; it changes only the code roles and token rules, never a `FRAME_KEYS` key, so a set never changes the Frame (`docs/specs/theme-library.spec.md`). Style groups, which took a fourth `groups` parameter, were retired on 2026-11-07.
 - `FRAME_KEYS`, `SWATCHES[name][2]` (the group), `SWATCH_OF[key]`.
 - `cleanChrome(chrome)` returns the three Roles settings cleaned (`syntax` as five non-negative integers or null, `depth` clamped to 0.5 to 2 and rounded to 0.1, `text` a `TEXT_LEVELS` id); `TEXT_LEVELS` holds each level's four lightnesses, and `ROLE_FAMILIES` the seven families the Roles step shows.
 - The Lab's `ui.palette.frame` state and the Try in VS Code message's `chrome.frame` and `settings.frame`; `TryRecord.frame` in `src/labStart.ts`.

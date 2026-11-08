@@ -384,66 +384,92 @@ describe('Frame and Editor', () => {
   });
 });
 
-describe('Style groups', () => {
-  const sw = () => TB.swatches(CANDY);
-  const buttons = (roles: Record<string, string>) => ({ family: 'buttons', roles });
+describe('syntax sets: code colors that do not follow the palette', () => {
+  const SET = {
+    keyword: '#c792ea', function: '#82aaff', string: '#c3e88d', type: '#ffcb6b', number: '#f78c6c', comment: '#7f848e',
+    tag: '#f07178', attribute: '#ffcb6b', variable: '#eeffff', property: '#b2ccd6', constant: '#ff9cac', operator: '#89ddff', regex: '#c17e70',
+  };
+  const OTHER = entry('mono-h20', 'Ember', ['#e05a3c', '#c84a30', '#f0a080', '#a83820', '#ffd0c0']);
+  const ratio = (hex: string) => GB.contrastRatio(GB.parseColor(hex), GB.parseColor(TB.THEME_BACKGROUND));
+  const rule = (rules: any[], name: string) => rules.find((r: any) => r.name === name);
 
-  it('a buttons group moves button.background to the role it names', () => {
-    const grouped = TB.buildColors(CANDY, {}, undefined, [buttons({ 'button.background': 'raised' })]);
-    expect(grouped['button.background']).toBe(sw().raised);
-    expect(TB.buildColors(CANDY)['button.background']).toBe(sw().accent);
-    expect(sw().raised).not.toBe(sw().accent);
+  it('{#builder-no-groups} exports no GROUP_FAMILIES, and labSettings ignores a fourth argument shaped like an old style group', () => {
+    expect('GROUP_FAMILIES' in TB).toBe(false);
+    const oldGroup = [{ family: 'tabs', roles: { 'tab.activeBackground': 'raised' } }];
+    const withArg = (TB.labSettings as (...a: unknown[]) => any)(CANDY, {}, undefined, oldGroup);
+    expect(withArg.colors).toEqual(TB.labSettings(CANDY, {}).colors);
+    expect(TB.swatches(CANDY).raised).not.toBe(TB.labSettings(CANDY, {}).colors['tab.activeBackground']);
   });
 
-  it('ignores an entry outside the family, a frame key and a swatch that is not an Editor role; a key edit wins', () => {
-    const base = TB.buildColors(CANDY);
-    const cases: Record<string, string>[] = [
-      { 'tab.activeBackground': 'raised' }, { 'titleBar.activeBackground': 'raised' }, { 'button.background': 'frameBg' }, { 'button.background': 'nope' },
-    ];
-    for (const roles of cases) {
-      expect({ roles, colors: TB.buildColors(CANDY, {}, undefined, [buttons(roles)]) }).toEqual({ roles, colors: base });
+  it('{#set-same-across-palettes} two palettes on the same set draw the same code swatches and the same token rules', () => {
+    const a = TB.swatches(CANDY, { syntaxColors: SET });
+    const b = TB.swatches(OTHER, { syntaxColors: SET });
+    expect(['kw', 'fn', 'str', 'type', 'num'].map(k => b[k])).toEqual(['kw', 'fn', 'str', 'type', 'num'].map(k => a[k]));
+    expect(TB.tokenColors(OTHER, { syntaxColors: SET })).toEqual(TB.tokenColors(CANDY, { syntaxColors: SET }));
+    // The palettes themselves draw different code colors.
+    expect(TB.swatches(OTHER).kw).not.toBe(TB.swatches(CANDY).kw);
+  });
+
+  it('{#set-rule-scopes} a set adds the set rules with their scopes; without one the six rules of today stay', () => {
+    const rules = TB.tokenColors(CANDY, { syntaxColors: SET });
+    expect(rules.map((r: any) => r.name)).toEqual([
+      'Keyword', 'Function', 'String', 'Type', 'Number', 'Comment',
+      'Tag', 'Attribute', 'Variable', 'Property', 'Constant', 'Operator', 'Regex', 'Keyword operator',
+    ]);
+    expect(rule(rules, 'Number').scope).toEqual(['constant.numeric']);
+    expect(rule(rules, 'Tag').scope).toEqual(['entity.name.tag']);
+    expect(rule(rules, 'Attribute').scope).toEqual(['entity.other.attribute-name']);
+    expect(rule(rules, 'Variable').scope).toEqual(['variable', 'variable.parameter', 'support.variable', 'meta.definition.variable.name']);
+    expect(rule(rules, 'Property').scope).toEqual(['variable.other.property', 'variable.other.object.property', 'meta.object-literal.key', 'support.type.property-name']);
+    expect(rule(rules, 'Constant').scope).toEqual(['constant.language', 'variable.other.constant', 'variable.other.enummember']);
+    expect(rule(rules, 'Operator').scope).toEqual(['keyword.operator', 'punctuation.separator', 'punctuation.terminator', 'punctuation.accessor', 'punctuation.definition.tag']);
+    expect(rule(rules, 'Regex').scope).toEqual(['string.regexp', 'constant.character.escape']);
+    expect(rule(rules, 'Keyword operator').scope).toEqual(['keyword.operator.new', 'keyword.operator.expression']);
+    // Each set color already reads 4.5:1, so each new rule carries it unchanged.
+    const keyOf: Record<string, string> = { Tag: 'tag', Attribute: 'attribute', Variable: 'variable', Property: 'property', Constant: 'constant', Operator: 'operator', Regex: 'regex', 'Keyword operator': 'keyword' };
+    for (const [name, key] of Object.entries(keyOf)) {
+      expect({ name, ratioOk: ratio(SET[key as keyof typeof SET]) >= 4.5, fg: rule(rules, name).settings.foreground }).toEqual({ name, ratioOk: true, fg: SET[key as keyof typeof SET] });
     }
-    const edited = TB.buildColors(CANDY, {}, { keys: { 'button.background': '#123456' } }, [buttons({ 'button.background': 'raised' })]);
-    expect(edited['button.background']).toBe('#123456');
+    const plain = TB.tokenColors(CANDY, {});
+    expect(plain.map((r: any) => r.name)).toEqual(['Keyword', 'Function', 'String', 'Type', 'Number', 'Comment']);
+    expect(rule(plain, 'Number').scope).toEqual(['constant.numeric', 'constant.language']);
   });
 
-  it('an Editor text group sets a token rule foreground and editor.foreground', () => {
-    const group = { family: 'editorText', roles: { String: 'accent', 'editor.foreground': 'bright' } };
-    const lab = TB.labSettings(CANDY, {}, undefined, [group]);
-    expect(lab.tokenColors.find((r: any) => r.name === 'String').settings.foreground).toBe(sw().accent);
-    expect(lab.colors['editor.foreground']).toBe(sw().bright);
-    expect(TB.tokenColors(CANDY).find((r: any) => r.name === 'String').settings.foreground).toBe(sw().str);
+  it('{#set-lift-keeps-hue} a set color under 4.5:1 is raised to 4.5:1 with its hue kept', () => {
+    const dim = '#303060';
+    expect(ratio(dim)).toBeLessThan(4.5);
+    const kw = TB.swatches(CANDY, { syntaxColors: { ...SET, keyword: dim } }).kw;
+    expect(ratio(kw)).toBeGreaterThanOrEqual(4.5);
+    const hueGap = Math.abs(GB.hexToOklch(kw).h - GB.hexToOklch(dim).h);
+    expect(Math.min(hueGap, 360 - hueGap)).toBeLessThanOrEqual(1);
   });
 
-  it('holds the tab, list and tree, button and editor text families', () => {
-    const f = TB.GROUP_FAMILIES;
-    expect([f.tabs.keys.length, f.lists.keys.length, f.buttons.keys.length]).toEqual([27, 27, 9]);
-    expect(f.editorText.keys).toEqual(['editor.foreground']);
-    expect(f.editorText.tokens).toEqual(['Keyword', 'Function', 'String', 'Type', 'Number', 'Comment']);
-    expect(f.lists.keys.every((k: string) => k.startsWith('list.') || k.startsWith('tree.'))).toBe(true);
-    expect([f.tabs.label, f.lists.label, f.buttons.label, f.editorText.label]).toEqual(['Tabs', 'Lists and trees', 'Buttons', 'Editor text']);
+  it('{#set-not-spread} two close set colors that already read 4.5:1 both build as given', () => {
+    const close = { ...SET, keyword: '#c792ea', function: '#c895eb' };
+    // The fixture's colors sit closer than the builder's MIN_DISTANCE (0.05 in OKLab), so a
+    // keep-apart pass would move one of them.
+    const lab = (hex: string) => { const { l, c, h } = GB.hexToOklch(hex); const r = (h * Math.PI) / 180; return [l, c * Math.cos(r), c * Math.sin(r)]; };
+    const [a, b] = [lab(close.keyword), lab(close.function)];
+    expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])).toBeLessThan(0.05);
+    expect([ratio(close.keyword), ratio(close.function)].every(v => v >= 4.5)).toBe(true);
+    const sw = TB.swatches(CANDY, { syntaxColors: close });
+    expect([sw.kw, sw.fn]).toEqual(['#c792ea', '#c895eb']);
   });
 
-  it('leaves the two frame tab lines out of the Tabs family', () => {
-    const tabs = TB.GROUP_FAMILIES.tabs.keys;
-    expect(tabs.length).toBe(27);
-    expect(tabs.filter((k: string) => k === 'tab.activeBorderTop' || k === 'tab.activeBorder')).toEqual([]);
+  it('{#edit-over-set} a Keywords edit moves the set color by its shift', () => {
+    const shift = '~0.05,0,0';
+    const kw = TB.swatches(CANDY, { syntaxColors: SET }, { swatches: { kw: shift } }).kw;
+    expect(kw).toBe(TB.applyShift(shift, SET.keyword));
+    expect(kw).not.toBe(SET.keyword);
+    // new, typeof and instanceof follow the edited Keywords color, not the set's own.
+    const rules = TB.tokenColors(CANDY, { syntaxColors: SET }, { swatches: { kw: shift } });
+    expect(rule(rules, 'Keyword operator').settings.foreground).toBe(rule(rules, 'Keyword').settings.foreground);
   });
 
-  it('a tabs group naming a frame key leaves it as the build with no group, in a Filled frame', () => {
-    const filled = { frame: { style: 'filled', index: 0 } };
-    const grouped = TB.buildColors(CANDY, filled, undefined, [{ family: 'tabs', roles: { 'tab.activeBorderTop': 'raised' } }]);
-    expect(grouped['tab.activeBorderTop']).toBe(TB.buildColors(CANDY, filled)['tab.activeBorderTop']);
-    expect(grouped['tab.activeBorderTop']).not.toBe(TB.swatches(CANDY).raised);
-  });
-
-  it('a group cannot change a frame key: titleBar.activeBackground stays as the theme builds it in every family', () => {
-    const base = TB.buildColors(CANDY)['titleBar.activeBackground'];
-    for (const family of Object.keys(TB.GROUP_FAMILIES)) {
-      const c = TB.buildColors(CANDY, {}, undefined, [{ family, roles: { 'titleBar.activeBackground': 'raised' } }]);
-      expect({ family, value: c['titleBar.activeBackground'] }).toEqual({ family, value: base });
-    }
-    expect(base).not.toBe(sw().raised);
+  it('an incomplete set is ignored and the palette draws the code', () => {
+    const partial: Record<string, string> = { ...SET };
+    delete partial.regex;
+    expect(TB.tokenColors(CANDY, { syntaxColors: partial })).toEqual(TB.tokenColors(CANDY, {}));
   });
 });
 
@@ -674,5 +700,115 @@ describe('a custom accent: the step 3 Accent from any color', () => {
     const shift = TB.shiftFor('#2f9e44', triad.base);
     const dark = TB.swatches(triad, { index: 0, color: shift, frame: { style: 'dark' } });
     expect(dark.frameActive).toBe(GB.liftTo(TB.applyShift(shift, triad.base), '#1e1e1e', 4.5));
+  });
+});
+
+describe('syntax set starters: schemes, installed theme rules and palette recipes', () => {
+  const KEYS: string[] = TB.SYNTAX_SET_KEYS.slice();
+  /** test/fixtures/theme-ext Fixture Dark's rules in theme order (base.json, then child.json), transcribed because base.json is JSONC. */
+  const FIXTURE_RULES = [
+    { scope: '(editor default)', foreground: '#cccccc' },
+    { scope: 'comment', foreground: '#666666' },
+    { scope: 'keyword, storage', foreground: '#ff8800' },
+  ];
+
+  it('{#rules-mapped} picks the most specific matching selector, the later rule on a tie, and the editor default otherwise', () => {
+    const rules = [
+      { scope: 'keyword', foreground: '#111111' },
+      { scope: 'keyword.operator', foreground: '#222222' },
+      { scope: 'source.js string', foreground: '#333333' },
+      { scope: 'string', foreground: '#444' },
+      { scope: 'keyword', foreground: '#555555' },
+      { scope: '(editor default)', foreground: '#cccccc' },
+    ];
+    const out = TB.starterFromRules(rules, '#d4d4d4');
+    expect(out.keyword).toBe('#555555');
+    expect(out.operator).toBe('#222222');
+    expect(out.string).toBe('#444444');
+    expect(out.regex).toBe('#444444');
+    for (const k of KEYS.filter(k => !['keyword', 'operator', 'string', 'regex'].includes(k))) {
+      expect([k, out[k]]).toEqual([k, '#cccccc']);
+    }
+  });
+
+  it('normalizes colors and skips rules with no usable foreground', () => {
+    const out = TB.starterFromRules([
+      { scope: 'comment', foreground: '#ABCDEF80' },
+      { scope: 'string' },
+      { scope: 'entity.name.function', foreground: 'red' },
+    ], '#eeeeee');
+    expect(out.comment).toBe('#abcdef');
+    expect(out.string).toBe('#eeeeee');
+    expect(out.function).toBe('#eeeeee');
+    expect(TB.starterFromRules([], undefined).keyword).toBe('#d4d4d4');
+  });
+
+  it('{#rules-clean} gives colors cleanSyntaxColors accepts, for the fixture theme and for no rules', () => {
+    const fixture = TB.starterFromRules(FIXTURE_RULES, '#cccccc');
+    expect(TB.cleanSyntaxColors(fixture)).toEqual(fixture);
+    expect(fixture.keyword).toBe('#ff8800');
+    expect(fixture.comment).toBe('#666666');
+    expect(fixture.string).toBe('#cccccc');
+    const empty = TB.starterFromRules([], '#cccccc');
+    expect(TB.cleanSyntaxColors(empty)).toEqual(empty);
+  });
+
+  it('{#schemes-data} bundles each well-known scheme with its credit and valid colors', () => {
+    expect(TB.SYNTAX_SCHEMES.map((s: any) => s.id)).toEqual(['dracula', 'nord', 'solarized-dark', 'gruvbox-dark', 'one-dark', 'tokyo-night', 'catppuccin-mocha']);
+    for (const s of TB.SYNTAX_SCHEMES) {
+      for (const field of ['name', 'author', 'license', 'url']) {
+        expect([s.id, field, typeof s[field] === 'string' && s[field].trim().length > 0]).toEqual([s.id, field, true]);
+      }
+      expect(s.url).toMatch(/^https:\/\/github\.com\//);
+      expect(TB.cleanSyntaxColors(s.colors)).toEqual(s.colors);
+      expect(Object.keys(s.colors).sort()).toEqual(KEYS.slice().sort());
+    }
+  });
+
+  const PALETTE = {
+    sw: { kw: '#c586c0', fn: '#dcdcaa', str: '#ce9178', type: '#4ec9b0', num: '#b5cea8' },
+    foreground: '#d4d4d4',
+    comment: '#6a9955',
+    baseHue: 200,
+  };
+
+  it('{#recipe-quiet} Quiet keeps strings, numbers and functions and draws the rest in the editor foreground', () => {
+    const q = TB.recipeColors('quiet', PALETTE);
+    for (const k of ['keyword', 'tag', 'attribute', 'variable', 'property', 'operator']) { expect([k, q[k]]).toEqual([k, PALETTE.foreground]); }
+    expect([q.string, q.regex]).toEqual([PALETTE.sw.str, PALETTE.sw.str]);
+    expect([q.number, q.constant]).toEqual([PALETTE.sw.num, PALETTE.sw.num]);
+    expect([q.function, q.type]).toEqual([PALETTE.sw.fn, PALETTE.sw.fn]);
+    expect(q.comment).toBe(PALETTE.comment);
+    expect(TB.cleanSyntaxColors(q)).toEqual(q);
+  });
+
+  it('{#recipe-harmony} Harmony spaces hues around the base hue', () => {
+    const hm = TB.recipeColors('harmony', PALETTE);
+    const hueOf = (hex: string) => GB.hexToOklch(hex).h;
+    const near = (hex: string, want: number) => {
+      const d = Math.abs(((hueOf(hex) - want) % 360 + 540) % 360 - 180);
+      expect([hex, want, d <= 3]).toEqual([hex, want, true]);
+    };
+    near(hm.keyword, 200);
+    near(hm.function, 260);
+    near(hm.string, 320);
+    near(hm.type, 20);
+    near(hm.number, 80);
+    near(hm.tag, 140);
+    near(hm.attribute, 230);
+    expect(hm.constant).toBe(hm.number);
+    for (const k of ['variable', 'property', 'operator']) { expect([k, hm[k]]).toEqual([k, PALETTE.foreground]); }
+    expect(TB.cleanSyntaxColors(hm)).toEqual(hm);
+  });
+
+  it('{#harmony-hue} Harmony starts from the frame hue unless the frame is nearly grey', () => {
+    const frame = GB.oklchToHex({ l: 0.4, c: 0.05, h: 150 });
+    const grey = GB.oklchToHex({ l: 0.4, c: 0.01, h: 150 });
+    const accent = GB.oklchToHex({ l: 0.7, c: 0.15, h: 30 });
+    expect(Math.abs(TB.harmonyHue(frame, accent) - GB.hexToOklch(frame).h)).toBeLessThan(0.5);
+    expect(Math.abs(TB.harmonyHue(grey, accent) - GB.hexToOklch(accent).h)).toBeLessThan(0.5);
+    expect(GB.hexToOklch(frame).c).toBeGreaterThanOrEqual(0.03);
+    expect(GB.hexToOklch(grey).c).toBeLessThan(0.03);
+    expect(Math.abs(GB.hexToOklch(frame).h - GB.hexToOklch(accent).h)).toBeGreaterThan(90);
   });
 });

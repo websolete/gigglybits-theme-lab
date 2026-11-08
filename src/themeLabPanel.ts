@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { labPageHtml, labWebviewOptions, PreviewState, ThemePreviewPanel } from './themePreviewPanel';
 import { withLabScope, withoutLabScope } from './labSettings';
-import { captureThemeSnapshot } from './themeSource';
-import { BuilderEntry, ChromeChoice, cleanEdits, GROUP_FAMILIES, GroupFamily, LAB_THEME_LABEL, labSettings, StyleGroup } from '../scripts/theme-builder';
+import { captureThemeSnapshot, InstalledSyntaxStarter, listInstalledSyntaxStarters } from './themeSource';
+import { BuilderEntry, ChromeChoice, cleanEdits, LAB_THEME_LABEL, labSettings } from '../scripts/theme-builder';
 import { parseTryRecord, startConfig } from './labStart';
 import { parseDesign } from './themeLibrary';
 import { ThemeLibraryController, UseTarget } from './themeLibraryController';
@@ -11,25 +11,22 @@ import { affectsModernUI, modernUISettings } from './modernUI';
 type FromWebview =
   | { type: 'ready' }
   | { type: 'copy'; text: string }
-  | { type: 'applyPalette'; entry: BuilderEntry; chrome: ChromeChoice; edits?: unknown; settings?: unknown; groups?: unknown }
-  | { type: 'openPaletteInspector' }
+  | { type: 'applyPalette'; entry: BuilderEntry; chrome: ChromeChoice; edits?: unknown; settings?: unknown }
   | { type: 'saveTheme'; name: string; design: unknown }
   | { type: 'useTheme'; id: string; where: UseTarget }
   | { type: 'deleteTheme'; id: string }
-  | { type: 'saveGroup'; name: string; family: string; roles: unknown }
-  | { type: 'setGroupOn'; id: string; on: boolean }
-  | { type: 'deleteGroup'; id: string }
-  | { type: 'previewState'; palette: unknown; groups: unknown }
+  | { type: 'saveSyntaxSet'; id?: unknown; name: unknown; colors: unknown }
+  | { type: 'deleteSyntaxSet'; id: unknown }
+  | { type: 'setDefaultSyntaxSet'; id: unknown }
+  | { type: 'previewState'; palette: unknown; syntaxSets: unknown }
   | { type: 'previewHighlight'; keys: unknown }
   | { type: 'showWhere'; keys: unknown }
   | { type: 'openPreviewWindow' };
 
-const isGroupFamily = (v: unknown): v is GroupFamily => typeof v === 'string' && Object.prototype.hasOwnProperty.call(GROUP_FAMILIES, v);
-
-/** The string-valued entries of roles, or undefined when roles is not an object. */
-function groupRoles(roles: unknown): Record<string, string> | undefined {
-  if (typeof roles !== 'object' || roles === null || Array.isArray(roles)) { return undefined; }
-  return Object.fromEntries(Object.entries(roles).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
+/** The string-valued entries of colors, or undefined when colors is not an object. */
+function colorMap(colors: unknown): Record<string, string> | undefined {
+  if (typeof colors !== 'object' || colors === null || Array.isArray(colors)) { return undefined; }
+  return Object.fromEntries(Object.entries(colors).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
 }
 
 /**
@@ -94,7 +91,7 @@ function themeOverrideNotes(theme: { workspaceValue?: string; workspaceFolderVal
 
 /**
  * An editor-tab webview for building, trying and picking a GigglyBits theme. It holds the
- * Palette Lab (media/palette.js); the Palette Inspector is the separate debugging view.
+ * Palette Lab (media/palette.js), whose preview is drawn in the Theme Preview window.
  */
 export class ThemeLabPanel {
   static readonly viewType = 'gigglybits.themeLab';
@@ -155,26 +152,39 @@ export class ThemeLabPanel {
       // A change to this folder's colors (an old color added or removed) or to the active theme.
       identity.onDidChange(kind => void this.postIdentity(kind === 'identity')),
       vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('gigglybits.library') || e.affectsConfiguration('gigglybits.groups')) {
+        if (e.affectsConfiguration('gigglybits.library') || e.affectsConfiguration('gigglybits.syntaxSets')) {
           void this.postLibrary();
         }
         if (affectsModernUI(e)) {
           void this.postModernUI();
         }
       }),
+      // An extension installed, removed or updated can add or drop dark themes.
+      vscode.extensions.onDidChange(() => void this.postInstalledStarters()),
     );
   }
 
-  /** The saved themes, the style groups, and whether a folder is open, which decides whether Use in this project is offered. */
+  /** The installed dark themes' syntax set starters (src/themeSource.ts), or none when reading them fails. */
+  private async postInstalledStarters(): Promise<void> {
+    let starters: InstalledSyntaxStarter[];
+    try {
+      starters = await listInstalledSyntaxStarters();
+    } catch {
+      starters = [];
+    }
+    await this.panel.webview.postMessage({ type: 'installedStarters', starters });
+  }
+
+  /** The saved themes, the syntax sets, and whether a folder is open, which decides whether Use in this project is offered. */
   private async postLibrary(): Promise<void> {
     await this.panel.webview.postMessage({
-      type: 'library', themes: this.library.library(), groups: this.library.groups(), hasFolder: this.library.hasFolder(),
+      type: 'library', themes: this.library.library(), syntaxSets: this.library.syntaxSets(), hasFolder: this.library.hasFolder(),
     });
   }
 
   /**
-   * The active theme's label, from captureThemeSnapshot(), the same value the Palette
-   * Inspector header shows; 'ready' decides the start palette from it. Undefined when the
+   * The active theme's label, from captureThemeSnapshot(); 'ready' decides the start palette
+   * from it. Undefined when the
    * snapshot fails.
    */
   private async activeTheme(): Promise<string | undefined> {
@@ -221,6 +231,7 @@ export class ThemeLabPanel {
           this.pendingSeed = undefined;
         }
         await this.postIdentity(false);
+        await this.postInstalledStarters();
         break;
       }
       case 'saveTheme': {
@@ -241,24 +252,24 @@ export class ThemeLabPanel {
       case 'deleteTheme':
         await this.library.deleteSafely(msg.id);
         break;
-      case 'saveGroup': {
+      case 'saveSyntaxSet': {
         const name = typeof msg.name === 'string' ? msg.name.trim() : '';
-        const roles = groupRoles(msg.roles);
-        if (!name || !isGroupFamily(msg.family) || !roles) {
-          vscode.window.showErrorMessage('Could not save the style group: it needs a name, a family and its roles.');
+        const colors = colorMap(msg.colors);
+        if (!name || !colors) {
+          vscode.window.showErrorMessage('Could not save the syntax set: it needs a name and its colors.');
           break;
         }
-        await this.library.saveGroupSafely(name, msg.family, roles);
+        await this.library.saveSyntaxSetSafely({ ...(typeof msg.id === 'string' && msg.id ? { id: msg.id } : {}), name, colors });
         break;
       }
-      case 'setGroupOn':
-        if (typeof msg.id === 'string' && typeof msg.on === 'boolean') {
-          await this.library.setGroupOnSafely(msg.id, msg.on);
+      case 'deleteSyntaxSet':
+        if (typeof msg.id === 'string') {
+          await this.library.deleteSyntaxSetSafely(msg.id);
         }
         break;
-      case 'deleteGroup':
-        if (typeof msg.id === 'string') {
-          await this.library.deleteGroupSafely(msg.id);
+      case 'setDefaultSyntaxSet':
+        if (typeof msg.id === 'string' || msg.id === null) {
+          await this.library.setDefaultSyntaxSetSafely(msg.id);
         }
         break;
       case 'copy':
@@ -266,17 +277,14 @@ export class ThemeLabPanel {
         vscode.window.setStatusBarMessage(`Copied ${msg.text}`, 2500);
         break;
       case 'applyPalette':
-        await this.applyPalette(msg.entry, msg.chrome, msg.edits, msg.settings, msg.groups);
-        break;
-      case 'openPaletteInspector':
-        await vscode.commands.executeCommand('gigglybits.openPaletteInspector');
+        await this.applyPalette(msg.entry, msg.chrome, msg.edits, msg.settings);
         break;
       case 'previewState':
-        this.previewState = { palette: msg.palette, groups: msg.groups };
+        this.previewState = { palette: msg.palette, syntaxSets: msg.syntaxSets };
         ThemePreviewPanel.update(this.previewState);
         break;
       case 'previewHighlight':
-        // The Roles step's role under the pointer or open: outline its parts in the preview.
+        // The Roles step's open role: outline its parts in the preview, leaving its scroll alone.
         ThemePreviewPanel.highlight(keyList(msg.keys));
         break;
       case 'showWhere':
@@ -284,7 +292,7 @@ export class ThemeLabPanel {
         // outline the role's parts there; the page scrolls to the first.
         await this.openPreviewWindow();
         await this.postDetached();
-        ThemePreviewPanel.highlight(keyList(msg.keys));
+        ThemePreviewPanel.highlight(keyList(msg.keys), true);
         break;
       case 'openPreviewWindow':
         await this.openPreviewWindow();
@@ -344,15 +352,14 @@ export class ThemeLabPanel {
    * (src/labSettings.ts); the theme switch goes to this workspace when the workspace sets its
    * own theme, else to user settings (tryThemeTarget), and Back restores it there. The page's
    * `settings` are recorded in globalState, so a Theme Lab opened later under the Lab theme
-   * restores them; a record that fails parseTryRecord is skipped and the Try goes ahead.
-   * `groups` are the style groups the Lab's preview draws, { family, roles } each; the builder
-   * ignores any entry it cannot apply, and a value that is not an array applies none.
+   * restores them; a record that fails parseTryRecord is skipped and the Try goes ahead. The
+   * chrome carries the syntax set's colors (syntaxColors) when the design is on a set.
    */
-  private async applyPalette(entry: BuilderEntry, chrome: ChromeChoice, edits: unknown, settings: unknown, groups: unknown): Promise<void> {
+  private async applyPalette(entry: BuilderEntry, chrome: ChromeChoice, edits: unknown, settings: unknown): Promise<void> {
     const cfg = () => vscode.workspace.getConfiguration();
     const Global = vscode.ConfigurationTarget.Global;
     try {
-      const lab = labSettings(entry, chrome, cleanEdits(edits), Array.isArray(groups) ? (groups as StyleGroup[]) : []);
+      const lab = labSettings(entry, chrome, cleanEdits(edits));
 
       await cfg().update('workbench.colorCustomizations',
         withLabScope(cfg().inspect('workbench.colorCustomizations')?.globalValue, lab.colors), Global);
