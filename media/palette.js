@@ -26,7 +26,7 @@
   const SEED_BACKGROUNDS = ['#121212', '#1e1e1e', '#252526'];
   const DEFAULTS = {
     rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, mode: 'generated', pasted: null,
-    chromeIndex: 0, surfaces: 'neutral',
+    chromeIndex: 0, surfaces: 'rich',
     startTab: 'wheel',
   };
   /** A new design starts with a Filled frame in palette color 1. */
@@ -2455,10 +2455,14 @@
 
   // ------------------------------------------------------------------ render
 
-  /** A step's numbered heading; `state` is the span that carries the step's one-line state. */
+  /**
+   * A step's numbered heading; `state` is the span that carries the step's one-line state.
+   * Steps 2 to 5 carry an Optional tag: step 1 alone makes a complete theme.
+   */
   function stepHead(n, title, state) {
+    const optional = n >= 2 && n <= 5 ? h('span', { class: 'gb-step-opt' }, 'Optional') : null;
     return h('h3', { class: 'gb-step-h', id: `gb-step-${n}-h` },
-      h('span', { class: 'gb-step-n', 'aria-hidden': 'true' }, String(n)), h('span', { class: 'gb-step-t' }, title), state);
+      h('span', { class: 'gb-step-n', 'aria-hidden': 'true' }, String(n)), h('span', { class: 'gb-step-t' }, title), optional, state);
   }
 
   /** One numbered step: its heading with its state line, then its body. */
@@ -2471,6 +2475,55 @@
   function sourceLine(candidate, s) {
     if (typeof s.sourceLabel === 'string' && s.sourceLabel) return s.sourceLabel;
     return candidate.source === 'generated' ? `Wheel, ${defaultName(candidate)}` : `Pasted, ${candidate.colors.length} colors`;
+  }
+
+  /**
+   * Step 1's theme-scope sentence from the host's 'themeScope' facts (src/themeLabPanel.ts
+   * themeScopeOf): which theme this window shows and where it is set, and the theme new windows
+   * get. '' when there are no facts.
+   */
+  function themeScopeText(scope) {
+    if (!scope || !scope.window) return '';
+    const def = typeof scope.defaultTheme === 'string' && scope.defaultTheme ? scope.defaultTheme : null;
+    const newWindows = def ? `${def}, your default theme.` : 'VS Code\'s default theme.';
+    if (scope.window.source === 'project' && scope.window.label) {
+      return `This window: ${scope.window.label}, set for this project. New windows: ${newWindows}`;
+    }
+    return `This window and new windows: ${newWindows}`;
+  }
+
+  /** Step 1's theme-scope line with Change default, or null before the host has sent its facts. */
+  function themeScopeLine(ctx) {
+    const text = themeScopeText(ctx.themeScope);
+    if (!text) return null;
+    return h('div', { class: 'gb-pl-scope' },
+      h('span', { class: 'gb-pl-scope-text muted' }, text),
+      h('button', {
+        type: 'button', class: 'secondary gb-pl-scope-change',
+        title: 'Pick the theme every window without a project theme of its own uses',
+        onclick: () => ctx.post({ type: 'changeDefaultTheme' }),
+      }, 'Change default'));
+  }
+
+  /**
+   * Step 1's leftover-color note: the user-level color settings not tied to any theme, which
+   * override every theme (src/themeLabPanel.ts postLeftovers), with Remove them. Null with none.
+   */
+  function leftoversNote(ctx) {
+    const l = ctx.leftovers;
+    const keys = l ? [...(Array.isArray(l.colors) ? l.colors : []), ...(Array.isArray(l.tokens) ? l.tokens : [])] : [];
+    if (!keys.length) return null;
+    const n = keys.length;
+    const shown = keys.slice(0, 5).join(', ');
+    const list = n > 5 ? `${shown}, and ${n - 5} more` : shown;
+    return h('div', { class: 'gb-pl-leftovers' },
+      h('span', { class: 'gb-pl-leftovers-text' },
+        `Your user settings have ${n} color setting${n === 1 ? '' : 's'} not tied to any theme, so they override every theme, GigglyBits ones included: ${list}.`),
+      h('button', {
+        type: 'button', class: 'secondary gb-pl-leftovers-remove',
+        title: 'Removes these settings from your user settings after you confirm; every theme\'s own colors are kept',
+        onclick: () => ctx.post({ type: 'removeLeftovers' }),
+      }, 'Remove them'));
   }
 
   const editsWord = n => `${n} ${n === 1 ? 'edit' : 'edits'}`;
@@ -2559,7 +2612,7 @@
       for (const { n, el } of stepEls) {
         const head = /** @type {HTMLElement} */ (el.querySelector(':scope > .gb-step-h'));
         const body = /** @type {HTMLElement} */ (el.querySelector(':scope > .gb-step-body'));
-        const parts = [...head.querySelectorAll('.gb-step-n, .gb-step-t, .gb-step-state')];
+        const parts = [...head.querySelectorAll('.gb-step-n, .gb-step-t, .gb-step-opt, .gb-step-state')];
         const open = s.sections.includes(n);
         body.hidden = !open;
         el.toggleAttribute('data-collapsed', !open);
@@ -2785,9 +2838,10 @@
             onclick: () => ctx.post({ type: 'openPreviewWindow' }),
           }, 'Open Preview')));
 
-      const s1 = step(1, 'Pick your colors', states[1], note,
+      const s1 = step(1, 'Pick your colors', states[1], note, themeScopeLine(ctx), leftoversNote(ctx),
         h('p', { class: 'gb-step-lead muted' }, 'Pick a base color and a rule. The rule makes five related colors, and every color in the theme is worked out from those five, readability included. Or start from a theme you saved.'),
-        startTabs);
+        startTabs,
+        h('p', { class: 'gb-pl-done' }, 'That\'s a complete theme. You can try or save it now in step 6. Steps 2 to 5 are optional fine-tuning.'));
       const s2 = step(2, 'Check readability', states[2], paletteSlot);
       const s3 = step(3, 'Frame and accent', states[3],
         h('p', { class: 'gb-step-lead muted' }, 'Choose which palette colors the window uses. Text and hover shades on each color are worked out for you and stay readable.'),

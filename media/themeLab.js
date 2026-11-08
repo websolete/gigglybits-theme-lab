@@ -52,6 +52,18 @@
    * @type {any[]}
    */
   let installedStarters = [];
+  /**
+   * The latest 'themeScope' message (src/themeLabPanel.ts ThemeScope): this window's theme, where
+   * it is set, and the default, for step 1's theme-scope line. Never saved; null draws no line.
+   * @type {{ window: { label: string | null, source: string }, defaultTheme: string | null } | null}
+   */
+  let themeScope = null;
+  /**
+   * The latest 'leftovers' message: the user-level color and token keys not tied to any theme,
+   * for step 1's leftover-color note. Never saved; null draws no note.
+   * @type {{ colors: string[], tokens: string[] } | null}
+   */
+  let leftovers = null;
 
   /**
    * Latest 'library' message: your saved themes (src/themeLibrary.ts SavedTheme), your syntax
@@ -113,6 +125,8 @@
       modernUI,
       detached,
       installedStarters,
+      themeScope,
+      leftovers,
     });
     return h('section', { id: 'section-palette' },
       h('div', { class: 'gb-lab' }, lab));
@@ -200,6 +214,13 @@
       }
     } else if (msg.type === 'previewDetached') {
       detached = msg.detached === true;
+      renderPalette();
+    } else if (msg.type === 'themeScope') {
+      themeScope = msg.window && typeof msg.window === 'object' ? { window: msg.window, defaultTheme: msg.defaultTheme ?? null } : null;
+      renderPalette();
+    } else if (msg.type === 'leftovers') {
+      const strings = list => (Array.isArray(list) ? list.filter(k => typeof k === 'string') : []);
+      leftovers = { colors: strings(msg.colors), tokens: strings(msg.tokens) };
       renderPalette();
     } else if (msg.type === 'installedStarters') {
       installedStarters = Array.isArray(msg.starters) ? msg.starters : [];

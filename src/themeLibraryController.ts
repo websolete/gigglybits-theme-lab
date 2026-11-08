@@ -12,6 +12,7 @@ import {
   themesUsingSyntaxSet, writeAllSlots, writeSlot,
 } from './themeLibrary';
 import { oldFolderColor } from './identity';
+import { leftoverRemoval } from './labSettings';
 
 const LIBRARY = 'gigglybits.library';
 const SYNTAX_SETS = 'gigglybits.syntaxSets';
@@ -304,6 +305,30 @@ export class ThemeLibraryController {
     }
   }
 
+  /**
+   * Removes the user-level color and token keys not tied to any theme (leftoverRemoval), which
+   * override every theme, after a modal naming how many. Builds on the settings file, as slot
+   * writes do, so a window open since before another window's save cannot write back its colors.
+   */
+  async removeLeftovers(): Promise<void> {
+    const current = await this.slotValues();
+    const removal = leftoverRemoval(current.colors, current.tokens);
+    if (!removal) { return; }
+    const settings = `${removal.count} color setting${removal.count === 1 ? '' : 's'}`;
+    const choice = await vscode.window.showWarningMessage(
+      `Remove ${settings} from your user settings?`,
+      { modal: true, detail: 'They are not tied to any theme, so they override every theme. Theme blocks, GigglyBits ones included, are kept.' },
+      'Remove',
+    );
+    if (choice !== 'Remove') { return; }
+    // Read again: the modal may have stayed open while another window saved.
+    const latest = await this.slotValues();
+    const fresh = leftoverRemoval(latest.colors, latest.tokens);
+    if (!fresh) { return; }
+    await this.writeSlotValues({ colors: fresh.colors, tokens: fresh.tokens });
+    vscode.window.setStatusBarMessage(`Removed ${fresh.count} color setting${fresh.count === 1 ? '' : 's'} not tied to any theme.`, 5000);
+  }
+
   /** The panel's entry points, each reporting a failure instead of throwing into the message loop. */
   saveSafely(name: string, design: Design): Promise<void> { return this.runSafely(() => this.save(name, design)); }
   useSafely(id: string, where: UseTarget): Promise<void> { return this.runSafely(() => this.use(id, where)); }
@@ -313,4 +338,5 @@ export class ThemeLibraryController {
   }
   setDefaultSyntaxSetSafely(id: string | null): Promise<void> { return this.runSafely(() => this.setDefaultSyntaxSet(id)); }
   deleteSyntaxSetSafely(id: string): Promise<void> { return this.runSafely(() => this.deleteSyntaxSet(id)); }
+  removeLeftoversSafely(): Promise<void> { return this.runSafely(() => this.removeLeftovers()); }
 }

@@ -50,6 +50,13 @@
   border: 1px solid var(--gb-border); border-radius: 50%; background: var(--gb-inset); font-size: var(--gb-text-sm); font-weight: 600;
 }
 .gb-step-t { flex: none; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.9em; }
+/* Steps 2 to 5's Optional tag, beside the title: step 1 alone makes a complete theme. */
+.gb-step-opt {
+  flex: none; padding: 0 6px; border: 1px solid var(--gb-border); border-radius: 8px;
+  font-weight: normal; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground);
+}
+/* Step 1's last line: the theme is complete once a base color and rule are picked. */
+.gb-pl-done { margin: 0; font-size: var(--gb-text-sm); }
 .gb-step-state {
   margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-weight: normal; font-size: var(--gb-text-sm); color: var(--vscode-descriptionForeground);
@@ -80,6 +87,10 @@
 
 /* A step's opening line: what the step is for, in a sentence. */
 .gb-step-lead { margin: 0; font-size: var(--gb-text-sm); }
+/* Step 1's theme-scope line and its Change default button, on one row where there is room. */
+.gb-pl-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--gb-text-sm); }
+/* Step 1's note on user-level colors not tied to any theme, with Remove them. */
+.gb-pl-leftovers { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--gb-text-sm); padding: 6px 8px; border-left: 3px solid var(--vscode-editorWarning-foreground); }
 
 /* Step 3: labelled rows (Frame color, Frame style, Accent, Surfaces) on the same label column
    as the accent groups below, each label with a line under it naming what the row colors. */

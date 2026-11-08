@@ -195,11 +195,11 @@ describe('Palette Lab Workbench preview, Frame and Editor', () => {
   const region = (page: HTMLElement, name: string) => page.querySelector<HTMLElement>(`.gb-pl-chrome [data-region="${name}"]`)!;
   const framePick = (root: HTMLElement, index: string) => root.querySelector<HTMLButtonElement>(`.gb-fr-box .gb-fr-pick[data-index="${index}"]`)!;
 
-  it('draws the whole theme Try in VS Code applies, a new design starting with a Filled frame in color 1', () => {
+  it('draws the whole theme Try in VS Code applies, a new design starting with a Filled frame in color 1 and Rich surfaces', () => {
     const c = ctx();
     lab.render(c);
     const page = previewOf(c);
-    const expected = TB.buildColors({ colors: TRIAD }, { index: 0, surfaces: 'neutral', frame: { index: 0, style: 'filled' } });
+    const expected = TB.buildColors({ colors: TRIAD }, { index: 0, surfaces: 'rich', frame: { index: 0, style: 'filled' } });
     for (const key of ['titleBar.activeBackground', 'statusBar.background', 'statusBar.noFolderBackground', 'editorGroup.border', 'inlineChatInput.border', 'errorForeground']) {
       expect({ key, drawn: drawnIn(c, key) }).toEqual({ key, drawn: expected[key] });
     }
@@ -536,7 +536,7 @@ describe('Palette Lab layout', () => {
     expect(m).not.toBeNull();
     expect(TRIAD).toContain(m![1]);
     expect(['Near black', 'Dark editor', 'Dark side bar', 'Your editor']).toContain(m![2]);
-    expect(state(3)).toBe('Frame 1 Filled · Accent 1 · Neutral surfaces');
+    expect(state(3)).toBe('Frame 1 Filled · Accent 1 · Rich surfaces');
     expect(state(4)).toBe('0 edits');
   });
 
@@ -1245,7 +1245,7 @@ describe('Palette Lab steps and label column', () => {
     expect(root.querySelector('.gb-ed-box .gb-ch-pick[data-index="custom"]')!.getAttribute('aria-checked')).toBe('true');
     expect(drawnIn(c, 'button.background')).toBe(GB.liftTo('#2f9e44', '#1e1e1e', 4.5));
     expect(drawnIn(c, 'sideBar.background')).not.toBe(side);
-    expect(root.querySelector('.gb-s3 .gb-step-state')!.textContent).toBe('Frame 1 Filled · Accent Custom · Neutral surfaces');
+    expect(root.querySelector('.gb-s3 .gb-step-state')!.textContent).toBe('Frame 1 Filled · Accent Custom · Rich surfaces');
     buttonFor(root, 'Try in VS Code').click();
     const msg = c.post.mock.calls[0][0];
     expect(msg.chrome.color).toBe((c.ui as any).accentColor);
@@ -1400,7 +1400,7 @@ describe('Palette Lab saved themes', () => {
     expect(msg.name).toBe('Alpha');
     expect(msg.design.frame).toEqual({ index: 2, style: 'filled' });
     expect(msg.design.colors).toEqual(TRIAD);
-    expect(msg.design).toMatchObject({ mode: 'generated', rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, chromeIndex: 0, surfaces: 'neutral' });
+    expect(msg.design).toMatchObject({ mode: 'generated', rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, chromeIndex: 0, surfaces: 'rich' });
   });
 
   it('the Saved tab is labelled with the count and lists each theme with its slot', () => {
@@ -2413,5 +2413,66 @@ describe('Palette Lab syntax set starters', () => {
     expect(draftLine(root)!.textContent).toBe('Unsaved draft from Quiet, from your palette. Save New Set keeps it.');
     expect(triggerColor(draftPicker(root, 'keyword'))).toBe(triggerColor(draftPicker(root, 'operator')));
     expect(triggerColor(draftPicker(root, 'string'))).toBe(triggerColor(draftPicker(root, 'regex')));
+  });
+});
+
+describe('Palette Lab step 1 complete-theme line and Optional tags', () => {
+  it('{#done-line} a fresh render ends step 1 with the line saying it makes a complete theme', () => {
+    const root = lab.render(ctx());
+    expect(root.querySelector<HTMLElement>('.gb-s1')!.textContent).toContain("That's a complete theme. You can try or save it now in step 6. Steps 2 to 5 are optional fine-tuning.");
+  });
+
+  it('{#optional-tags} steps 2 to 5 carry an Optional tag inside their collapse buttons, and steps 1 and 6 carry none', () => {
+    const root = renderAt(880);
+    const head = (n: number) => root.querySelector<HTMLElement>(`#gb-step-${n}-h`)!;
+    const tags = (n: number) => [...head(n).querySelectorAll<HTMLElement>('*')].filter(el => el.children.length === 0 && el.textContent === 'Optional');
+    for (const n of [2, 3, 4, 5]) {
+      expect({ n, button: !!head(n).querySelector('button.gb-step-btn'), tags: tags(n).length }).toEqual({ n, button: true, tags: 1 });
+      expect(head(n).querySelector('button.gb-step-btn')!.textContent).toContain('Optional');
+    }
+    expect(tags(1)).toHaveLength(0);
+    expect(tags(6)).toHaveLength(0);
+  });
+});
+
+describe('Palette Lab step 1 leftover-color note', () => {
+  const step1Text = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-s1')!.textContent ?? '';
+
+  it('{#leftovers-note} names the first five settings and how many more, and Remove them posts removeLeftovers; empty lists draw no note', () => {
+    const colors = ['statusBar.background', 'titleBar.activeBackground', 'activityBar.background', 'panel.border', 'tab.border', 'badge.background'];
+    const c: any = ctx({ leftovers: { colors, tokens: ['comments'] } });
+    const root = lab.render(c);
+    expect(step1Text(root)).toContain('Your user settings have 7 color settings not tied to any theme, so they override every theme, GigglyBits ones included: statusBar.background, titleBar.activeBackground, activityBar.background, panel.border, tab.border, and 2 more.');
+    expect(step1Text(root)).not.toContain('badge.background');
+    buttonFor(root, 'Remove them').click();
+    expect(c.post).toHaveBeenCalledWith({ type: 'removeLeftovers' });
+    const empty = lab.render(ctx({ leftovers: { colors: [], tokens: [] } }));
+    expect(empty.querySelector('.gb-pl-leftovers')).toBeNull();
+    expect(buttonFor(empty, 'Remove them')).toBeUndefined();
+    const one = lab.render(ctx({ leftovers: { colors: ['statusBar.background'], tokens: [] } }));
+    expect(step1Text(one)).toContain('Your user settings have 1 color setting not tied to any theme');
+  });
+});
+
+describe('Palette Lab step 1 theme-scope line', () => {
+  const step1Text = (root: HTMLElement) => root.querySelector<HTMLElement>('.gb-s1')!.textContent ?? '';
+
+  it('{#scope-line-project} names this project\'s theme and the default new windows get, with Change default posting changeDefaultTheme', () => {
+    const c: any = ctx({ themeScope: { window: { label: 'GigglyBits Theme 2', source: 'project' }, defaultTheme: 'Dark Modern' } });
+    const root = lab.render(c);
+    expect(step1Text(root)).toContain('This window: GigglyBits Theme 2, set for this project. New windows: Dark Modern, your default theme.');
+    buttonFor(root, 'Change default').click();
+    expect(c.post).toHaveBeenCalledWith({ type: 'changeDefaultTheme' });
+  });
+
+  it('{#scope-line-cases} says one theme for this window and new windows when only a default or nothing is set, and draws no line without facts', () => {
+    const def = lab.render(ctx({ themeScope: { window: { label: 'Dark Modern', source: 'default' }, defaultTheme: 'Dark Modern' } }));
+    expect(step1Text(def)).toContain('This window and new windows: Dark Modern, your default theme.');
+    const none = lab.render(ctx({ themeScope: { window: { label: null, source: 'vscode' }, defaultTheme: null } }));
+    expect(step1Text(none)).toContain("This window and new windows: VS Code's default theme.");
+    const absent = lab.render(ctx());
+    expect(absent.querySelector('.gb-pl-scope')).toBeNull();
+    expect(step1Text(absent)).not.toContain('This window');
+    expect(buttonFor(absent, 'Change default')).toBeUndefined();
   });
 });

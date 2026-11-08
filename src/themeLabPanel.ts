@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { labPageHtml, labWebviewOptions, PreviewState, ThemePreviewPanel } from './themePreviewPanel';
-import { withLabScope, withoutLabScope } from './labSettings';
-import { captureThemeSnapshot, InstalledSyntaxStarter, listInstalledSyntaxStarters } from './themeSource';
+import { TOKEN_KEYS_KEPT, unscopedKeys, withLabScope, withoutLabScope } from './labSettings';
+import { captureThemeSnapshot, InstalledSyntaxStarter, InstalledTheme, listInstalledSyntaxStarters, listInstalledThemes } from './themeSource';
 import { BuilderEntry, ChromeChoice, cleanEdits, LAB_THEME_LABEL, labSettings } from '../scripts/theme-builder';
 import { parseTryRecord, startConfig } from './labStart';
 import { parseDesign } from './themeLibrary';
@@ -21,7 +21,28 @@ type FromWebview =
   | { type: 'previewState'; palette: unknown; syntaxSets: unknown }
   | { type: 'previewHighlight'; keys: unknown }
   | { type: 'showWhere'; keys: unknown }
-  | { type: 'openPreviewWindow' };
+  | { type: 'openPreviewWindow' }
+  | { type: 'changeDefaultTheme' }
+  | { type: 'removeLeftovers' };
+
+/** Which theme this window shows and where that comes from, and the user default theme. */
+export interface ThemeScope {
+  window: { label: string | null; source: 'project' | 'default' | 'vscode' };
+  defaultTheme: string | null;
+}
+
+/**
+ * The step 1 theme-scope line's facts from workbench.colorTheme's layers: a folder or workspace
+ * value is this project's theme, else the user value is the default every new window follows,
+ * else VS Code's own default applies (label null).
+ */
+export function themeScopeOf(theme: { globalValue?: string; workspaceValue?: string; workspaceFolderValue?: string } | undefined): ThemeScope {
+  const defaultTheme = theme?.globalValue ?? null;
+  const project = theme?.workspaceFolderValue ?? theme?.workspaceValue;
+  if (project) { return { window: { label: project, source: 'project' }, defaultTheme }; }
+  if (defaultTheme) { return { window: { label: defaultTheme, source: 'default' }, defaultTheme }; }
+  return { window: { label: null, source: 'vscode' }, defaultTheme: null };
+}
 
 /** The string-valued entries of colors, or undefined when colors is not an object. */
 function colorMap(colors: unknown): Record<string, string> | undefined {
@@ -61,14 +82,16 @@ export function parseFrameSeed(value: unknown): FrameSeed | undefined {
 const LAST_TRY_KEY = 'gigglybits.themeLab.lastTry';
 
 /**
- * Where Try in VS Code switches workbench.colorTheme: this workspace, when the workspace sets
- * its own theme (which would win over a user setting, so a user-level Try would not show here),
- * else the user settings. `previous` is the theme at that level, which Back restores. A theme
- * set per folder in a multi-root workspace is left alone, and a user-level Try says why.
+ * Where Try in VS Code switches workbench.colorTheme: this project whenever a folder is open,
+ * or when a workspace with no folders has a theme of its own, so a Try changes only this
+ * window's project; otherwise the user settings, which every window without a theme of its own
+ * follows. `previous` is the theme at that level, which Back restores; undefined at the project
+ * level means the project had no theme, and Back removes the project's setting. A folder-level
+ * value keeps the user level, as it did before project-level Try.
  */
-export function tryThemeTarget(theme: { globalValue?: string; workspaceValue?: string; workspaceFolderValue?: string } | undefined):
-  { level: 'workspace' | 'user'; previous: string | undefined } {
-  if (theme?.workspaceValue && !theme.workspaceFolderValue) { return { level: 'workspace', previous: theme.workspaceValue }; }
+export function tryThemeTarget(theme: { globalValue?: string; workspaceValue?: string; workspaceFolderValue?: string } | undefined,
+  hasFolder: boolean): { level: 'workspace' | 'user'; previous: string | undefined } {
+  if ((hasFolder || theme?.workspaceValue) && !theme?.workspaceFolderValue) { return { level: 'workspace', previous: theme?.workspaceValue }; }
   return { level: 'user', previous: theme?.globalValue };
 }
 
@@ -158,6 +181,12 @@ export class ThemeLabPanel {
         if (affectsModernUI(e)) {
           void this.postModernUI();
         }
+        if (e.affectsConfiguration('workbench.colorTheme')) {
+          void this.postThemeScope();
+        }
+        if (e.affectsConfiguration('workbench.colorCustomizations') || e.affectsConfiguration('editor.tokenColorCustomizations')) {
+          void this.postLeftovers();
+        }
       }),
       // An extension installed, removed or updated can add or drop dark themes.
       vscode.extensions.onDidChange(() => void this.postInstalledStarters()),
@@ -206,6 +235,45 @@ export class ThemeLabPanel {
     await this.panel.webview.postMessage({ type: 'identity', identity, changed });
   }
 
+  /** Step 1's theme-scope line: this window's theme, where it is set, and the default (themeScopeOf). */
+  private async postThemeScope(): Promise<void> {
+    const theme = vscode.workspace.getConfiguration().inspect<string>('workbench.colorTheme');
+    await this.panel.webview.postMessage({ type: 'themeScope', ...themeScopeOf(theme) });
+  }
+
+  /**
+   * Step 1's leftover-color note: the user-level color and token keys not tied to any theme,
+   * which VS Code applies over every theme (unscopedKeys). Workspace values are not read.
+   */
+  private async postLeftovers(): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration();
+    await this.panel.webview.postMessage({
+      type: 'leftovers',
+      colors: unscopedKeys(cfg.inspect('workbench.colorCustomizations')?.globalValue),
+      tokens: unscopedKeys(cfg.inspect('editor.tokenColorCustomizations')?.globalValue, TOKEN_KEYS_KEPT),
+    });
+  }
+
+  /**
+   * Change default: a quick pick of every installed theme (listInstalledThemes), the current
+   * default marked; a pick becomes the user-level workbench.colorTheme, a dismissal writes nothing.
+   */
+  private async changeDefaultTheme(): Promise<void> {
+    let themes: InstalledTheme[];
+    try {
+      themes = await listInstalledThemes();
+    } catch {
+      themes = [];
+    }
+    const cfg = vscode.workspace.getConfiguration();
+    const current = cfg.inspect<string>('workbench.colorTheme')?.globalValue;
+    const items = themes.map(t => ({ label: t.label, description: t.id === current ? 'current default' : undefined, id: t.id }));
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Pick the theme new windows use' });
+    if (pick) {
+      await cfg.update('workbench.colorTheme', pick.id, vscode.ConfigurationTarget.Global);
+    }
+  }
+
   /** VS Code's modern UI settings, which the Workbench preview draws with (src/modernUI.ts). */
   private async postModernUI(): Promise<void> {
     await this.panel.webview.postMessage({ type: 'modernUI', modernUI: modernUISettings() });
@@ -226,6 +294,8 @@ export class ThemeLabPanel {
         const start = startConfig(await this.activeTheme(), this.globalState.get(LAST_TRY_KEY), this.library.library());
         await this.postLibrary();
         await this.panel.webview.postMessage({ type: 'start', start });
+        await this.postThemeScope();
+        await this.postLeftovers();
         if (this.pendingSeed) {
           await this.panel.webview.postMessage({ type: 'frameSeed', ...this.pendingSeed });
           this.pendingSeed = undefined;
@@ -298,6 +368,12 @@ export class ThemeLabPanel {
         await this.openPreviewWindow();
         await this.postDetached();
         break;
+      case 'changeDefaultTheme':
+        await this.changeDefaultTheme();
+        break;
+      case 'removeLeftovers':
+        await this.library.removeLeftoversSafely();
+        break;
     }
   }
 
@@ -349,8 +425,9 @@ export class ThemeLabPanel {
    * Shows a Palette Lab candidate in VS Code without a reload: its theme colors go into
    * user settings scoped to the GigglyBits Dark (Lab) theme, and the Lab theme becomes the
    * active theme, with the color edits made in the Lab. The colors go only to user settings
-   * (src/labSettings.ts); the theme switch goes to this workspace when the workspace sets its
-   * own theme, else to user settings (tryThemeTarget), and Back restores it there. The page's
+   * (src/labSettings.ts); the theme switch goes to this project when a folder is open or the
+   * workspace has a theme of its own, else to user settings (tryThemeTarget), and Back restores
+   * it there. The page's
    * `settings` are recorded in globalState, so a Theme Lab opened later under the Lab theme
    * restores them; a record that fails parseTryRecord is skipped and the Try goes ahead. The
    * chrome carries the syntax set's colors (syntaxColors) when the design is on a set.
@@ -372,10 +449,10 @@ export class ThemeLabPanel {
         vscode.window.setStatusBarMessage(`Removed an old copy of the Lab theme's colors from ${cleaned.join(' and ')}; it was hiding your Try.`, 10000);
       }
 
-      // The theme switch goes where it shows in this window: the workspace when it sets its own
-      // theme, else the user settings (tryThemeTarget). The colors stay in user settings.
+      // The theme switch goes to this project when a folder is open or the workspace has a theme
+      // of its own, else the user settings (tryThemeTarget). The colors stay in user settings.
       const theme = cfg().inspect<string>('workbench.colorTheme');
-      const where = tryThemeTarget(theme);
+      const where = tryThemeTarget(theme, !!vscode.workspace.workspaceFolders?.length);
       const target = where.level === 'workspace' ? vscode.ConfigurationTarget.Workspace : Global;
       const previous = where.previous;
       await cfg().update('workbench.colorTheme', LAB_THEME_LABEL, target);
@@ -387,10 +464,14 @@ export class ThemeLabPanel {
       const notes = themeOverrideNotes(where.level === 'workspace' ? { workspaceValue: LAB_THEME_LABEL } : theme, LAB_THEME_LABEL);
 
       const name = entry.name || 'the candidate';
-      const back = previous && previous !== LAB_THEME_LABEL ? `Back to ${previous}` : undefined;
-      const scope = where.level === 'workspace' ? ' in this workspace' : '';
+      // At the project level, no earlier project theme means Back removes the project's setting.
+      const back = where.level === 'workspace' && previous === undefined ? 'Back to your default'
+        : previous && previous !== LAB_THEME_LABEL ? `Back to ${previous}` : undefined;
+      const scope = where.level === 'workspace'
+        ? ' in this project only. Other windows keep their own theme.'
+        : " in every window that doesn't set its own theme.";
       const choice = await vscode.window.showInformationMessage(
-        [`Applied ${name} as ${LAB_THEME_LABEL}${scope}.`, ...notes].join(' '), ...(back ? [back] : []));
+        [`Applied ${name} as ${LAB_THEME_LABEL}${scope}`, ...notes].join(' '), ...(back ? [back] : []));
       if (back && choice === back) {
         await cfg().update('workbench.colorTheme', previous, target);
       }

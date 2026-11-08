@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { captureThemeSnapshot, listInstalledSyntaxStarters, ownExtensionId } from '../src/themeSource';
+import { captureThemeSnapshot, listInstalledSyntaxStarters, listInstalledThemes, ownExtensionId } from '../src/themeSource';
 import { ColorThemeKind, mockState, resetMockState } from './__mocks__/vscode';
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'theme-ext');
@@ -239,5 +239,14 @@ describe('installed dark themes as syntax set starters', () => {
       packageJSON: { contributes: { themes: [{ label: 'No Rules', uiTheme: 'vs-dark', path: './themes/light.json' }] } },
     });
     expect((await listInstalledSyntaxStarters()).map(s => s.label)).toEqual(['Fixture Dark (localized)']);
+  });
+});
+
+describe('installed themes for Change default', () => {
+  it('{#installed-themes} lists every contributed theme, light ones included, with the label as id where none is given', async () => {
+    expect(await listInstalledThemes()).toEqual([
+      { id: 'Fixture Dark', label: 'Fixture Dark (localized)', extension: 'Fixture Themes' },
+      { id: 'Fixture Light', label: 'Fixture Light', extension: 'Fixture Themes' },
+    ]);
   });
 });

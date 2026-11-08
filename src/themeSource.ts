@@ -219,6 +219,39 @@ export async function listInstalledSyntaxStarters(): Promise<InstalledSyntaxStar
   return out;
 }
 
+/** A color theme some installed extension contributes, as Change default lists it. */
+export interface InstalledTheme {
+  /** What workbench.colorTheme holds for it: the theme's id, else its label (findContribution). */
+  id: string;
+  label: string;
+  /** The contributing extension's display name, localized, else its id. */
+  extension: string;
+}
+
+/**
+ * Every color theme every installed extension contributes, light, dark and high contrast, this
+ * extension's own included, for the Theme Lab's Change default.
+ */
+export async function listInstalledThemes(): Promise<InstalledTheme[]> {
+  const out: InstalledTheme[] = [];
+  for (const ext of vscode.extensions.all) {
+    const pkg = ext.packageJSON as Json;
+    const contributes = pkg?.contributes;
+    const themes = isObject(contributes) && Array.isArray(contributes.themes) ? (contributes.themes as ThemeContribution[]) : [];
+    if (!themes.length) {
+      continue;
+    }
+    const extension = (typeof pkg.displayName === 'string' ? await localize(pkg.displayName, ext.extensionPath) : undefined) ?? ext.id;
+    for (const theme of themes) {
+      if (!theme) { continue; }
+      const label = (await localize(theme.label, ext.extensionPath)) ?? (theme.path ? path.basename(theme.path) : '');
+      const id = theme.id ?? label;
+      if (id) { out.push({ id, label: label || id, extension }); }
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Color keys registered by extensions
 // ---------------------------------------------------------------------------

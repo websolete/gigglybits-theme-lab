@@ -2,6 +2,15 @@
 
 All notable changes to GigglyBits Theme Lab are documented in this file.
 
+## 0.1.2
+
+- **Get Started walkthrough.** Installing the extension from inside VS Code opens Get Started on GigglyBits Theme Lab, with an Open Theme Lab button and short pages on trying a design and choosing your default theme.
+- **Try in this project.** With a folder open, Try in VS Code sets the theme for that project alone and says so; other windows keep their theme. With no folder open it changes every window that doesn't set its own theme, and the message says that too. **Back to your default** undoes a Try in a project that had no theme of its own.
+- **See and change your default theme.** The Lab's first step says which theme this window shows, whether this project sets it, and which theme new windows get. **Change default** lists your installed themes and makes the one you pick the default.
+- **Find color settings not tied to any theme.** Colors in your user settings that aren't tied to a theme, such as ones another color extension left behind, override every theme. The Lab now names them, and **Remove them** deletes them after you confirm, keeping every theme's own colors.
+- **Step 1 makes a complete theme.** Step 1 now says that a base color and a rule are all a theme needs, and steps 2 to 5 are marked Optional.
+- **Rich surfaces by default.** A new design starts with Rich surfaces instead of Neutral, alongside the Filled frame it already had. Saved themes and designs you already have keep their own surface choice.
+
 ## 0.1.1
 
 The first Marketplace release.

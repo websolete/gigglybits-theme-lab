@@ -21,9 +21,15 @@ GigglyBits Theme Lab fixes all of that.
 
 ## Getting started
 
-Run **GigglyBits: Open Theme Lab** from the Command Palette. The Lab walks you through the rest.
+Installing the extension from inside VS Code normally opens **Get Started** on GigglyBits Theme Lab. Click **Open Theme Lab** there, or run **GigglyBits: Open Theme Lab** from the Command Palette at any time. The Lab walks you through the rest.
 
-Your saved themes appear in **Preferences: Color Theme** as GigglyBits Theme 1 to 12. **GigglyBits: Choose Theme** lists them by their real names.
+Picking a base color and a rule in step 1 already makes a complete theme. Steps 2 to 5 are optional fine-tuning.
+
+- **Try in VS Code** with a folder open changes only that project. With no folder open, it changes every window that doesn't set its own theme.
+- The Lab's first step says which theme this window shows and which theme new windows get. **Change default** picks the theme new windows use.
+- If colors in your user settings aren't tied to any theme, they override every theme. The Lab names them and offers to remove them.
+
+The **Set Color Theme** button on the extension's page lists GigglyBits Dark (Lab) and GigglyBits Theme 1 to 12. The twelve slots look like the starter theme until you save designs into them, so start from the Lab rather than that list. Your saved themes appear in **Preferences: Color Theme** under those slot names, and **GigglyBits: Choose Theme** lists them by their real names.
 
 ## Requirements
 

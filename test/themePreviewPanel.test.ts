@@ -27,6 +27,14 @@ const inspected: Record<string, unknown> = {};
 const updates: Array<{ key: string; value: unknown; target: unknown }> = [];
 /** Every status bar message shown, in order. */
 const statusMessages: string[] = [];
+/** Every information message shown, in order, and the button the next one resolves to. */
+const infoMessages: Array<{ text: string; buttons: string[] }> = [];
+const infoAnswer: { next: string | undefined } = { next: undefined };
+/** Every quick pick shown, and the item id the next one resolves to (none: dismissed). */
+const quickPicks: Array<{ items: any[]; options: any }> = [];
+const quickPickAnswer: { id: string | undefined } = { id: undefined };
+/** What vscode.workspace.workspaceFolders returns. */
+const workspaceState: { folders: Array<{ uri: unknown; name: string }> | undefined } = { folders: undefined };
 /** What vscode.extensions.all returns, and every extensions.onDidChange listener; fireExtensionsChanged calls them. */
 const installedExtensions: any[] = [];
 const extensionListeners: Array<() => void> = [];
@@ -68,11 +76,22 @@ jest.mock('vscode', () => {
       onDidChangeActiveColorTheme: () => disposable,
       showWarningMessage: () => undefined,
       showErrorMessage: () => undefined,
-      showInformationMessage: async () => undefined,
+      showInformationMessage: async (text: string, ...buttons: string[]) => {
+        infoMessages.push({ text, buttons });
+        const answer = infoAnswer.next;
+        infoAnswer.next = undefined;
+        return answer;
+      },
       setStatusBarMessage: (text: string) => { statusMessages.push(text); return disposable; },
+      showQuickPick: async (items: any[], options: any) => {
+        quickPicks.push({ items, options });
+        const id = quickPickAnswer.id;
+        quickPickAnswer.id = undefined;
+        return items.find(i => i.id === id);
+      },
     },
     workspace: {
-      workspaceFolders: undefined,
+      get workspaceFolders() { return workspaceState.folders; },
       onDidChangeConfiguration: (fn: (e: any) => void) => { configListeners.push(fn); return disposable; },
       getConfiguration: (section?: string) => ({
         get: (key: string) => settings[`${section}.${key}`],
@@ -217,13 +236,13 @@ describe('Theme Preview window, host side', () => {
     expect(revived.posted.filter((m: any) => m.type === 'previewDetached')).toEqual([{ type: 'previewDetached', detached: false }]);
   });
 
-  it('{#ready-order} on ready the Lab posts modernUI, previewDetached, library, start, identity, then installedStarters, and no theme list', async () => {
+  it('{#ready-order} on ready the Lab posts modernUI, previewDetached, library, start, themeScope, leftovers, identity, then installedStarters, and no theme list', async () => {
     for (const p of [...panels]) { p.dispose(); }
     const revived = (await import('vscode') as any).window.createWebviewPanel('gigglybits.themeLab');
     ThemeLabPanel.revive(revived, extensionUri, identity, memento, library);
     await revived.receive({ type: 'ready' });
     const types = revived.posted.map((m: any) => m.type);
-    expect(types).toEqual(['modernUI', 'previewDetached', 'library', 'start', 'identity', 'installedStarters']);
+    expect(types).toEqual(['modernUI', 'previewDetached', 'library', 'start', 'themeScope', 'leftovers', 'identity', 'installedStarters']);
     expect(types).not.toContain('themes');
   });
 
@@ -297,24 +316,135 @@ describe('modern UI settings, host side', () => {
   });
 });
 
-describe('Try in VS Code, where the theme switch goes', () => {
-  it('{#try-workspace} switches the workspace when it sets its own theme, else the user settings, and leaves a per-folder theme alone', () => {
-    expect(tryThemeTarget({ globalValue: 'Dark Modern', workspaceValue: 'GigglyBits Theme 1' })).toEqual({ level: 'workspace', previous: 'GigglyBits Theme 1' });
-    expect(tryThemeTarget({ globalValue: 'Dark Modern' })).toEqual({ level: 'user', previous: 'Dark Modern' });
-    expect(tryThemeTarget(undefined)).toEqual({ level: 'user', previous: undefined });
-    expect(tryThemeTarget({ globalValue: 'Dark Modern', workspaceValue: 'A', workspaceFolderValue: 'B' })).toEqual({ level: 'user', previous: 'Dark Modern' });
-  });
+describe('theme scope and Change default, host side', () => {
+  const scopes = (p: FakePanel) => p.posted.filter(m => m.type === 'themeScope');
 
-  it('a Try in a workspace with its own theme writes the Lab theme to the workspace and its colors to the user settings', async () => {
-    inspected['workbench.colorTheme'] = { globalValue: 'Dark Modern', workspaceValue: 'GigglyBits Theme 1' };
-    updates.length = 0;
+  it('{#scope-message} posts this window\'s theme, its source and the default on ready, and again when workbench.colorTheme changes', async () => {
+    inspected['workbench.colorTheme'] = { globalValue: 'Dark Modern', workspaceValue: 'GigglyBits Theme 2' };
     for (const p of [...panels]) { p.dispose(); }
     ThemeLabPanel.show(extensionUri, identity, memento, library);
     const lab = labs()[labs().length - 1];
-    await lab.receive!({ type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null });
+    await lab.receive!({ type: 'ready' });
+    expect(scopes(lab)).toEqual([{ type: 'themeScope', window: { label: 'GigglyBits Theme 2', source: 'project' }, defaultTheme: 'Dark Modern' }]);
+    inspected['workbench.colorTheme'] = { globalValue: 'Dark Modern' };
+    const event = { affectsConfiguration: (id: string) => id === 'workbench.colorTheme' };
+    for (const listener of configListeners) { listener(event); }
+    await new Promise(r => setTimeout(r, 0));
     delete inspected['workbench.colorTheme'];
-    expect(updates.filter(u => u.key === 'workbench.colorTheme')).toEqual([{ key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 }]);
+    expect(scopes(lab)).toHaveLength(2);
+    expect(scopes(lab)[1]).toEqual({ type: 'themeScope', window: { label: 'Dark Modern', source: 'default' }, defaultTheme: 'Dark Modern' });
+  });
+
+  it('{#change-default} Change default writes the picked theme to the user settings, marks the current default, and a dismissed pick writes nothing', async () => {
+    installedExtensions.length = 0;
+    installedExtensions.push({ id: 'vscode.theme-defaults', extensionPath: '/vs', packageJSON: { contributes: { themes: [
+      { id: 'Dark Modern', label: 'Dark Modern', uiTheme: 'vs-dark', path: './dark.json' },
+      { label: 'Light Modern', uiTheme: 'vs', path: './light.json' },
+    ] } } });
+    inspected['workbench.colorTheme'] = { globalValue: 'Light Modern', workspaceValue: 'GigglyBits Theme 2' };
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    updates.length = 0;
+    quickPicks.length = 0;
+    quickPickAnswer.id = 'Dark Modern';
+    await lab.receive!({ type: 'changeDefaultTheme' });
+    expect(quickPicks[0].options).toEqual({ placeHolder: 'Pick the theme new windows use' });
+    expect(quickPicks[0].items.map(i => [i.label, i.description])).toEqual([['Dark Modern', undefined], ['Light Modern', 'current default']]);
+    expect(updates).toEqual([{ key: 'workbench.colorTheme', value: 'Dark Modern', target: 1 }]);
+    updates.length = 0;
+    await lab.receive!({ type: 'changeDefaultTheme' });
+    delete inspected['workbench.colorTheme'];
+    installedExtensions.length = 0;
+    expect(updates).toEqual([]);
+  });
+});
+
+describe('leftover colors, host side', () => {
+  it('{#leftovers-message} posts the user-level color keys not tied to any theme on ready, and never the workspace ones', async () => {
+    inspected['workbench.colorCustomizations'] = {
+      globalValue: { 'statusBar.background': '#dd0531', '[GigglyBits Theme 1]': { 'button.background': '#000000' } },
+      workspaceValue: { 'titleBar.activeBackground': '#81509e' },
+    };
+    inspected['editor.tokenColorCustomizations'] = { globalValue: { semanticHighlighting: true, '[X]': { textMateRules: [] } } };
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    await lab.receive!({ type: 'ready' });
+    delete inspected['workbench.colorCustomizations'];
+    delete inspected['editor.tokenColorCustomizations'];
+    expect(lab.posted.filter(m => m.type === 'leftovers')).toEqual([{ type: 'leftovers', colors: ['statusBar.background'], tokens: [] }]);
+  });
+
+  it('{#leftovers-route} a removeLeftovers message goes to the library controller once', async () => {
+    const removeLeftoversSafely = jest.fn(async () => undefined);
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, { ...library, removeLeftoversSafely });
+    await labs()[labs().length - 1].receive!({ type: 'removeLeftovers' });
+    expect(removeLeftoversSafely).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Try in VS Code, where the theme switch goes', () => {
+  const OCEAN = { type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null };
+  /** Runs one Try with the given workbench.colorTheme layers and folder state; returns the theme writes. */
+  async function tryWith(theme: unknown, folder: boolean, answer?: string) {
+    if (theme) { inspected['workbench.colorTheme'] = theme; } else { delete inspected['workbench.colorTheme']; }
+    workspaceState.folders = folder ? [{ uri: { fsPath: '/proj' }, name: 'proj' }] : undefined;
+    infoAnswer.next = answer;
+    updates.length = 0;
+    infoMessages.length = 0;
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    await labs()[labs().length - 1].receive!(OCEAN);
+    delete inspected['workbench.colorTheme'];
+    workspaceState.folders = undefined;
+    return updates.filter(u => u.key === 'workbench.colorTheme');
+  }
+
+  it('{#try-workspace} switches this project whenever a folder is open, the user settings with no folder and no workspace theme, and leaves a per-folder theme alone', () => {
+    expect(tryThemeTarget({ globalValue: 'Dark Modern', workspaceValue: 'GigglyBits Theme 1' }, true)).toEqual({ level: 'workspace', previous: 'GigglyBits Theme 1' });
+    expect(tryThemeTarget({ globalValue: 'Dark Modern' }, true)).toEqual({ level: 'workspace', previous: undefined });
+    expect(tryThemeTarget({ globalValue: 'Dark Modern' }, false)).toEqual({ level: 'user', previous: 'Dark Modern' });
+    expect(tryThemeTarget(undefined, false)).toEqual({ level: 'user', previous: undefined });
+    expect(tryThemeTarget({ globalValue: 'Dark Modern', workspaceValue: 'A', workspaceFolderValue: 'B' }, true)).toEqual({ level: 'user', previous: 'Dark Modern' });
+  });
+
+  it('{#try-folderless-workspace} a workspace with no folders that sets its own theme takes the Try there, so it shows, with Back to that theme', async () => {
+    expect(tryThemeTarget({ globalValue: 'Dark Modern', workspaceValue: 'GigglyBits Theme 4' }, false)).toEqual({ level: 'workspace', previous: 'GigglyBits Theme 4' });
+    const writes = await tryWith({ globalValue: 'Dark Modern', workspaceValue: 'GigglyBits Theme 4' }, false);
+    expect(writes).toEqual([{ key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 }]);
+    expect(infoMessages[0].text).toBe('Applied Ocean as GigglyBits Dark (Lab) in this project only. Other windows keep their own theme.');
+    expect(infoMessages[0].buttons).toEqual(['Back to GigglyBits Theme 4']);
+  });
+
+  it('a Try in a workspace with its own theme writes the Lab theme to the workspace and its colors to the user settings', async () => {
+    const writes = await tryWith({ globalValue: 'Dark Modern', workspaceValue: 'GigglyBits Theme 1' }, true);
+    expect(writes).toEqual([{ key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 }]);
     expect(updates.find(u => u.key === 'workbench.colorCustomizations')!.target).toBe(1);
+    expect(infoMessages[0].buttons).toEqual(['Back to GigglyBits Theme 1']);
+  });
+
+  it('{#try-project} a Try with a folder open and no project theme writes the Lab theme to the project and says so', async () => {
+    const writes = await tryWith({ globalValue: 'Dark Modern' }, true);
+    expect(writes).toEqual([{ key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 }]);
+    expect(infoMessages[0].text).toBe('Applied Ocean as GigglyBits Dark (Lab) in this project only. Other windows keep their own theme.');
+  });
+
+  it("{#try-no-folder} a Try with no folder open and no workspace theme writes the Lab theme to the user settings and says it reaches every window without a theme of its own", async () => {
+    const writes = await tryWith({ globalValue: 'Dark Modern' }, false);
+    expect(writes).toEqual([{ key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 1 }]);
+    expect(infoMessages[0].text).toContain("in every window that doesn't set its own theme");
+    expect(infoMessages[0].buttons).toEqual(['Back to Dark Modern']);
+  });
+
+  it('{#try-back-default} Back to your default removes the project theme a Try set in a project that had none', async () => {
+    const writes = await tryWith({ globalValue: 'Dark Modern' }, true, 'Back to your default');
+    expect(infoMessages[0].buttons).toEqual(['Back to your default']);
+    expect(writes).toEqual([
+      { key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 },
+      { key: 'workbench.colorTheme', value: undefined, target: 2 },
+    ]);
   });
 
   it('{#try-removes-shadow} a Try removes a workspace copy of the Lab block, which would hide it, keeps the rest, and says so', async () => {

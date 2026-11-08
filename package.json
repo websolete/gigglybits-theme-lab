@@ -2,7 +2,7 @@
   "name": "gigglybits-theme-lab",
   "displayName": "GigglyBits Theme Lab",
   "description": "Design your own dark VS Code theme, preview it live, and give each project a color of its own.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "EdgeInformation",
   "author": {
     "name": "Kevin Miller"
@@ -58,6 +58,42 @@
         "command": "gigglybits.chooseTheme",
         "title": "Choose Theme",
         "category": "GigglyBits"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "getStarted",
+        "title": "Get started with GigglyBits Theme Lab",
+        "description": "Design a dark theme, try it in one project, and choose the theme new windows use.",
+        "steps": [
+          {
+            "id": "openLab",
+            "title": "Open the Theme Lab",
+            "description": "Build a theme from one base color and a color rule, and see it on a whole VS Code window as you go.\n[Open Theme Lab](command:gigglybits.openThemeLab)",
+            "media": {
+              "markdown": "media/walkthrough/open-lab.md"
+            },
+            "completionEvents": [
+              "onCommand:gigglybits.openThemeLab"
+            ]
+          },
+          {
+            "id": "tryInProject",
+            "title": "Try it in this project",
+            "description": "Step 1 alone makes a complete theme. Try in VS Code shows it in the project you have open, and Save theme keeps it.",
+            "media": {
+              "markdown": "media/walkthrough/try.md"
+            }
+          },
+          {
+            "id": "defaultTheme",
+            "title": "Choose your default theme",
+            "description": "New windows use your default theme. The Lab's first step shows which one that is, and Change default sets it.",
+            "media": {
+              "markdown": "media/walkthrough/default.md"
+            }
+          }
+        ]
       }
     ],
     "configuration": {
