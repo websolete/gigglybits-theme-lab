@@ -39,6 +39,13 @@ const workspaceState: { folders: Array<{ uri: unknown; name: string }> | undefin
 const installedExtensions: any[] = [];
 const extensionListeners: Array<() => void> = [];
 const fireExtensionsChanged = () => { for (const fn of extensionListeners) { fn(); } };
+/** Every warning message shown, and the button the next one resolves to (none: dismissed). */
+const warnings: Array<{ text: string; options: any; buttons: string[] }> = [];
+const warningAnswer: { next: string | undefined } = { next: undefined };
+/** vscode.window.activeColorTheme.kind, vscode.workspace.workspaceFile, and every showTextDocument call. */
+const themeState: { kind: number } = { kind: 2 };
+const workspaceFileState: { file: unknown } = { file: undefined };
+const shownDocuments: unknown[] = [];
 
 jest.mock('vscode', () => {
   const disposable = { dispose: () => undefined };
@@ -46,8 +53,8 @@ jest.mock('vscode', () => {
   return {
     ColorThemeKind: { Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 },
     ViewColumn: { Active: -1, Beside: -2 },
-    Uri: { joinPath: (base: any, ...parts: string[]) => uri([base.path, ...parts].join('/')) },
-    ConfigurationTarget: { Global: 1, Workspace: 2 },
+    Uri: { joinPath: (base: any, ...parts: string[]) => uri([base.path ?? base.fsPath, ...parts].join('/')) },
+    ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     RelativePattern: class {},
     window: {
       createWebviewPanel: (viewType: string) => {
@@ -74,7 +81,14 @@ jest.mock('vscode', () => {
         return panel;
       },
       onDidChangeActiveColorTheme: () => disposable,
-      showWarningMessage: () => undefined,
+      showWarningMessage: async (text: string, options: any, ...buttons: string[]) => {
+        warnings.push({ text, options, buttons });
+        const answer = warningAnswer.next;
+        warningAnswer.next = undefined;
+        return answer;
+      },
+      get activeColorTheme() { return { kind: themeState.kind }; },
+      showTextDocument: async (doc: unknown) => { shownDocuments.push(doc); },
       showErrorMessage: () => undefined,
       showInformationMessage: async (text: string, ...buttons: string[]) => {
         infoMessages.push({ text, buttons });
@@ -92,9 +106,10 @@ jest.mock('vscode', () => {
     },
     workspace: {
       get workspaceFolders() { return workspaceState.folders; },
+      get workspaceFile() { return workspaceFileState.file; },
       onDidChangeConfiguration: (fn: (e: any) => void) => { configListeners.push(fn); return disposable; },
       getConfiguration: (section?: string) => ({
-        get: (key: string) => settings[`${section}.${key}`],
+        get: (key: string) => settings[section ? `${section}.${key}` : key],
         inspect: (key: string) => inspected[section ? `${section}.${key}` : key],
         update: async (key: string, value: unknown, target: unknown) => { updates.push({ key: section ? `${section}.${key}` : key, value, target }); },
       }),
@@ -236,13 +251,13 @@ describe('Theme Preview window, host side', () => {
     expect(revived.posted.filter((m: any) => m.type === 'previewDetached')).toEqual([{ type: 'previewDetached', detached: false }]);
   });
 
-  it('{#ready-order} on ready the Lab posts modernUI, previewDetached, library, start, themeScope, leftovers, identity, then installedStarters, and no theme list', async () => {
+  it('{#ready-order} on ready the Lab posts modernUI, previewDetached, library, start, themeScope, leftovers, overrides, identity, then installedStarters, and no theme list', async () => {
     for (const p of [...panels]) { p.dispose(); }
     const revived = (await import('vscode') as any).window.createWebviewPanel('gigglybits.themeLab');
     ThemeLabPanel.revive(revived, extensionUri, identity, memento, library);
     await revived.receive({ type: 'ready' });
     const types = revived.posted.map((m: any) => m.type);
-    expect(types).toEqual(['modernUI', 'previewDetached', 'library', 'start', 'themeScope', 'leftovers', 'identity', 'installedStarters']);
+    expect(types).toEqual(['modernUI', 'previewDetached', 'library', 'start', 'themeScope', 'leftovers', 'overrides', 'identity', 'installedStarters']);
     expect(types).not.toContain('themes');
   });
 
@@ -385,6 +400,110 @@ describe('leftover colors, host side', () => {
   });
 });
 
+describe('settings that can change a GigglyBits theme, host side', () => {
+  const LAB = '[GigglyBits Dark (Lab)]';
+  const frame = { 'titleBar.activeBackground': '#81509e' };
+  const openLab = async () => {
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    await lab.receive!({ type: 'ready' });
+    return lab;
+  };
+  afterEach(() => {
+    delete inspected['workbench.colorCustomizations'];
+    warningAnswer.next = undefined;
+  });
+
+  it('{#overrides-message} posts a workspace Lab block as one kind one workspace item on ready', async () => {
+    inspected['workbench.colorCustomizations'] = { workspaceValue: { [LAB]: { 'statusBar.background': '#ff0005' } } };
+    const lab = await openLab();
+    const overrides = lab.posted.filter(m => m.type === 'overrides');
+    expect(overrides).toEqual([{ type: 'overrides', items: [
+      { level: 'workspace', setting: 'workbench.colorCustomizations', key: LAB, kind: 'one', count: 1 },
+    ] }]);
+  });
+
+  it('{#remove-workspace} Remove, confirmed, writes the workspace value without the block and keeps its other keys', async () => {
+    inspected['workbench.colorCustomizations'] = { workspaceValue: { [LAB]: { 'statusBar.background': '#ff0005' }, '[GigglyBits Theme 7]': frame, 'editor.background': '#101010' } };
+    const lab = await openLab();
+    updates.length = 0;
+    warnings.length = 0;
+    statusMessages.length = 0;
+    warningAnswer.next = 'Remove';
+    await lab.receive!({ type: 'removeOverride', level: 'workspace', setting: 'workbench.colorCustomizations', key: LAB });
+    expect(warnings).toEqual([{
+      text: 'Remove "[GigglyBits Dark (Lab)]" from your workspace settings?',
+      options: { modal: true, detail: 'This block applies only to GigglyBits Dark (Lab), so no other theme changes.' },
+      buttons: ['Remove'],
+    }]);
+    expect(updates).toEqual([{ key: 'workbench.colorCustomizations', value: { '[GigglyBits Theme 7]': frame, 'editor.background': '#101010' }, target: 2 }]);
+    expect(statusMessages).toEqual(['Removed "[GigglyBits Dark (Lab)]" from your workspace settings.']);
+  });
+
+  it('{#remove-declined} Remove with the modal dismissed writes nothing', async () => {
+    inspected['workbench.colorCustomizations'] = { workspaceValue: { [LAB]: { 'statusBar.background': '#ff0005' } } };
+    const lab = await openLab();
+    updates.length = 0;
+    warnings.length = 0;
+    await lab.receive!({ type: 'removeOverride', level: 'workspace', setting: 'workbench.colorCustomizations', key: LAB });
+    expect(warnings).toHaveLength(1);
+    expect(updates).toEqual([]);
+  });
+
+  it('{#remove-several-refused} Remove naming a wildcard block shows no modal and writes nothing', async () => {
+    inspected['workbench.colorCustomizations'] = { globalValue: { '[*Dark*]': { 'editor.background': '#ff0006' } } };
+    const lab = await openLab();
+    expect(lab.posted.filter(m => m.type === 'overrides')[0].items.map((i: any) => [i.key, i.kind])).toEqual([['[*Dark*]', 'several']]);
+    updates.length = 0;
+    warnings.length = 0;
+    warningAnswer.next = 'Remove';
+    await lab.receive!({ type: 'removeOverride', level: 'user', setting: 'workbench.colorCustomizations', key: '[*Dark*]' });
+    expect(warnings).toEqual([]);
+    expect(updates).toEqual([]);
+  });
+
+  it('removes a folder block at the folder level in a multi-root workspace', async () => {
+    const folderUri = { fsPath: '/proj/app', path: '/proj/app' };
+    workspaceState.folders = [{ uri: folderUri, name: 'app' }];
+    workspaceFileState.file = { fsPath: '/proj/all.code-workspace' };
+    inspected['workbench.colorCustomizations'] = { workspaceFolderValue: { [LAB]: { 'statusBar.background': '#ff0005' } } };
+    try {
+      const lab = await openLab();
+      expect(lab.posted.filter(m => m.type === 'overrides')[0].items.map((i: any) => [i.level, i.folder])).toEqual([['folder', 'app']]);
+      updates.length = 0;
+      warnings.length = 0;
+      warningAnswer.next = 'Remove';
+      await lab.receive!({ type: 'removeOverride', level: 'folder', folder: 'app', setting: 'workbench.colorCustomizations', key: LAB });
+      expect(warnings[0].text).toBe('Remove "[GigglyBits Dark (Lab)]" from the app folder settings?');
+      expect(updates).toEqual([{ key: 'workbench.colorCustomizations', value: undefined, target: 3 }]);
+      shownDocuments.length = 0;
+      await lab.receive!({ type: 'openOverrideFile', level: 'folder', folder: 'app' });
+      expect(shownDocuments.map((d: any) => d.path)).toEqual(['/proj/app/.vscode/settings.json']);
+    } finally {
+      workspaceState.folders = undefined;
+      workspaceFileState.file = undefined;
+    }
+  });
+
+  it('{#open-user-file} Open file runs the user and workspace settings JSON commands', async () => {
+    const lab = await openLab();
+    executed.length = 0;
+    await lab.receive!({ type: 'openOverrideFile', level: 'user' });
+    await lab.receive!({ type: 'openOverrideFile', level: 'workspace' });
+    expect(executed).toEqual(['workbench.action.openSettingsJson', 'workbench.action.openWorkspaceSettingsFile']);
+  });
+
+  it('posts the list again when a semantic color setting changes', async () => {
+    const lab = await openLab();
+    const before = lab.posted.filter(m => m.type === 'overrides').length;
+    const event = { affectsConfiguration: (id: string) => id === 'editor.semanticTokenColorCustomizations' };
+    for (const listener of configListeners) { listener(event); }
+    await new Promise(r => setTimeout(r, 0));
+    expect(lab.posted.filter(m => m.type === 'overrides')).toHaveLength(before + 1);
+  });
+});
+
 describe('Try in VS Code, where the theme switch goes', () => {
   const OCEAN = { type: 'applyPalette', entry: { name: 'Ocean', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] }, chrome: { index: 0, surfaces: 'neutral' }, edits: {}, settings: null };
   /** Runs one Try with the given workbench.colorTheme layers and folder state; returns the theme writes. */
@@ -445,6 +564,21 @@ describe('Try in VS Code, where the theme switch goes', () => {
       { key: 'workbench.colorTheme', value: 'GigglyBits Dark (Lab)', target: 2 },
       { key: 'workbench.colorTheme', value: undefined, target: 2 },
     ]);
+  });
+
+  it('{#hc-note} a Try names high contrast when window.autoDetectHighContrast is on and a high contrast theme shows, and not under a dark theme', async () => {
+    settings['window.autoDetectHighContrast'] = true;
+    try {
+      themeState.kind = 3;
+      await tryWith({ globalValue: 'Dark Modern' }, false);
+      expect(infoMessages[0].text).toContain('A high contrast theme is showing and window.autoDetectHighContrast is on, so while your system is in high contrast mode VS Code keeps a high contrast theme on screen instead.');
+      themeState.kind = 2;
+      await tryWith({ globalValue: 'Dark Modern' }, false);
+      expect(infoMessages[0].text).not.toContain('high contrast');
+    } finally {
+      themeState.kind = 2;
+      delete settings['window.autoDetectHighContrast'];
+    }
   });
 
   it('{#try-removes-shadow} a Try removes a workspace copy of the Lab block, which would hide it, keeps the rest, and says so', async () => {

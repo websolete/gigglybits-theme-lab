@@ -2442,7 +2442,7 @@ describe('Palette Lab step 1 leftover-color note', () => {
     const colors = ['statusBar.background', 'titleBar.activeBackground', 'activityBar.background', 'panel.border', 'tab.border', 'badge.background'];
     const c: any = ctx({ leftovers: { colors, tokens: ['comments'] } });
     const root = lab.render(c);
-    expect(step1Text(root)).toContain('Your user settings have 7 color settings not tied to any theme, so they override every theme, GigglyBits ones included: statusBar.background, titleBar.activeBackground, activityBar.background, panel.border, tab.border, and 2 more.');
+    expect(step1Text(root)).toContain("Your user settings have 7 color settings not tied to any theme: statusBar.background, titleBar.activeBackground, activityBar.background, panel.border, tab.border, and 2 more. They change every theme, but a GigglyBits theme's own colors take priority over them.");
     expect(step1Text(root)).not.toContain('badge.background');
     buttonFor(root, 'Remove them').click();
     expect(c.post).toHaveBeenCalledWith({ type: 'removeLeftovers' });
@@ -2450,7 +2450,44 @@ describe('Palette Lab step 1 leftover-color note', () => {
     expect(empty.querySelector('.gb-pl-leftovers')).toBeNull();
     expect(buttonFor(empty, 'Remove them')).toBeUndefined();
     const one = lab.render(ctx({ leftovers: { colors: ['statusBar.background'], tokens: [] } }));
-    expect(step1Text(one)).toContain('Your user settings have 1 color setting not tied to any theme');
+    expect(step1Text(one)).toContain('Your user settings have 1 color setting not tied to any theme: statusBar.background.');
+  });
+});
+
+describe('Palette Lab step 1 overrides note', () => {
+  const ITEMS = [
+    { level: 'workspace', setting: 'workbench.colorCustomizations', key: '[GigglyBits Dark (Lab)]', kind: 'one', count: 1 },
+    { level: 'user', setting: 'workbench.colorCustomizations', key: '[*Dark*]', kind: 'several', count: 3 },
+    { level: 'folder', folder: 'app', setting: 'editor.semanticTokenColorCustomizations', key: 'rules', kind: 'every', count: 2 },
+  ];
+
+  it('{#overrides-note} draws one row per setting with its text and a Remove or Open file button that posts its message', () => {
+    const c: any = ctx({ overrides: ITEMS });
+    const root = lab.render(c);
+    const note = root.querySelector<HTMLElement>('.gb-s1 .gb-pl-overrides')!;
+    expect(note.querySelector('.gb-pl-overrides-head')!.textContent).toBe('3 settings in your settings files can change GigglyBits theme colors:');
+    const rows = [...note.querySelectorAll<HTMLElement>('.gb-pl-overrides-row')];
+    expect(rows.map(r => r.querySelector('.gb-pl-overrides-text')!.textContent)).toEqual([
+      'Workspace settings: "[GigglyBits Dark (Lab)]" in workbench.colorCustomizations, 1 color',
+      'User settings: "[*Dark*]" in workbench.colorCustomizations, 3 colors (this block covers more than one theme)',
+      'Folder settings (app): "rules" in editor.semanticTokenColorCustomizations, 2 code color rules (applies to every theme)',
+    ]);
+    const buttons = rows.map(r => r.querySelector('button')!);
+    expect(buttons.map(b => b.textContent)).toEqual(['Remove', 'Open file', 'Open file']);
+    buttons.forEach(b => b.click());
+    expect(c.post.mock.calls.map((call: any[]) => call[0])).toEqual([
+      { type: 'removeOverride', level: 'workspace', folder: undefined, setting: 'workbench.colorCustomizations', key: '[GigglyBits Dark (Lab)]' },
+      { type: 'openOverrideFile', level: 'user', folder: undefined },
+      { type: 'openOverrideFile', level: 'folder', folder: 'app' },
+    ]);
+    const single = lab.render(ctx({ overrides: [{ level: 'user', setting: 'editor.tokenColorCustomizations', key: '[GigglyBits Theme 1]', kind: 'one', count: 1 }] }));
+    expect(single.querySelector('.gb-pl-overrides-head')!.textContent).toBe('1 setting in your settings files can change GigglyBits theme colors:');
+    expect(single.querySelector('.gb-pl-overrides-text')!.textContent).toBe('User settings: "[GigglyBits Theme 1]" in editor.tokenColorCustomizations, 1 code color rule');
+  });
+
+  it('{#overrides-empty} draws no note for empty items or no overrides at all', () => {
+    expect(lab.render(ctx({ overrides: [] })).querySelector('.gb-pl-overrides')).toBeNull();
+    expect(lab.render(ctx()).querySelector('.gb-pl-overrides')).toBeNull();
   });
 });
 

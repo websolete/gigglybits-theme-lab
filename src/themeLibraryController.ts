@@ -307,7 +307,8 @@ export class ThemeLibraryController {
 
   /**
    * Removes the user-level color and token keys not tied to any theme (leftoverRemoval), which
-   * override every theme, after a modal naming how many. Builds on the settings file, as slot
+   * change every theme wherever the theme's own block does not set that key, after a modal naming
+   * how many. Builds on the settings file, as slot
    * writes do, so a window open since before another window's save cannot write back its colors.
    */
   async removeLeftovers(): Promise<void> {
@@ -317,7 +318,7 @@ export class ThemeLibraryController {
     const settings = `${removal.count} color setting${removal.count === 1 ? '' : 's'}`;
     const choice = await vscode.window.showWarningMessage(
       `Remove ${settings} from your user settings?`,
-      { modal: true, detail: 'They are not tied to any theme, so they override every theme. Theme blocks, GigglyBits ones included, are kept.' },
+      { modal: true, detail: 'They are not tied to any theme, so they change every theme, though a theme\'s own blocks take priority. Theme blocks, GigglyBits ones included, are kept.' },
       'Remove',
     );
     if (choice !== 'Remove') { return; }

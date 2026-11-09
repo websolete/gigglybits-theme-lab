@@ -64,6 +64,13 @@
    * @type {{ colors: string[], tokens: string[] } | null}
    */
   let leftovers = null;
+  /**
+   * The latest 'overrides' message's items: the settings that can change a GigglyBits theme's
+   * colors (src/labSettings.ts ColorOverride), for step 1's overrides note. Never saved; null
+   * until one arrives.
+   * @type {any[] | null}
+   */
+  let overrides = null;
 
   /**
    * Latest 'library' message: your saved themes (src/themeLibrary.ts SavedTheme), your syntax
@@ -127,6 +134,7 @@
       installedStarters,
       themeScope,
       leftovers,
+      overrides,
     });
     return h('section', { id: 'section-palette' },
       h('div', { class: 'gb-lab' }, lab));
@@ -221,6 +229,9 @@
     } else if (msg.type === 'leftovers') {
       const strings = list => (Array.isArray(list) ? list.filter(k => typeof k === 'string') : []);
       leftovers = { colors: strings(msg.colors), tokens: strings(msg.tokens) };
+      renderPalette();
+    } else if (msg.type === 'overrides') {
+      overrides = Array.isArray(msg.items) ? msg.items.filter(i => i && typeof i === 'object' && typeof i.key === 'string') : [];
       renderPalette();
     } else if (msg.type === 'installedStarters') {
       installedStarters = Array.isArray(msg.starters) ? msg.starters : [];

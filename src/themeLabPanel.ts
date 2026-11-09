@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { labPageHtml, labWebviewOptions, PreviewState, ThemePreviewPanel } from './themePreviewPanel';
-import { TOKEN_KEYS_KEPT, unscopedKeys, withLabScope, withoutLabScope } from './labSettings';
+import { colorOverrides, ColorOverride, Levels, OverrideSetting, TOKEN_KEYS_KEPT, unscopedKeys, withLabScope, withoutLabScope } from './labSettings';
 import { captureThemeSnapshot, InstalledSyntaxStarter, InstalledTheme, listInstalledSyntaxStarters, listInstalledThemes } from './themeSource';
 import { BuilderEntry, ChromeChoice, cleanEdits, LAB_THEME_LABEL, labSettings } from '../scripts/theme-builder';
 import { parseTryRecord, startConfig } from './labStart';
@@ -23,7 +23,20 @@ type FromWebview =
   | { type: 'showWhere'; keys: unknown }
   | { type: 'openPreviewWindow' }
   | { type: 'changeDefaultTheme' }
-  | { type: 'removeLeftovers' };
+  | { type: 'removeLeftovers' }
+  | { type: 'removeOverride'; level: unknown; folder?: unknown; setting: unknown; key: unknown }
+  | { type: 'openOverrideFile'; level: unknown; folder?: unknown };
+
+/** The settings colorOverrides reads, by its Levels field. */
+const OVERRIDE_SETTINGS: Record<'colors' | 'tokens' | 'semantic', OverrideSetting> = {
+  colors: 'workbench.colorCustomizations',
+  tokens: 'editor.tokenColorCustomizations',
+  semantic: 'editor.semanticTokenColorCustomizations',
+};
+
+/** How a modal or status message names a level: 'your user settings', 'the app folder settings'. */
+const whereText = (level: ColorOverride['level'], folder?: string): string =>
+  level === 'user' ? 'your user settings' : level === 'workspace' ? 'your workspace settings' : `the ${folder} folder settings`;
 
 /** Which theme this window shows and where that comes from, and the user default theme. */
 export interface ThemeScope {
@@ -109,6 +122,11 @@ function themeOverrideNotes(theme: { workspaceValue?: string; workspaceFolderVal
   if (vscode.workspace.getConfiguration().get<boolean>('window.autoDetectColorScheme')) {
     notes.push('window.autoDetectColorScheme is on, so VS Code picks the theme from the OS setting instead.');
   }
+  const kind = vscode.window.activeColorTheme.kind;
+  if (vscode.workspace.getConfiguration().get<boolean>('window.autoDetectHighContrast')
+    && (kind === vscode.ColorThemeKind.HighContrast || kind === vscode.ColorThemeKind.HighContrastLight)) {
+    notes.push('A high contrast theme is showing and window.autoDetectHighContrast is on, so while your system is in high contrast mode VS Code keeps a high contrast theme on screen instead.');
+  }
   return notes;
 }
 
@@ -187,6 +205,10 @@ export class ThemeLabPanel {
         if (e.affectsConfiguration('workbench.colorCustomizations') || e.affectsConfiguration('editor.tokenColorCustomizations')) {
           void this.postLeftovers();
         }
+        if (e.affectsConfiguration('workbench.colorCustomizations') || e.affectsConfiguration('editor.tokenColorCustomizations')
+          || e.affectsConfiguration('editor.semanticTokenColorCustomizations') || e.affectsConfiguration('workbench.colorTheme')) {
+          void this.postOverrides();
+        }
       }),
       // An extension installed, removed or updated can add or drop dark themes.
       vscode.extensions.onDidChange(() => void this.postInstalledStarters()),
@@ -255,6 +277,84 @@ export class ThemeLabPanel {
   }
 
   /**
+   * The settings that can change a GigglyBits theme's colors (colorOverrides), from each level's
+   * values: user, workspace, and, in a multi-root workspace, each folder's own settings file, as
+   * removeShadowingLabColors reads them. VS Code 1.145 returns no folder value for these window
+   * settings in a multi-root workspace (live check 2026-11-09, docs/DEVELOPMENT.md), so in practice
+   * no folder item appears.
+   */
+  private overrideItems(): ColorOverride[] {
+    const levelsOf = (cfg: vscode.WorkspaceConfiguration, prop: 'globalValue' | 'workspaceValue' | 'workspaceFolderValue'): Levels => ({
+      colors: cfg.inspect(OVERRIDE_SETTINGS.colors)?.[prop],
+      tokens: cfg.inspect(OVERRIDE_SETTINGS.tokens)?.[prop],
+      semantic: cfg.inspect(OVERRIDE_SETTINGS.semantic)?.[prop],
+      theme: cfg.inspect<string>('workbench.colorTheme')?.[prop],
+    });
+    const root = vscode.workspace.getConfiguration();
+    const folders = vscode.workspace.workspaceFile
+      ? (vscode.workspace.workspaceFolders ?? []).map(f => ({ name: f.name, values: levelsOf(vscode.workspace.getConfiguration(undefined, f.uri), 'workspaceFolderValue') }))
+      : [];
+    return colorOverrides({ user: levelsOf(root, 'globalValue'), workspace: levelsOf(root, 'workspaceValue'), folders });
+  }
+
+  /** Step 1's overrides note: the settings that can change a GigglyBits theme's colors. */
+  private async postOverrides(): Promise<void> {
+    await this.panel.webview.postMessage({ type: 'overrides', items: this.overrideItems() });
+  }
+
+  /**
+   * Remove on a listed block aimed at one GigglyBits theme: after a modal, writes that level's
+   * value without the block (undefined when nothing is left). A message naming anything other
+   * than a current kind 'one' item does nothing, so a wildcard block or every-theme rules are
+   * never removed from here.
+   */
+  private async removeOverride(msg: { level: unknown; folder?: unknown; setting: unknown; key: unknown }): Promise<void> {
+    const item = this.overrideItems().find(i => i.kind === 'one' && i.level === msg.level && i.setting === msg.setting
+      && i.key === msg.key && (i.level !== 'folder' || i.folder === msg.folder));
+    if (!item) { return; }
+    const where = whereText(item.level, item.folder);
+    const label = item.key.slice(1, -1);
+    const choice = await vscode.window.showWarningMessage(`Remove "${item.key}" from ${where}?`,
+      { modal: true, detail: `This block applies only to ${label}, so no other theme changes.` }, 'Remove');
+    if (choice !== 'Remove') { return; }
+    let cfg = vscode.workspace.getConfiguration();
+    let prop: 'globalValue' | 'workspaceValue' | 'workspaceFolderValue' = 'globalValue';
+    let target = vscode.ConfigurationTarget.Global;
+    if (item.level === 'workspace') {
+      prop = 'workspaceValue';
+      target = vscode.ConfigurationTarget.Workspace;
+    } else if (item.level === 'folder') {
+      const folder = (vscode.workspace.workspaceFolders ?? []).find(f => f.name === item.folder);
+      if (!folder) { return; }
+      cfg = vscode.workspace.getConfiguration(undefined, folder.uri);
+      prop = 'workspaceFolderValue';
+      target = vscode.ConfigurationTarget.WorkspaceFolder;
+    }
+    // Read again: the modal may have stayed open while the value changed.
+    const current = cfg.inspect(item.setting)?.[prop];
+    if (typeof current !== 'object' || current === null || Array.isArray(current) || !(item.key in current)) { return; }
+    const next = Object.fromEntries(Object.entries(current).filter(([key]) => key !== item.key));
+    await cfg.update(item.setting, Object.keys(next).length ? next : undefined, target);
+    vscode.window.setStatusBarMessage(`Removed "${item.key}" from ${where}.`, 5000);
+  }
+
+  /**
+   * Open file on a listed setting: the user or workspace settings JSON through VS Code's own
+   * commands (both present in VS Code 1.145, docs/DEVELOPMENT.md), or the folder's
+   * .vscode/settings.json.
+   */
+  private async openOverrideFile(msg: { level: unknown; folder?: unknown }): Promise<void> {
+    if (msg.level === 'user') {
+      await vscode.commands.executeCommand('workbench.action.openSettingsJson');
+    } else if (msg.level === 'workspace') {
+      await vscode.commands.executeCommand('workbench.action.openWorkspaceSettingsFile');
+    } else if (msg.level === 'folder') {
+      const folder = (vscode.workspace.workspaceFolders ?? []).find(f => f.name === msg.folder);
+      if (folder) { await vscode.window.showTextDocument(vscode.Uri.joinPath(folder.uri, '.vscode', 'settings.json')); }
+    }
+  }
+
+  /**
    * Change default: a quick pick of every installed theme (listInstalledThemes), the current
    * default marked; a pick becomes the user-level workbench.colorTheme, a dismissal writes nothing.
    */
@@ -296,6 +396,7 @@ export class ThemeLabPanel {
         await this.panel.webview.postMessage({ type: 'start', start });
         await this.postThemeScope();
         await this.postLeftovers();
+        await this.postOverrides();
         if (this.pendingSeed) {
           await this.panel.webview.postMessage({ type: 'frameSeed', ...this.pendingSeed });
           this.pendingSeed = undefined;
@@ -373,6 +474,20 @@ export class ThemeLabPanel {
         break;
       case 'removeLeftovers':
         await this.library.removeLeftoversSafely();
+        break;
+      case 'removeOverride':
+        try {
+          await this.removeOverride(msg);
+        } catch (err) {
+          vscode.window.showErrorMessage(`Could not remove the setting: ${(err as Error).message}`);
+        }
+        break;
+      case 'openOverrideFile':
+        try {
+          await this.openOverrideFile(msg);
+        } catch (err) {
+          vscode.window.showErrorMessage(`Could not open the settings file: ${(err as Error).message}`);
+        }
         break;
     }
   }
@@ -499,7 +614,9 @@ export class ThemeLabPanel {
         cleaned.add(workspaceName);
       }
     }
-    // In a multi-root workspace each folder's .vscode/settings.json is a layer of its own.
+    // In a multi-root workspace each folder's .vscode/settings.json is a layer of its own. VS Code
+    // 1.145 ignores these window settings there and reports no folder value (live check
+    // 2026-11-09, docs/DEVELOPMENT.md), so this loop finds nothing in practice.
     if (workspaceFile) {
       for (const folder of vscode.workspace.workspaceFolders ?? []) {
         const scoped = vscode.workspace.getConfiguration(undefined, folder.uri);

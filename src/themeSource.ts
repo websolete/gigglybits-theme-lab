@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 import * as path from 'path';
 import { parse, ParseError, printParseErrorCode } from 'jsonc-parser';
 import { starterFromRules, SyntaxColors } from '../scripts/theme-builder';
+import { themeNameMatches } from './labSettings';
 
 /**
  * Where a declared value came from. Colors that VS Code resolves on its own
@@ -496,14 +497,6 @@ function scopedBlocks(obj: Json, settingsId: string | undefined): { key: string;
     }
   }
   return blocks;
-}
-
-function themeNameMatches(pattern: string, settingsId: string): boolean {
-  if (!pattern.includes('*')) {
-    return pattern === settingsId;
-  }
-  const escaped = pattern.split('*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'));
-  return new RegExp(`^${escaped.join('.*')}$`).test(settingsId);
 }
 
 function applyColorCustomizations(snap: ThemeSnapshot): void {

@@ -91,6 +91,11 @@
 .gb-pl-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--gb-text-sm); }
 /* Step 1's note on user-level colors not tied to any theme, with Remove them. */
 .gb-pl-leftovers { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--gb-text-sm); padding: 6px 8px; border-left: 3px solid var(--vscode-editorWarning-foreground); }
+/* Step 1's list of settings that can change a GigglyBits theme's colors, one row per setting,
+   each with Remove or Open file. Setting names and keys can be long, so text wraps anywhere. */
+.gb-pl-overrides { display: flex; flex-direction: column; gap: 4px; font-size: var(--gb-text-sm); padding: 6px 8px; border-left: 3px solid var(--vscode-editorWarning-foreground); }
+.gb-pl-overrides-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.gb-pl-overrides-text { overflow-wrap: anywhere; }
 
 /* Step 3: labelled rows (Frame color, Frame style, Accent, Surfaces) on the same label column
    as the accent groups below, each label with a line under it naming what the row colors. */

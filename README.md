@@ -27,7 +27,8 @@ Picking a base color and a rule in step 1 already makes a complete theme. Steps 
 
 - **Try in VS Code** with a folder open changes only that project. With no folder open, it changes every window that doesn't set its own theme.
 - The Lab's first step says which theme this window shows and which theme new windows get. **Change default** picks the theme new windows use.
-- If colors in your user settings aren't tied to any theme, they override every theme. The Lab names them and offers to remove them.
+- If colors in your user settings aren't tied to any theme, they change every theme wherever the theme doesn't set that color itself. The Lab names them and offers to remove them.
+- The Lab also lists settings that can change a GigglyBits theme's colors: blocks in your user or workspace settings aimed at a GigglyBits theme that GigglyBits didn't write, wildcard blocks such as `[*Dark*]`, and semantic color rules for every theme. A block for one GigglyBits theme can be removed; anything else opens its settings file. In a multi-root workspace VS Code ignores color settings in each folder's own settings file, so the Lab doesn't list them.
 
 The **Set Color Theme** button on the extension's page lists GigglyBits Dark (Lab) and GigglyBits Theme 1 to 12. The twelve slots look like the starter theme until you save designs into them, so start from the Lab rather than that list. Your saved themes appear in **Preferences: Color Theme** under those slot names, and **GigglyBits: Choose Theme** lists them by their real names.
 

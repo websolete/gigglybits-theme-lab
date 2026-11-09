@@ -2507,7 +2507,9 @@
 
   /**
    * Step 1's leftover-color note: the user-level color settings not tied to any theme, which
-   * override every theme (src/themeLabPanel.ts postLeftovers), with Remove them. Null with none.
+   * change every theme wherever the theme's own block does not set that color (seen live
+   * 2026-11-09, docs/DEVELOPMENT.md; src/themeLabPanel.ts postLeftovers), with Remove them. Null
+   * with none.
    */
   function leftoversNote(ctx) {
     const l = ctx.leftovers;
@@ -2518,12 +2520,46 @@
     const list = n > 5 ? `${shown}, and ${n - 5} more` : shown;
     return h('div', { class: 'gb-pl-leftovers' },
       h('span', { class: 'gb-pl-leftovers-text' },
-        `Your user settings have ${n} color setting${n === 1 ? '' : 's'} not tied to any theme, so they override every theme, GigglyBits ones included: ${list}.`),
+        `Your user settings have ${n} color setting${n === 1 ? '' : 's'} not tied to any theme: ${list}. They change every theme, but a GigglyBits theme's own colors take priority over them.`),
       h('button', {
         type: 'button', class: 'secondary gb-pl-leftovers-remove',
         title: 'Removes these settings from your user settings after you confirm; every theme\'s own colors are kept',
         onclick: () => ctx.post({ type: 'removeLeftovers' }),
       }, 'Remove them'));
+  }
+
+  /**
+   * Step 1's overrides note: the settings in your settings files that can change a GigglyBits
+   * theme's colors (src/labSettings.ts colorOverrides, posted by src/themeLabPanel.ts
+   * postOverrides). A block aimed at one GigglyBits theme has Remove; a block covering more than
+   * one theme, or rules for every theme, has Open file, since removing it would change other
+   * themes too. Null with no items.
+   */
+  function overridesNote(ctx) {
+    const items = Array.isArray(ctx.overrides) ? ctx.overrides : [];
+    if (!items.length) return null;
+    const n = items.length;
+    const whereOf = i => (i.level === 'user' ? 'User settings' : i.level === 'workspace' ? 'Workspace settings' : `Folder settings (${i.folder})`);
+    const unitOf = i => (i.setting === 'workbench.colorCustomizations'
+      ? (i.count === 1 ? 'color' : 'colors')
+      : (i.count === 1 ? 'code color rule' : 'code color rules'));
+    const suffixOf = i => (i.kind === 'several' ? ' (this block covers more than one theme)' : i.kind === 'every' ? ' (applies to every theme)' : '');
+    const row = i => h('div', { class: 'gb-pl-overrides-row' },
+      h('span', { class: 'gb-pl-overrides-text' }, `${whereOf(i)}: "${i.key}" in ${i.setting}, ${i.count} ${unitOf(i)}${suffixOf(i)}`),
+      i.kind === 'one'
+        ? h('button', {
+          type: 'button', class: 'secondary gb-pl-overrides-remove',
+          title: 'Removes this block from that settings file after you confirm; it applies only to this theme',
+          onclick: () => ctx.post({ type: 'removeOverride', level: i.level, folder: i.folder, setting: i.setting, key: i.key }),
+        }, 'Remove')
+        : h('button', {
+          type: 'button', class: 'secondary gb-pl-overrides-open',
+          title: 'Opens the settings file that holds it, so you can decide what to change',
+          onclick: () => ctx.post({ type: 'openOverrideFile', level: i.level, folder: i.folder }),
+        }, 'Open file'));
+    return h('div', { class: 'gb-pl-overrides' },
+      h('div', { class: 'gb-pl-overrides-head' }, `${n} setting${n === 1 ? '' : 's'} in your settings files can change GigglyBits theme colors:`),
+      ...items.map(row));
   }
 
   const editsWord = n => `${n} ${n === 1 ? 'edit' : 'edits'}`;
@@ -2838,7 +2874,7 @@
             onclick: () => ctx.post({ type: 'openPreviewWindow' }),
           }, 'Open Preview')));
 
-      const s1 = step(1, 'Pick your colors', states[1], note, themeScopeLine(ctx), leftoversNote(ctx),
+      const s1 = step(1, 'Pick your colors', states[1], note, themeScopeLine(ctx), leftoversNote(ctx), overridesNote(ctx),
         h('p', { class: 'gb-step-lead muted' }, 'Pick a base color and a rule. The rule makes five related colors, and every color in the theme is worked out from those five, readability included. Or start from a theme you saved.'),
         startTabs,
         h('p', { class: 'gb-pl-done' }, 'That\'s a complete theme. You can try or save it now in step 6. Steps 2 to 5 are optional fine-tuning.'));

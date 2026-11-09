@@ -348,6 +348,15 @@ describe('Theme Lab opening on the current theme and workspace color', () => {
   });
 });
 
+describe('Theme Lab page and the settings that can change a GigglyBits theme', () => {
+  it('{#lab-overrides} draws one overrides row in step 1 when the host posts one item', () => {
+    sendLibrary();
+    expect(document.querySelector('.gb-pl-overrides-row')).toBeNull();
+    send({ type: 'overrides', items: [{ level: 'workspace', setting: 'workbench.colorCustomizations', key: '[GigglyBits Dark (Lab)]', kind: 'one', count: 1 }] });
+    expect(document.querySelectorAll('.gb-s1 .gb-pl-overrides-row')).toHaveLength(1);
+  });
+});
+
 describe('Theme Lab page and VS Code\'s modern UI settings', () => {
   it('draws no Workbench on the page when the modern UI settings arrive, and a pick still opens the Edit dock', () => {
     sendLibrary();

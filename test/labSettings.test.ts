@@ -1,6 +1,6 @@
 // src/labSettings.ts and labSettings() in scripts/theme-builder.js: what Try in VS Code
 // writes to user settings. It writes nothing to the workspace.
-import { LAB_SCOPE, leftoverRemoval, unscopedKeys, withLabScope, withoutLabScope } from '../src/labSettings';
+import { colorOverrides, LAB_SCOPE, leftoverRemoval, Levels, unscopedKeys, withLabScope, withoutLabScope } from '../src/labSettings';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TB = require('../scripts/theme-builder.js');
 
@@ -60,5 +60,74 @@ describe('colors not tied to any theme', () => {
     expect(removal.colors).toBeUndefined();
     expect(removal.tokens).toBeUndefined();
     expect(removal.count).toBe(2);
+  });
+});
+
+describe('colorOverrides', () => {
+  const run = (parts: { user?: Levels; workspace?: Levels; folders?: { name: string; values: Levels }[] }) =>
+    colorOverrides({ user: parts.user ?? {}, workspace: parts.workspace ?? {}, folders: parts.folders ?? [] });
+  const block = { 'statusBar.background': '#ff0001' };
+
+  it('{#ours-skipped} skips the blocks GigglyBits writes: user Lab and slot blocks in colors and code colors, and workspace slot blocks in colors', () => {
+    expect(run({
+      user: {
+        colors: { '[GigglyBits Dark (Lab)]': block, '[GigglyBits Theme 2]': block },
+        tokens: { '[GigglyBits Dark (Lab)]': { textMateRules: [{ scope: 'comment' }] }, '[GigglyBits Theme 2]': { comments: '#888888' } },
+      },
+    })).toEqual([]);
+    expect(run({ workspace: { colors: { '[GigglyBits Theme 2]': block }, theme: 'GigglyBits Theme 2' } })).toEqual([]);
+    expect(run({ workspace: { colors: { '[GigglyBits Theme 3]': block }, theme: 'GigglyBits Dark (Lab)' } })).toEqual([]);
+  });
+
+  it('{#foreign-one} lists a workspace Lab block and a user semantic block for one GigglyBits theme as kind one', () => {
+    expect(run({ workspace: { colors: { '[GigglyBits Dark (Lab)]': { 'statusBar.background': '#ff0001', 'button.background': '#ff0002' } } } }))
+      .toEqual([{ level: 'workspace', setting: 'workbench.colorCustomizations', key: '[GigglyBits Dark (Lab)]', kind: 'one', count: 2 }]);
+    expect(run({ user: { semantic: { '[GigglyBits Theme 1]': { rules: { variable: '#ff0000' } } } } }))
+      .toEqual([{ level: 'user', setting: 'editor.semanticTokenColorCustomizations', key: '[GigglyBits Theme 1]', kind: 'one', count: 1 }]);
+  });
+
+  it('{#several} lists wildcard and multi-theme blocks that name a GigglyBits theme as kind several, and nothing for other themes', () => {
+    const items = run({
+      user: {
+        colors: {
+          '[*Dark*]': { 'a.background': '#000001', 'b.background': '#000002', 'c.background': '#000003' },
+          '[Default Dark Modern][GigglyBits Theme 1]': block,
+          '[Default Dark Modern]': block,
+          '[*Light*]': block,
+        },
+      },
+    });
+    expect(items).toEqual([
+      { level: 'user', setting: 'workbench.colorCustomizations', key: '[*Dark*]', kind: 'several', count: 3 },
+      { level: 'user', setting: 'workbench.colorCustomizations', key: '[Default Dark Modern][GigglyBits Theme 1]', kind: 'several', count: 1 },
+    ]);
+  });
+
+  it('{#every-semantic} lists unscoped semantic rules as kind every and never the enabled switch', () => {
+    expect(run({ workspace: { semantic: { rules: { variable: '#ff0000' }, enabled: false } } }))
+      .toEqual([{ level: 'workspace', setting: 'editor.semanticTokenColorCustomizations', key: 'rules', kind: 'every', count: 1 }]);
+    expect(run({ workspace: { semantic: { enabled: false } } })).toEqual([]);
+  });
+
+  it('{#folder-and-zero} names the folder on folder items and leaves out an empty block', () => {
+    expect(run({ folders: [{ name: 'app', values: { colors: { '[GigglyBits Dark (Lab)]': block, '[GigglyBits Theme 4]': {} } } }] }))
+      .toEqual([{ level: 'folder', folder: 'app', setting: 'workbench.colorCustomizations', key: '[GigglyBits Dark (Lab)]', kind: 'one', count: 1 }]);
+  });
+
+  it('counts code color keys plus textMateRules, and orders by level, then setting, then key', () => {
+    const items = run({
+      user: { semantic: { rules: { variable: '#ff0000', 'function': '#00ff00' } } },
+      workspace: {
+        semantic: { '[GigglyBits Dark (Lab)]': { rules: { variable: '#ff0000' } } },
+        tokens: { '[GigglyBits Dark (Lab)]': { comments: '#888888', semanticHighlighting: true, textMateRules: [{}, {}] } },
+        colors: { '[GigglyBits*]': block },
+      },
+    });
+    expect(items.map(i => [i.level, i.setting, i.key, i.kind, i.count])).toEqual([
+      ['user', 'editor.semanticTokenColorCustomizations', 'rules', 'every', 2],
+      ['workspace', 'workbench.colorCustomizations', '[GigglyBits*]', 'several', 1],
+      ['workspace', 'editor.tokenColorCustomizations', '[GigglyBits Dark (Lab)]', 'one', 3],
+      ['workspace', 'editor.semanticTokenColorCustomizations', '[GigglyBits Dark (Lab)]', 'one', 1],
+    ]);
   });
 });

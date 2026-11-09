@@ -2,6 +2,12 @@
 
 All notable changes to GigglyBits Theme Lab are documented in this file.
 
+## 0.1.3
+
+- **See settings that can change a GigglyBits theme.** The Lab's first step now lists blocks in your user or workspace settings aimed at a GigglyBits theme that GigglyBits didn't write, wildcard blocks such as `[*Dark*]` included, and semantic color rules for every theme. A block for one GigglyBits theme has **Remove**, which takes it out after you confirm; anything else has **Open file**, since removing it would change your other themes too.
+- **High contrast note on Try.** A Try made while a high contrast theme is showing says that VS Code follows your system's high contrast mode, so a theme that doesn't appear is explained.
+- **Clearer note on colors not tied to a theme.** A check in VS Code showed that a GigglyBits theme's own colors take priority over them, so the Lab, its Remove prompt and Get Started now say they change every theme wherever the theme doesn't set that color itself.
+
 ## 0.1.2
 
 - **Get Started walkthrough.** Installing the extension from inside VS Code opens Get Started on GigglyBits Theme Lab, with an Open Theme Lab button and short pages on trying a design and choosing your default theme.

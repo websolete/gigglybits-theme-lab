@@ -7,7 +7,7 @@
 // whenever a folder is open or the workspace has a theme of its own (src/themeLabPanel.ts
 // tryThemeTarget). It also
 // removes any workspace or folder copy of the Lab block, which would hide the Try (withoutLabScope).
-import { LAB_THEME_LABEL } from '../scripts/theme-builder';
+import { LAB_THEME_LABEL, SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
 
 export const LAB_SCOPE = `[${LAB_THEME_LABEL}]`;
 
@@ -38,7 +38,8 @@ export const TOKEN_KEYS_KEPT = ['semanticHighlighting'];
 
 /**
  * The keys of a color or token setting value that are not tied to any theme, so VS Code applies
- * them over every theme: every key not starting with '[' and not in skip. [] for a non-object.
+ * them to every theme, under each theme's own '[...]' blocks: every key not starting with '[' and
+ * not in skip. [] for a non-object.
  */
 export function unscopedKeys(value: unknown, skip: string[] = []): string[] {
   if (!isObject(value)) { return []; }
@@ -63,4 +64,116 @@ export function leftoverRemoval(colors: unknown, tokens: unknown):
   const keys = [...unscopedKeys(colors), ...unscopedKeys(tokens, TOKEN_KEYS_KEPT)];
   if (!keys.length) { return undefined; }
   return { count: keys.length, keys, colors: keptValue(colors, []), tokens: keptValue(tokens, TOKEN_KEYS_KEPT) };
+}
+
+/**
+ * Whether the theme name in a '[...]' settings key names settingsId. A '*' matches any run of
+ * characters, so "[*Dark*]" names every theme whose id contains Dark (src/themeSource.ts
+ * scopedBlocks uses it to find the blocks that apply to the active theme).
+ */
+export function themeNameMatches(pattern: string, settingsId: string): boolean {
+  if (!pattern.includes('*')) {
+    return pattern === settingsId;
+  }
+  const escaped = pattern.split('*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`^${escaped.join('.*')}$`).test(settingsId);
+}
+
+/** One level's values of the four settings colorOverrides reads. */
+export interface Levels {
+  /** workbench.colorCustomizations */
+  colors?: unknown;
+  /** editor.tokenColorCustomizations */
+  tokens?: unknown;
+  /** editor.semanticTokenColorCustomizations */
+  semantic?: unknown;
+  /** workbench.colorTheme */
+  theme?: string;
+}
+
+export type OverrideSetting = 'workbench.colorCustomizations' | 'editor.tokenColorCustomizations' | 'editor.semanticTokenColorCustomizations';
+
+/**
+ * A setting that can change a GigglyBits theme's colors. kind 'one' is a block aimed at one
+ * GigglyBits theme, 'several' a block whose key names more than one theme or a '*' pattern, and
+ * 'every' semantic color rules not tied to any theme. count is how many colors or rules it sets.
+ */
+export interface ColorOverride {
+  level: 'user' | 'workspace' | 'folder';
+  folder?: string;
+  setting: OverrideSetting;
+  key: string;
+  kind: 'one' | 'several' | 'every';
+  count: number;
+}
+
+/** LAB_THEME_LABEL and every slot label: the themes GigglyBits contributes. */
+const gigglyLabels = (): string[] => [LAB_THEME_LABEL, ...Array.from({ length: SLOT_COUNT }, (_, i) => slotLabel(i + 1))];
+
+/** How many colors or rules a block (or a semantic rules object) sets, by setting. */
+function blockCount(setting: OverrideSetting, block: Settings): number {
+  if (setting === 'workbench.colorCustomizations') {
+    return Object.values(block).filter(v => typeof v === 'string').length;
+  }
+  if (setting === 'editor.tokenColorCustomizations') {
+    const keys = Object.keys(block).filter(k => k !== 'textMateRules' && k !== 'semanticHighlighting').length;
+    return keys + (Array.isArray(block.textMateRules) ? block.textMateRules.length : 0);
+  }
+  return isObject(block.rules) ? Object.keys(block.rules).length : 0;
+}
+
+/**
+ * The settings that can change a GigglyBits theme's colors, from each level's values: every
+ * '[...]' block naming a GigglyBits theme (under themeNameMatches) that GigglyBits did not write,
+ * and every semantic `rules` object not tied to a theme. Skipped as GigglyBits' own: an exact
+ * GigglyBits block in user colors or code colors (Try and the slot writes put them there), and an
+ * exact slot block in workspace colors (refreshProjectFrame owns those). Semantic highlighting
+ * switched off (`enabled`) is never reported, and nothing with a count of 0 is returned. Order:
+ * user, workspace, folders in input order; within a level colors, code colors, then semantic;
+ * within a setting, key order.
+ */
+export function colorOverrides(input: { user: Levels; workspace: Levels; folders: { name: string; values: Levels }[] }): ColorOverride[] {
+  const labels = gigglyLabels();
+  const slots = labels.slice(1);
+  const out: ColorOverride[] = [];
+  const levels: { level: ColorOverride['level']; folder?: string; values: Levels }[] = [
+    { level: 'user', values: input.user },
+    { level: 'workspace', values: input.workspace },
+    ...input.folders.map(f => ({ level: 'folder' as const, folder: f.name, values: f.values })),
+  ];
+  for (const { level, folder, values } of levels) {
+    const settings: [OverrideSetting, unknown][] = [
+      ['workbench.colorCustomizations', values.colors],
+      ['editor.tokenColorCustomizations', values.tokens],
+      ['editor.semanticTokenColorCustomizations', values.semantic],
+    ];
+    for (const [setting, value] of settings) {
+      if (!isObject(value)) { continue; }
+      for (const [key, block] of Object.entries(value)) {
+        let kind: ColorOverride['kind'];
+        let count: number;
+        if (key.startsWith('[')) {
+          if (!isObject(block)) { continue; }
+          const names = [...key.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
+          if (!names.some(n => labels.some(label => themeNameMatches(n, label)))) { continue; }
+          kind = names.length > 1 || names.some(n => n.includes('*')) ? 'several' : 'one';
+          if (kind === 'one') {
+            const ours = level === 'user' && setting !== 'editor.semanticTokenColorCustomizations'
+              || level === 'workspace' && setting === 'workbench.colorCustomizations' && slots.includes(names[0]);
+            if (ours) { continue; }
+          }
+          count = blockCount(setting, block);
+        } else if (setting === 'editor.semanticTokenColorCustomizations' && key === 'rules' && isObject(block)) {
+          kind = 'every';
+          count = Object.keys(block).length;
+        } else {
+          continue;
+        }
+        if (count > 0) {
+          out.push({ level, ...(folder !== undefined ? { folder } : {}), setting, key, kind, count });
+        }
+      }
+    }
+  }
+  return out;
 }
