@@ -8,6 +8,8 @@ export {};
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const GB = require('../media/shared.js');
 (window as any).GB = GB;
+// Pickers open in Facets unless Smooth was chosen; most tests below need Smooth's exact steps.
+window.localStorage.setItem('gb.colorPicker.facets', '0');
 const CP = require('../media/colorPicker.js');
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -238,6 +240,33 @@ describe('color picker Facets mode', () => {
     const p = openPicker();
     mode(p, 'smooth').click();
     document.body.replaceChildren();
+  });
+
+  it('{#facets-default} a picker opens in Facets when Smooth was never chosen, or storage is unavailable', () => {
+    const fresh = (storage: 'empty' | 'throws') => {
+      let cp: any;
+      const real = Object.getOwnPropertyDescriptor(window, 'localStorage')!;
+      window.localStorage.removeItem('gb.colorPicker.facets');
+      if (storage === 'throws') {
+        Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('no storage'); } });
+      }
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        jest.isolateModules(() => { cp = require('../media/colorPicker.js'); });
+      } finally {
+        Object.defineProperty(window, 'localStorage', real);
+        window.localStorage.setItem('gb.colorPicker.facets', '0');
+      }
+      const trigger = cp.create({ label: 'Test color', value: '#336699', onInput() {}, onChange() {}, onCancel() {} }) as HTMLButtonElement;
+      document.body.append(trigger);
+      trigger.click();
+      const dialog = document.querySelector<HTMLElement>('.gb-cp')!;
+      const opened = dialog.hasAttribute('data-facets');
+      document.body.replaceChildren();
+      return opened;
+    };
+    expect(fresh('empty')).toBe(true);
+    expect(fresh('throws')).toBe(true);
   });
 
   it('{#facets-toggle} switching to Facets leaves the color as it is, and the next picker opens in Facets', () => {

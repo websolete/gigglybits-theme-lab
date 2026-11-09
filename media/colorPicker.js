@@ -38,12 +38,15 @@
   /** The nearest multiple of `step`, rounded to 4 places so 0.30000000000000004 reads 0.3. */
   const snap = (v, step) => Number((Math.round(v / step) * step).toFixed(4));
   const FACET_KEY = 'gb.colorPicker.facets';
-  /** Whether pickers open in Facets mode: the last choice, for this page and (where storage works) the next. */
+  /**
+   * Whether pickers open in Facets mode: the last choice, for this page and (where storage works)
+   * the next. Facets until Smooth is chosen, since new users found the tiles easier to pick from.
+   */
   let faceted = (() => {
     try {
-      return window.localStorage.getItem(FACET_KEY) === '1';
+      return window.localStorage.getItem(FACET_KEY) !== '0';
     } catch {
-      return false;
+      return true;
     }
   })();
 

@@ -21,7 +21,7 @@ GigglyBits Theme Lab fixes all of that.
 
 ## Getting started
 
-Installing the extension from inside VS Code normally opens **Get Started** on GigglyBits Theme Lab. Click **Open Theme Lab** there, or run **GigglyBits: Open Theme Lab** from the Command Palette at any time. The Lab walks you through the rest.
+Installing the extension opens the Theme Lab. Run **GigglyBits: Open Theme Lab** from the Command Palette to open it again at any time, and find a short **Get Started** guide on VS Code's Welcome page. The Lab walks you through the rest.
 
 Picking a base color and a rule in step 1 already makes a complete theme. Steps 2 to 5 are optional fine-tuning.
 

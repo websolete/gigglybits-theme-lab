@@ -4,6 +4,8 @@ All notable changes to GigglyBits Theme Lab are documented in this file.
 
 ## 0.1.3
 
+- **Installing opens the Theme Lab.** A new install now opens the Theme Lab straight away, instead of VS Code's list of GigglyBits Dark (Lab) and twelve empty theme slots. Get Started moves to the Welcome page from your next window. An update opens nothing if you have tried or saved a theme, or are using a GigglyBits theme.
+- **Facets is the color picker's default.** Pickers open in Facets mode, with flat tiles that land on round values, until you choose Smooth. If you chose Smooth before, it stays.
 - **See settings that can change a GigglyBits theme.** The Lab's first step now lists blocks in your user or workspace settings aimed at a GigglyBits theme that GigglyBits didn't write, wildcard blocks such as `[*Dark*]` included, and semantic color rules for every theme. A block for one GigglyBits theme has **Remove**, which takes it out after you confirm; anything else has **Open file**, since removing it would change your other themes too.
 - **High contrast note on Try.** A Try made while a high contrast theme is showing says that VS Code follows your system's high contrast mode, so a theme that doesn't appear is explained.
 - **Clearer note on colors not tied to a theme.** A check in VS Code showed that a GigglyBits theme's own colors take priority over them, so the Lab, its Remove prompt and Get Started now say they change every theme wherever the theme doesn't set that color itself.

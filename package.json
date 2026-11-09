@@ -45,7 +45,8 @@
   "activationEvents": [
     "onWebviewPanel:gigglybits.themeLab",
     "onWebviewPanel:gigglybits.themePreview",
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguage:plaintext"
   ],
   "contributes": {
     "commands": [
@@ -65,6 +66,7 @@
         "id": "getStarted",
         "title": "Get started with GigglyBits Theme Lab",
         "description": "Design a dark theme, try it in one project, and choose the theme new windows use.",
+        "when": "gigglybits.walkthroughReady",
         "steps": [
           {
             "id": "openLab",
