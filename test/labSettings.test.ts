@@ -1,6 +1,6 @@
 // src/labSettings.ts and labSettings() in scripts/theme-builder.js: what Try in VS Code
 // writes to user settings. It writes nothing to the workspace.
-import { colorOverrides, LAB_SCOPE, leftoverRemoval, Levels, unscopedKeys, withLabScope, withoutLabScope } from '../src/labSettings';
+import { colorOverrides, defaultGigglyLabels, GigglyLabels, LAB_SCOPE, leftoverRemoval, Levels, unscopedKeys, withLabScope, withoutLabScope } from '../src/labSettings';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TB = require('../scripts/theme-builder.js');
 
@@ -64,8 +64,8 @@ describe('colors not tied to any theme', () => {
 });
 
 describe('colorOverrides', () => {
-  const run = (parts: { user?: Levels; workspace?: Levels; folders?: { name: string; values: Levels }[] }) =>
-    colorOverrides({ user: parts.user ?? {}, workspace: parts.workspace ?? {}, folders: parts.folders ?? [] });
+  const run = (parts: { user?: Levels; workspace?: Levels; folders?: { name: string; values: Levels }[]; labels?: GigglyLabels }) =>
+    colorOverrides({ user: parts.user ?? {}, workspace: parts.workspace ?? {}, folders: parts.folders ?? [], labels: parts.labels ?? defaultGigglyLabels() });
   const block = { 'statusBar.background': '#ff0001' };
 
   it('{#ours-skipped} skips the blocks GigglyBits writes: user Lab and slot blocks in colors and code colors, and workspace slot blocks in colors', () => {
@@ -77,6 +77,14 @@ describe('colorOverrides', () => {
     })).toEqual([]);
     expect(run({ workspace: { colors: { '[GigglyBits Theme 2]': block }, theme: 'GigglyBits Theme 2' } })).toEqual([]);
     expect(run({ workspace: { colors: { '[GigglyBits Theme 3]': block }, theme: 'GigglyBits Dark (Lab)' } })).toEqual([]);
+  });
+
+  it('{#overrides-named} reports a user saved-theme block, and skips a workspace saved-theme frame block and a user legacy slot block', () => {
+    const labels = { ...defaultGigglyLabels(), saved: ['GigglyBits: copirate'] };
+    expect(run({ labels, user: { colors: { '[GigglyBits: copirate]': block } } }))
+      .toEqual([{ level: 'user', setting: 'workbench.colorCustomizations', key: '[GigglyBits: copirate]', kind: 'one', count: 1 }]);
+    expect(run({ labels, workspace: { colors: { '[GigglyBits: copirate]': block }, theme: 'GigglyBits: copirate' } })).toEqual([]);
+    expect(run({ labels, user: { colors: { '[GigglyBits Theme 3]': block } } })).toEqual([]);
   });
 
   it('{#foreign-one} lists a workspace Lab block and a user semantic block for one GigglyBits theme as kind one', () => {

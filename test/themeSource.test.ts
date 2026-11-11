@@ -232,6 +232,16 @@ describe('installed dark themes as syntax set starters', () => {
     expect((await listInstalledSyntaxStarters()).map(s => s.label)).toEqual(['Fixture Dark (localized)', 'Own Websolete.gigglybits-vscode-theme-other']);
   });
 
+  it('{#starters-skip-saved} leaves out the saved themes in GigglyBits\' generated extension', async () => {
+    installFixture();
+    mockState.extensions.push({
+      id: 'EdgeInformation.gigglybits-saved-themes',
+      extensionPath: FIXTURE,
+      packageJSON: { contributes: { themes: [{ label: 'GigglyBits: copirate', uiTheme: 'vs-dark', path: './themes/child.json' }] } },
+    });
+    expect((await listInstalledSyntaxStarters()).map(s => s.label)).toEqual(['Fixture Dark (localized)']);
+  });
+
   it('leaves out a dark theme that yields no token rules', async () => {
     mockState.extensions.push({
       id: 'fixture.no-rules',

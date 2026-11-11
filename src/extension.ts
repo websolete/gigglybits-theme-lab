@@ -9,7 +9,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const identity = new IdentityController(context);
   identity.register();
   // globalStorageUri locates the settings files each save builds on; the smoke test's stub context has none.
-  const library = new ThemeLibraryController(context.globalStorageUri?.fsPath);
+  // The icon is packed into the generated GigglyBits Saved Themes extension (src/companionThemes.ts).
+  const icon = context.extensionUri ? vscode.Uri.joinPath(context.extensionUri, 'media', 'icon.png').fsPath : undefined;
+  const library = new ThemeLibraryController(context.globalStorageUri?.fsPath, undefined, icon);
   library.register(context);
   context.subscriptions.push(
     // An optional { frame, name } starts a project theme from a folder's old color (src/identityController.ts).

@@ -30,6 +30,15 @@ describe('startConfig', () => {
       .toEqual({ note: 'GigglyBits Theme 3 holds no saved theme, so the Lab starts from the default palette.' });
   });
 
+  it('{#start-named} starts from the saved theme a GigglyBits: label or a legacy slot label names, and gives a note for an unknown label', () => {
+    const design = { ...GENERATED, colors: ['#20c3d9', '#dc8fd5', '#ceaa3e'], frame: { index: 1, style: 'filled' as const }, edits: { swatches: {}, keys: {} } };
+    const library = [{ id: 'c', name: 'copirate', slot: 3, design, savedAt: '2026-11-04T00:00:00.000Z' }];
+    expect(startConfig('GigglyBits: copirate', undefined, library)).toEqual({ saved: { name: 'copirate', design } });
+    expect(startConfig('GigglyBits Theme 3', undefined, library)).toEqual({ saved: { name: 'copirate', design } });
+    expect(startConfig('GigglyBits: gone', undefined, library))
+      .toEqual({ note: 'GigglyBits: gone is not a saved theme, so the Lab starts from the default palette.' });
+  });
+
   it('starts a new user under another theme from the defaults with no note, ignoring the Try record', () => {
     expect(startConfig('Dark Modern', GENERATED)).toEqual({});
     expect(startConfig('Dark 2026', undefined)).toEqual({});

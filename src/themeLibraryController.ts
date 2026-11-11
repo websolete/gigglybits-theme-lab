@@ -1,15 +1,15 @@
-// The VS Code side of the theme library: reading and writing gigglybits.library, writing each
-// bound theme's colors into user settings scoped to its slot, the delete confirmation, the
-// slot quick pick, Use in this project / Use everywhere, GigglyBits: Choose Theme, and the syntax
-// sets in gigglybits.syntaxSets, whose every change rewrites every bound slot.
+// The VS Code side of the theme library: reading and writing gigglybits.library, keeping the
+// generated extension GigglyBits Saved Themes in step with it (src/companionThemes.ts), the delete
+// confirmation, Use in this project / Use everywhere, GigglyBits: Choose Theme, the syntax sets in
+// gigglybits.syntaxSets, and the start-up migration of settings from the retired theme slots.
 // Every decision is made in src/themeLibrary.ts, which jest tests without the extension host.
 import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
-import { slotLabel } from '../scripts/theme-builder';
+import { CompanionThemes } from './companionThemes';
 import {
-  bindTheme, clearSlot, deleteSyntaxSet, deleteTheme, Design, freshestSetting, LibraryResult, parseLibrary, parseSyntaxSets,
-  projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveSyntaxSet, saveTheme, setDefaultSyntaxSet, settingsFilesFor, SyntaxSet,
-  themesUsingSyntaxSet, writeAllSlots, writeSlot,
+  deleteSyntaxSet, deleteTheme, Design, freshestSetting, parseLibrary, parseSyntaxSets, projectColors, projectFrame, projectFrameRefresh,
+  SavedTheme, saveSyntaxSet, saveTheme, setDefaultSyntaxSet, settingsFilesFor, SyntaxSet, themeLabel, themesUsingSyntaxSet, userSlotMigration,
 } from './themeLibrary';
 import { oldFolderColor } from './identity';
 import { leftoverRemoval } from './labSettings';
@@ -24,14 +24,20 @@ export type UseTarget = 'project' | 'everywhere';
 export class ThemeLibraryController {
   /** The settings files every write builds on (settingsFilesFor); undefined without a globalStorage path. */
   private readonly files: { library: string; colors: string } | undefined;
+  /** The generated extension's keeper; undefined without a globalStorage path, as in the bundle smoke test. */
+  private readonly companion: CompanionThemes | undefined;
   private log: vscode.LogOutputChannel | undefined;
+  /** Settles when the start-up steps register() began have finished. */
+  ready: Promise<void> = Promise.resolve();
 
   /**
-   * `globalStoragePath` is context.globalStorageUri.fsPath, which locates the settings files.
-   * Without it, writes build on this window's configuration alone.
+   * `globalStoragePath` is context.globalStorageUri.fsPath, which locates the settings files and
+   * holds the generated extension's VSIX and the slot-settings backup. Without it, writes build on
+   * this window's configuration alone and nothing is generated, installed or migrated.
    */
-  constructor(globalStoragePath?: string) {
+  constructor(private readonly globalStoragePath?: string, companion?: CompanionThemes, iconPath?: string) {
     this.files = globalStoragePath ? settingsFilesFor(globalStoragePath) : undefined;
+    this.companion = companion ?? (globalStoragePath ? new CompanionThemes(globalStoragePath, iconPath) : undefined);
   }
 
   register(context: vscode.ExtensionContext): void {
@@ -42,21 +48,56 @@ export class ThemeLibraryController {
         if (e.affectsConfiguration(LIBRARY)) { void this.runSafely(() => this.refreshProjectFrame()); }
       }),
     );
-    void this.runSafely(() => this.refreshProjectFrame());
+    this.ready = this.runSafely(() => this.startUp());
   }
 
   /**
-   * Keeps this folder's frame block in step with the saved theme its slot holds: rewritten when
-   * the theme's frame changed, removed when the slot holds no saved theme (projectFrameRefresh).
+   * Start-up, in order: bring the generated extension in line with the library; move the user
+   * settings off the retired slots (backup first); then this folder's frame and theme. When the
+   * install fails, the user-settings migration is skipped, so user settings never name a theme that
+   * is not there. A failed install also skips this window's folder step here, but the folder step
+   * runs on every library change too (register) without waiting for an install, so a folder can
+   * move to a 'GigglyBits: <name>' label before that theme is installed.
+   */
+  private async startUp(): Promise<void> {
+    if (this.companion && this.globalStoragePath) {
+      const library = await this.freshLibrary();
+      await this.companion.sync(library, await this.freshSyntaxSets());
+      await this.migrateUserSettings(library);
+    }
+    await this.refreshProjectFrame();
+  }
+
+  /** Removes the user slot blocks and moves a slot-label user theme to its saved theme, after writing a backup. */
+  private async migrateUserSettings(library: SavedTheme[]): Promise<void> {
+    const values = await this.slotValues();
+    const theme = await this.fresh('workbench.colorTheme', 'colors');
+    const result = userSlotMigration({ ...values, theme: typeof theme === 'string' ? theme : undefined }, library);
+    if (!result || !this.globalStoragePath) { return; }
+    const stamp = new Date().toISOString().replace(/:/g, '-');
+    await fs.promises.mkdir(this.globalStoragePath, { recursive: true });
+    await fs.promises.writeFile(path.join(this.globalStoragePath, `slot-blocks-backup-${stamp}.json`), JSON.stringify(result.removed, null, 2));
+    await this.writeColorValues({ colors: result.colors, tokens: result.tokens });
+    if (result.theme !== theme) {
+      await this.config().update('workbench.colorTheme', result.theme, vscode.ConfigurationTarget.Global);
+    }
+  }
+
+  /**
+   * Keeps this folder's frame block and theme in step with the library (projectFrameRefresh): a
+   * slot label moves to its saved theme, a changed frame is rewritten, a deleted theme's block goes.
    */
   private async refreshProjectFrame(): Promise<void> {
     if (!this.hasFolder()) { return; }
     const theme = this.config().inspect<string>('workbench.colorTheme')?.workspaceValue;
     const current = this.config().inspect('workbench.colorCustomizations')?.workspaceValue;
     const next = projectFrameRefresh(current, theme, this.library());
-    if (next) {
+    if (next?.colors) {
       await this.config().update('workbench.colorCustomizations',
-        Object.keys(next).length ? next : undefined, vscode.ConfigurationTarget.Workspace);
+        Object.keys(next.colors).length ? next.colors : undefined, vscode.ConfigurationTarget.Workspace);
+    }
+    if (next?.theme) {
+      await this.config().update('workbench.colorTheme', next.theme, vscode.ConfigurationTarget.Workspace);
     }
   }
 
@@ -74,7 +115,7 @@ export class ThemeLibraryController {
     return !!vscode.workspace.workspaceFolders?.length;
   }
 
-  /** Saves a syntax set (saveSyntaxSet: updates id, else adds one), then rewrites every bound slot. */
+  /** Saves a syntax set (saveSyntaxSet: updates id, else adds one), then rebuilds the generated extension. */
   async saveSyntaxSet(input: { id?: string; name: string; colors: Record<string, string> }): Promise<void> {
     const result = saveSyntaxSet(await this.freshSyntaxSets(), { ...input, now: new Date().toISOString() });
     await this.writeSyntaxSets(result.sets);
@@ -88,7 +129,7 @@ export class ThemeLibraryController {
 
   /**
    * Deletes the set id. When saved themes use it, a modal names the set and how many, and the
-   * confirmed delete moves those themes to From this palette; then every bound slot is rewritten.
+   * confirmed delete moves those themes to From this palette; then the generated extension is rebuilt.
    */
   async deleteSyntaxSet(id: string): Promise<void> {
     const set = (await this.freshSyntaxSets()).find(s => s.id === id);
@@ -108,20 +149,16 @@ export class ThemeLibraryController {
     await this.writeSyntaxSets(result.sets);
   }
 
-  /** Saves design under name, binding a new theme to a slot and writing its slot's colors. */
+  /** Saves design under name, then rebuilds the generated extension so the theme is in the picker. */
   async save(name: string, design: Design): Promise<void> {
     const now = new Date().toISOString();
-    const library = await this.freshLibrary();
-    const result = await this.withSlot(library, (current, unbindId) => saveTheme(current, { name, design, now }, unbindId));
-    if (!result) { return; }
+    const result = saveTheme(await this.freshLibrary(), { name, design, now });
     await this.writeLibrary(result.library);
-    if (result.theme.slot !== null) {
-      await this.writeSlotSettings(result.theme);
-    }
-    vscode.window.setStatusBarMessage(`Saved theme "${result.theme.name}"` + (result.theme.slot ? ` in ${slotLabel(result.theme.slot)}` : ''), 3000);
+    await this.sync(result.library);
+    vscode.window.setStatusBarMessage(`Saved theme "${result.theme.name}"`, 3000);
   }
 
-  /** Puts the saved theme id on this folder or on every window, binding it to a slot first when it has none. */
+  /** Puts the saved theme id on this folder or on every window, once the generated extension holds it. */
   async use(id: string, where: UseTarget): Promise<void> {
     if (where === 'project' && !this.hasFolder()) {
       vscode.window.showInformationMessage(NO_FOLDER);
@@ -130,27 +167,19 @@ export class ThemeLibraryController {
     const library = await this.freshLibrary();
     const theme = library.find(t => t.id === id);
     if (!theme) { return; }
-    let bound = theme;
-    if (theme.slot === null) {
-      const result = await this.withSlot(library, (current, unbindId) => bindTheme(current, id, unbindId));
-      if (!result) { return; }
-      await this.writeLibrary(result.library);
-      bound = result.theme;
-    }
-    // Rewritten on every use, so a slot always carries the colors of the theme it holds.
-    await this.writeSlotSettings(bound);
-    const slot = bound.slot as number;
+    await this.sync(library);
+    const label = themeLabel(theme);
     let oldColor: string | undefined;
     if (where === 'project') {
-      // The frame belongs to the project: the folder's own block for the slot beats the user one.
+      // The frame belongs to the project: the folder's own block for the theme beats the theme file.
       // A color left from the retired per-folder feature would paint over it, so it goes too.
       const current = this.config().inspect('workbench.colorCustomizations')?.workspaceValue;
       oldColor = oldFolderColor(current, this.identitySetting<string>('pinnedColor'), this.identitySetting<number>('hue'));
       await this.config().update('workbench.colorCustomizations',
-        projectColors(current, slot, projectFrame(bound)), vscode.ConfigurationTarget.Workspace);
+        projectColors(current, label, projectFrame(theme)), vscode.ConfigurationTarget.Workspace);
     }
     const target = where === 'project' ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-    await this.config().update('workbench.colorTheme', slotLabel(slot), target);
+    await this.config().update('workbench.colorTheme', label, target);
     if (oldColor) {
       // No longer declared, so VS Code can refuse the write: clear only what is set, and leave an
       // inert leftover rather than fail Use in this project.
@@ -158,7 +187,7 @@ export class ThemeLibraryController {
         if (this.identitySetting(name) === undefined) { continue; }
         await Promise.resolve(this.config().update(`gigglybits.identity.${name}`, undefined, vscode.ConfigurationTarget.Workspace)).catch(() => undefined);
       }
-      vscode.window.setStatusBarMessage(`This folder's old color (${oldColor}) was replaced by ${bound.name}'s frame.`, 5000);
+      vscode.window.setStatusBarMessage(`This folder's old color (${oldColor}) was replaced by ${theme.name}'s frame.`, 5000);
     }
   }
 
@@ -167,23 +196,23 @@ export class ThemeLibraryController {
     return this.config().inspect<T>(`gigglybits.identity.${name}`)?.workspaceValue;
   }
 
-  /** Deletes the saved theme id after a modal confirmation, removing its slot's colors. */
+  /**
+   * Deletes the saved theme id after a modal confirmation, then rebuilds the generated extension.
+   * The probe showed a window showing the deleted theme keeps its colors until it reloads.
+   */
   async delete(id: string): Promise<void> {
     const theme = (await this.freshLibrary()).find(t => t.id === id);
     if (!theme) { return; }
     const choice = await vscode.window.showWarningMessage(
       `Delete the saved theme "${theme.name}"?`,
-      { modal: true, detail: "Projects still using it fall back to the slot's default look." },
+      { modal: true, detail: "Windows showing it keep its colors until they reload, then use VS Code's default theme." },
       'Delete',
     );
     if (choice !== 'Delete') { return; }
     // Read again: the modal may have stayed open while another window saved.
     const result = deleteTheme(await this.freshLibrary(), id);
     await this.writeLibrary(result.library);
-    if (result.freedSlot !== null) {
-      const next = clearSlot(await this.slotValues(), result.freedSlot);
-      await this.writeSlotValues(next);
-    }
+    await this.sync(result.library);
   }
 
   /** GigglyBits: Choose Theme: pick a saved theme by name, then where to use it. */
@@ -194,7 +223,7 @@ export class ThemeLibraryController {
       return;
     }
     const picked = await vscode.window.showQuickPick(
-      library.map(t => ({ label: t.name, description: t.slot ? slotLabel(t.slot) : 'No slot', id: t.id })),
+      library.map(t => ({ label: t.name, id: t.id })),
       { placeHolder: 'Choose a saved theme' },
     );
     if (!picked) { return; }
@@ -208,25 +237,9 @@ export class ThemeLibraryController {
     }
   }
 
-  /**
-   * Runs attempt; when every slot is bound, asks which bound theme to unbind and runs it again
-   * with that theme's id. Undefined when the user dismisses the pick.
-   */
-  private async withSlot(
-    library: SavedTheme[],
-    attempt: (current: SavedTheme[], unbindId?: string) => LibraryResult,
-  ): Promise<{ library: SavedTheme[]; theme: SavedTheme } | undefined> {
-    const first = attempt(library);
-    if (!('needsSlot' in first)) { return first; }
-    const bound = library.filter(t => t.slot !== null);
-    const picked = await vscode.window.showQuickPick(
-      bound.map(t => ({ label: t.name, description: slotLabel(t.slot as number), id: t.id })),
-      { placeHolder: 'All 12 theme slots are in use. Pick a theme to unbind; projects using it will show the new theme.' },
-    );
-    if (!picked) { return undefined; }
-    // Read again: the pick may have stayed open while another window saved.
-    const second = attempt(await this.freshLibrary(), picked.id);
-    return 'needsSlot' in second ? undefined : second;
+  /** Brings the generated extension in line with library and the current syntax sets. */
+  private async sync(library: SavedTheme[]): Promise<void> {
+    await this.companion?.sync(library, await this.freshSyntaxSets());
   }
 
   private config(): vscode.WorkspaceConfiguration {
@@ -268,12 +281,13 @@ export class ThemeLibraryController {
     return parseSyntaxSets(await this.fresh(SYNTAX_SETS, 'library'));
   }
 
-  /** Writes the sets, then every bound slot through writeAllSlots on fresh slot values. */
+  /** Writes the sets, then rebuilds the generated extension with them. */
   private async writeSyntaxSets(sets: SyntaxSet[]): Promise<void> {
     await this.config().update(SYNTAX_SETS, sets, vscode.ConfigurationTarget.Global);
-    await this.writeSlotValues(writeAllSlots(await this.slotValues(), await this.freshLibrary(), sets));
+    await this.companion?.sync(await this.freshLibrary(), sets);
   }
 
+  /** The user-level color and token settings as the settings file holds them now. */
   private async slotValues(): Promise<{ colors: unknown; tokens: unknown }> {
     return {
       colors: await this.fresh('workbench.colorCustomizations', 'colors'),
@@ -286,15 +300,10 @@ export class ThemeLibraryController {
     this.log.info(line);
   }
 
-  private async writeSlotValues(next: { colors: unknown; tokens: unknown }): Promise<void> {
+  private async writeColorValues(next: { colors: unknown; tokens: unknown }): Promise<void> {
     const Global = vscode.ConfigurationTarget.Global;
     await this.config().update('workbench.colorCustomizations', next.colors, Global);
     await this.config().update('editor.tokenColorCustomizations', next.tokens, Global);
-  }
-
-  /** Writes theme's slot block, with its syntax set's colors when it names one. */
-  private async writeSlotSettings(theme: SavedTheme): Promise<void> {
-    await this.writeSlotValues(writeSlot(await this.slotValues(), theme, await this.freshSyntaxSets()));
   }
 
   private async runSafely(action: () => Promise<void>): Promise<void> {
@@ -308,8 +317,8 @@ export class ThemeLibraryController {
   /**
    * Removes the user-level color and token keys not tied to any theme (leftoverRemoval), which
    * change every theme wherever the theme's own block does not set that key, after a modal naming
-   * how many. Builds on the settings file, as slot
-   * writes do, so a window open since before another window's save cannot write back its colors.
+   * how many. Builds on the settings file, so a window open since before another window's save
+   * cannot write back its colors.
    */
   async removeLeftovers(): Promise<void> {
     const current = await this.slotValues();
@@ -326,7 +335,7 @@ export class ThemeLibraryController {
     const latest = await this.slotValues();
     const fresh = leftoverRemoval(latest.colors, latest.tokens);
     if (!fresh) { return; }
-    await this.writeSlotValues({ colors: fresh.colors, tokens: fresh.tokens });
+    await this.writeColorValues({ colors: fresh.colors, tokens: fresh.tokens });
     vscode.window.setStatusBarMessage(`Removed ${fresh.count} color setting${fresh.count === 1 ? '' : 's'} not tied to any theme.`, 5000);
   }
 

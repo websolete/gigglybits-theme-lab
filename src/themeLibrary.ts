@@ -1,16 +1,17 @@
 // The personal theme library: saved Theme Lab designs, kept in the user-only setting
-// gigglybits.library, and the theme slots they bind to. Pure functions with no vscode
-// import, so jest tests every decision; src/themeLibraryController.ts does the VS Code side.
+// gigglybits.library, and the generated extension that lists them in the theme picker. Pure
+// functions with no vscode import, so jest tests every decision; src/themeLibraryController.ts
+// and src/companionThemes.ts do the VS Code side.
 //
-// VS Code lists only themes an extension ships as files, so the build ships SLOT_COUNT
-// placeholder themes (GigglyBits Theme 1 to 12). A saved theme binds to one slot, and its
-// colors go into user settings scoped to that slot's label, the way Try in VS Code scopes
-// the Lab theme (src/labSettings.ts).
-import { randomUUID } from 'crypto';
+// VS Code lists only themes an installed extension declares, so each saved theme becomes a theme
+// file in GigglyBits Saved Themes (companionPackage), labelled 'GigglyBits: <name>'. The library
+// has no limit. Themes saved before 2026-11-10 may still carry the slot (1 to 12) they were bound
+// to; userSlotMigration and projectFrameRefresh use it to move settings off the retired slots.
+import { createHash, randomUUID } from 'crypto';
 import * as path from 'path';
 import { parse, ParseError } from 'jsonc-parser';
 import {
-  AccentGroups, baseColor, ChromeChoice, cleanChrome, FRAME_KEYS, LabSettings, labSettings, SLOT_COUNT, slotLabel, SyntaxColors, SYNTAX_SET_KEYS, TextLevel,
+  AccentGroups, baseColor, ChromeChoice, cleanChrome, FRAME_KEYS, LabSettings, labSettings, LEGACY_SLOT_COUNT, slotLabel, SyntaxColors, SYNTAX_SET_KEYS, TextLevel,
 } from '../scripts/theme-builder';
 import { parseTryRecord, TryFrame } from './labStart';
 import { withoutIdentity } from './identity';
@@ -60,18 +61,12 @@ const roleChrome = (d: Design, sets: readonly SyntaxSet[] = []): Pick<ChromeChoi
 export interface SavedTheme {
   id: string;
   name: string;
-  /** The bound slot, 1 to SLOT_COUNT, or null when the theme has none. */
+  /** The retired slot the theme was bound to, 1 to LEGACY_SLOT_COUNT, or null; read only for migration. */
   slot: number | null;
   design: Design;
   savedAt: string;
 }
 
-/** saveTheme and bindTheme found every slot bound; the caller picks a theme to unbind. */
-export interface NeedsSlot {
-  needsSlot: true;
-}
-
-export type LibraryResult = { library: SavedTheme[]; theme: SavedTheme } | NeedsSlot;
 
 const HEX6 = /^#[0-9a-f]{6}$/i;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -108,7 +103,7 @@ export function parseDesign(value: unknown): Design | undefined {
   return design;
 }
 
-const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= SLOT_COUNT;
+const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= LEGACY_SLOT_COUNT;
 
 /**
  * The valid saved themes in value, in order; anything else is dropped. A `groups` field, written
@@ -139,74 +134,32 @@ export function parseLibrary(value: unknown): SavedTheme[] {
 
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-/** The lowest slot no theme in library is bound to, or null when all are bound. */
-function freeSlot(library: SavedTheme[]): number | null {
-  const used = new Set(library.map(t => t.slot));
-  for (let n = 1; n <= SLOT_COUNT; n++) {
-    if (!used.has(n)) { return n; }
-  }
-  return null;
-}
-
-/**
- * The slot for a theme that needs one, and the library with unbindId's theme unbound when
- * that was needed to free it. Null when every slot is bound and unbindId names no bound theme.
- */
-function claimSlot(library: SavedTheme[], unbindId?: string): { library: SavedTheme[]; slot: number } | null {
-  const slot = freeSlot(library);
-  if (slot !== null) {
-    return { library, slot };
-  }
-  const victim = library.find(t => t.id === unbindId && t.slot !== null);
-  if (!victim) {
-    return null;
-  }
-  return { library: library.map(t => (t === victim ? { ...t, slot: null } : t)), slot: victim.slot as number };
-}
-
 /**
  * Saves design under name. An existing theme with the same name (trimmed, case-insensitive)
- * keeps its id, name and slot and takes the new design; a new name gets the lowest free slot.
- * With every slot bound and no usable unbindId it returns needsSlot and changes nothing.
+ * keeps its id, name and slot and takes the new design; a new theme gets no slot, since saved
+ * themes now reach the picker through the generated extension (companionPackage) and the slot
+ * field only records where an older theme was bound, for migration. A name containing [, ] or *
+ * throws and changes nothing: those characters would make two names share a label (themeLabel).
  */
-export function saveTheme(library: SavedTheme[], input: { name: string; design: Design; now: string }, unbindId?: string): LibraryResult {
+export function saveTheme(library: SavedTheme[], input: { name: string; design: Design; now: string }): { library: SavedTheme[]; theme: SavedTheme } {
+  if (/[[\]*]/.test(input.name)) {
+    throw new Error('A theme name cannot contain [, ] or *.');
+  }
   const match = library.find(t => sameName(t.name, input.name));
   if (match) {
     const theme: SavedTheme = { id: match.id, name: match.name, slot: match.slot, design: input.design, savedAt: input.now };
     return { library: library.map(t => (t === match ? theme : t)), theme };
   }
-  const claim = claimSlot(library, unbindId);
-  if (!claim) {
-    return { needsSlot: true };
-  }
-  const theme: SavedTheme = { id: randomUUID(), name: input.name.trim(), slot: claim.slot, design: input.design, savedAt: input.now };
-  return { library: [...claim.library, theme], theme };
+  const theme: SavedTheme = { id: randomUUID(), name: input.name.trim(), slot: null, design: input.design, savedAt: input.now };
+  return { library: [...library, theme], theme };
 }
 
-/** Gives the theme id the lowest free slot when it has none, with saveTheme's needsSlot and unbindId behavior. */
-export function bindTheme(library: SavedTheme[], id: string, unbindId?: string): LibraryResult {
-  const theme = library.find(t => t.id === id);
-  if (!theme) {
-    throw new Error(`No saved theme with id ${id}.`);
-  }
-  if (theme.slot !== null) {
-    return { library, theme };
-  }
-  const claim = claimSlot(library, unbindId);
-  if (!claim) {
-    return { needsSlot: true };
-  }
-  const bound: SavedTheme = { ...theme, slot: claim.slot };
-  return { library: claim.library.map(t => (t.id === id ? bound : t)), theme: bound };
+/** library without the theme id. */
+export function deleteTheme(library: SavedTheme[], id: string): { library: SavedTheme[] } {
+  return { library: library.filter(t => t.id !== id) };
 }
 
-/** library without the theme id, and the slot that freed, or null. */
-export function deleteTheme(library: SavedTheme[], id: string): { library: SavedTheme[]; freedSlot: number | null } {
-  const theme = library.find(t => t.id === id);
-  return { library: library.filter(t => t.id !== id), freedSlot: theme?.slot ?? null };
-}
-
-/** The settings a theme's slot carries: the same colors and token rules the Lab builds, its syntax set's colors included. */
+/** A theme's full colors and token rules as the Lab builds them, its syntax set's colors included; projectFrame takes its frame keys from these. */
 export function slotSettings(theme: SavedTheme, sets: readonly SyntaxSet[] = []): LabSettings {
   const d = theme.design;
   return labSettings({ name: theme.name, colors: d.colors, base: baseColor(d) }, { index: d.chromeIndex, surfaces: d.surfaces, frame: d.frame, ...roleChrome(d, sets) }, d.edits);
@@ -216,7 +169,7 @@ export function slotSettings(theme: SavedTheme, sets: readonly SyntaxSet[] = [])
 //
 // A syntax set is a named set of fixed code colors (themeBuilder.js SYNTAX_SET_KEYS), kept in the
 // user-only setting gigglybits.syntaxSets. A saved theme names the set it uses by id in its
-// design; its slot is built with that set's colors, so changing a set changes every theme on it.
+// design; its theme file is built with that set's colors, so changing a set changes every theme on it.
 // Style groups (gigglybits.groups) are retired: syntax sets replace their Editor text family.
 
 /** A saved syntax set. At most one is the default for new designs. */
@@ -311,52 +264,17 @@ export function withoutScope(current: unknown, label: string): Settings {
   return next;
 }
 
-/**
- * The two user settings a slot's colors live in: workbench.colorCustomizations and
- * editor.tokenColorCustomizations, as their current user-level values.
- */
-export interface SlotSettingValues {
-  colors: unknown;
-  tokens: unknown;
-}
-
-/**
- * values with theme's slot block written into both settings: its colors, and its token rules as
- * textMateRules, with its syntax set's colors when it names one in `sets`.
- */
-export function writeSlot(values: SlotSettingValues, theme: SavedTheme, sets: readonly SyntaxSet[] = []): { colors: Settings; tokens: Settings } {
-  if (theme.slot === null) {
-    throw new Error(`${theme.name} has no slot.`);
-  }
-  const label = slotLabel(theme.slot);
-  const settings = everywhereSettings(theme, sets);
-  return {
-    colors: withScope(values.colors, label, settings.colors),
-    tokens: withScope(values.tokens, label, { textMateRules: settings.tokenColors }),
-  };
-}
-
-/** values with every bound theme's slot block rewritten through writeSlot, each with the syntax set it names in `sets`. */
-export function writeAllSlots(values: SlotSettingValues, library: SavedTheme[], sets: readonly SyntaxSet[] = []): { colors: Settings; tokens: Settings } {
-  let next = { colors: { ...(isObject(values.colors) ? values.colors : {}) }, tokens: { ...(isObject(values.tokens) ? values.tokens : {}) } };
-  for (const theme of library) {
-    if (theme.slot !== null) {
-      next = writeSlot(next, theme, sets);
-    }
-  }
-  return next;
-}
-
 // ------------------------------------------------------------------ frames belong to projects
 //
 // Decided 2026-11-04: Use everywhere applies a theme's Editor colors, not its frame, so windows
-// on different projects stay distinct. The user slot blocks carry the theme with a Dark frame;
-// Use in this project also writes the theme's frame keys into the folder's own settings under
-// the slot's scope, which beats the user block key by key (docs/DEVELOPMENT.md, Identity write
-// shape).
+// on different projects stay distinct. The theme file in the generated extension carries the
+// theme with a Dark frame (companionTheme); Use in this project also writes the theme's frame
+// keys into the folder's own settings under its '[GigglyBits: <name>]' scope, which beats the
+// theme file key by key (docs/DEVELOPMENT.md, Identity write shape).
 
 const FRAME = new Set(FRAME_KEYS);
 const SLOT_SCOPE = /^\[GigglyBits Theme \d+\]$/;
+const NAMED_SCOPE = /^\[GigglyBits: [^\]]*\]$/;
 
 /** edits without the frame's: frame swatch edits (the frame swatches are named frame*) and FRAME_KEYS edits. */
 function editorEdits(edits: Design['edits']): Design['edits'] {
@@ -366,16 +284,128 @@ function editorEdits(edits: Design['edits']): Design['edits'] {
   };
 }
 
-/**
- * What a theme's slot carries in user settings, for Use everywhere: its Editor colors, with a
- * Dark frame following its accent, and its syntax set's colors when it names one in `sets`.
- */
-export function everywhereSettings(theme: SavedTheme, sets: readonly SyntaxSet[] = []): LabSettings {
+/** The builder arguments for a theme's everywhere look: its Editor colors with a Dark frame following its accent. */
+function everywhereArgs(theme: SavedTheme, sets: readonly SyntaxSet[]): Parameters<typeof labSettings> {
   const d = theme.design;
-  return labSettings(
+  return [
     { name: theme.name, colors: d.colors, base: baseColor(d) },
     { index: d.chromeIndex, surfaces: d.surfaces, frame: d.accentColor ? { color: d.accentColor, style: 'dark' } : { index: d.chromeIndex, style: 'dark' }, ...roleChrome(d, sets) },
-    editorEdits(d.edits));
+    editorEdits(d.edits),
+  ];
+}
+
+/**
+ * What a theme carries for Use everywhere: its Editor colors, with a Dark frame following its
+ * accent, and its syntax set's colors when it names one in `sets`.
+ */
+export function everywhereSettings(theme: SavedTheme, sets: readonly SyntaxSet[] = []): LabSettings {
+  return labSettings(...everywhereArgs(theme, sets));
+}
+
+// ------------------------------------------------------------------ named themes
+//
+// Decided 2026-11-10 (work order wo-named-themes-...): every saved theme is a real theme in a
+// generated extension, GigglyBits Saved Themes, that GigglyBits builds and installs at run time
+// (src/companionThemes.ts). Its label, 'GigglyBits: <name>', is also its workbench.colorTheme
+// value and its settings scope, which works because saved themes have no rename.
+
+/** 'GigglyBits: ' and the theme's name without [, ] and *, which settings scopes treat specially. */
+export function themeLabel(theme: Pick<SavedTheme, 'name'>): string {
+  return 'GigglyBits: ' + theme.name.replace(/[[\]*]/g, '');
+}
+
+/** A theme file for theme: the everywhere colors and token rules, named by its label, with buildTheme's fixed fields. */
+export function companionTheme(theme: SavedTheme, sets: readonly SyntaxSet[] = []): Record<string, unknown> {
+  const built = everywhereSettings(theme, sets);
+  return { $schema: 'vscode://schemas/color-theme', name: themeLabel(theme), type: 'dark', semanticHighlighting: true, colors: built.colors, tokenColors: built.tokenColors };
+}
+
+/** The generated extension's id. */
+export const COMPANION_ID = 'EdgeInformation.gigglybits-saved-themes';
+
+/** The generated extension's README, shown on its page in the Extensions view. */
+const COMPANION_README = `# GigglyBits Saved Themes
+
+Your saved GigglyBits themes, each listed in **Preferences: Color Theme** as \`GigglyBits: <name>\`.
+
+GigglyBits Theme Lab builds this extension and rebuilds it whenever you save, change or delete a theme, so anything edited here is lost.
+
+- To add or change a theme, use the Theme Lab.
+- To remove a theme, delete it from the Saved list in the Theme Lab.
+- To remove everything, uninstall GigglyBits Theme Lab. VS Code offers to uninstall this extension with it. Uninstalling only this one hides your themes until GigglyBits next starts and rebuilds it.
+`;
+
+/**
+ * The generated extension for library: its package.json, one theme file per saved theme, a
+ * README, the icon when given one (GigglyBits' own media/icon.png, so both read as one product in
+ * the Extensions view), and a hash of every file, so a change to any of them reinstalls it.
+ */
+export function companionPackage(
+  library: SavedTheme[],
+  sets: readonly SyntaxSet[],
+  options: { version: string; engines: string; dependency?: string; icon?: Buffer },
+): { manifest: Record<string, unknown>; files: { name: string; data: string | Buffer }[]; hash: string } {
+  const files: { name: string; data: string | Buffer }[] = [
+    ...library.map((theme, n) => ({ name: `themes/${n}.json`, data: canonical(companionTheme(theme, sets)) })),
+    { name: 'README.md', data: COMPANION_README },
+    ...(options.icon ? [{ name: 'icon.png', data: options.icon }] : []),
+  ];
+  const digest = createHash('sha256');
+  for (const f of files) { digest.update(f.name).update('\n').update(f.data).update('\n'); }
+  const hash = digest.digest('hex');
+  const manifest: Record<string, unknown> = {
+    name: 'gigglybits-saved-themes',
+    displayName: 'GigglyBits Saved Themes',
+    publisher: 'EdgeInformation',
+    version: options.version,
+    engines: { vscode: options.engines },
+    categories: ['Themes'],
+    description: 'Your saved GigglyBits themes. GigglyBits Theme Lab generates and updates this extension; do not edit it.',
+    gigglybits: { contentHash: hash },
+    ...(options.icon ? { icon: 'icon.png' } : {}),
+    ...(options.dependency ? { extensionDependencies: [options.dependency] } : {}),
+    contributes: { themes: library.map((theme, n) => ({ label: themeLabel(theme), uiTheme: 'vs-dark', path: `./themes/${n}.json` })) },
+  };
+  return { manifest, files, hash };
+}
+
+/** The user color and token settings, and the user workbench.colorTheme, as migration reads them. */
+export interface UserThemeValues {
+  colors: unknown;
+  tokens: unknown;
+  theme: string | undefined;
+}
+
+/**
+ * What the user settings become once slots are gone: undefined when the library is empty or there
+ * is nothing to migrate; otherwise colors and tokens without their '[GigglyBits Theme <n>]' blocks,
+ * the theme moved to the label of the saved theme holding slot n (any other value unchanged), and
+ * the removed blocks keyed by setting and scope, for the backup.
+ */
+export function userSlotMigration(values: UserThemeValues, library: SavedTheme[]):
+  { colors: Settings; tokens: Settings; theme: string | undefined; removed: Record<string, Settings> } | undefined {
+  if (!library.length) {
+    return undefined;
+  }
+  const colors: Settings = { ...(isObject(values.colors) ? values.colors : {}) };
+  const tokens: Settings = { ...(isObject(values.tokens) ? values.tokens : {}) };
+  const removed: Record<string, Settings> = { 'workbench.colorCustomizations': {}, 'editor.tokenColorCustomizations': {} };
+  for (const [setting, value] of [['workbench.colorCustomizations', colors], ['editor.tokenColorCustomizations', tokens]] as const) {
+    for (const key of Object.keys(value)) {
+      if (SLOT_SCOPE.test(key)) {
+        removed[setting][key] = value[key];
+        delete value[key];
+      }
+    }
+  }
+  const slot = slotOfLabel(values.theme);
+  const holder = slot === undefined ? undefined : library.find(t => t.slot === slot);
+  const theme = holder ? themeLabel(holder) : values.theme;
+  const removedAny = Object.values(removed).some(r => Object.keys(r).length);
+  if (!removedAny && theme === values.theme) {
+    return undefined;
+  }
+  return { colors, tokens, theme, removed };
 }
 
 /** The frame Use in this project gives the folder: the FRAME_KEYS of the theme's full colors. */
@@ -384,27 +414,27 @@ export function projectFrame(theme: SavedTheme): Record<string, string> {
   return Object.fromEntries(FRAME_KEYS.filter(key => key in colors).map(key => [key, colors[key]]));
 }
 
-/** A folder's workbench.colorCustomizations with only `slot`'s frame block among the slot blocks; every other key kept. */
-export function withProjectFrame(current: unknown, slot: number, frame: Record<string, string>): Settings {
-  return { ...withoutProjectFrames(current), [`[${slotLabel(slot)}]`]: frame };
+/** A folder's workbench.colorCustomizations with only `label`'s frame block among the GigglyBits blocks; every other key kept. */
+export function withProjectFrame(current: unknown, label: string, frame: Record<string, string>): Settings {
+  return { ...withoutProjectFrames(current), [`[${label}]`]: frame };
 }
 
 /**
  * What Use in this project writes to a folder's workbench.colorCustomizations: any old folder
- * color removed (top level and '[GigglyBits*]'), then only `slot`'s frame block among the slot blocks.
+ * color removed (top level and '[GigglyBits*]'), then only `label`'s frame block among the GigglyBits blocks.
  */
-export function projectColors(current: unknown, slot: number, frame: Record<string, string>): Settings {
-  return withProjectFrame(withoutIdentity(current), slot, frame);
+export function projectColors(current: unknown, label: string, frame: Record<string, string>): Settings {
+  return withProjectFrame(withoutIdentity(current), label, frame);
 }
 
-/** A folder's workbench.colorCustomizations without any slot's frame block. */
+/** A folder's workbench.colorCustomizations without any slot's or saved theme's frame block. */
 export function withoutProjectFrames(current: unknown): Settings {
-  return Object.fromEntries(Object.entries(isObject(current) ? current : {}).filter(([key]) => !SLOT_SCOPE.test(key)));
+  return Object.fromEntries(Object.entries(isObject(current) ? current : {}).filter(([key]) => !SLOT_SCOPE.test(key) && !NAMED_SCOPE.test(key)));
 }
 
 /** The slot number a theme label names, such as 2 for 'GigglyBits Theme 2', or undefined. */
 export function slotOfLabel(label: string | undefined): number | undefined {
-  for (let n = 1; n <= SLOT_COUNT; n++) {
+  for (let n = 1; n <= LEGACY_SLOT_COUNT; n++) {
     if (slotLabel(n) === label) { return n; }
   }
   return undefined;
@@ -417,18 +447,29 @@ function canonical(value: unknown): string {
 }
 
 /**
- * What a folder's workbench.colorCustomizations should become so its frame follows the
- * library, or undefined when it already does. `theme` is the folder's own workbench.colorTheme.
- * A slot holding a saved theme gets that theme's frame; an empty slot loses its frame block.
+ * What a folder's workbench.colorCustomizations and workbench.colorTheme should become so its
+ * frame follows the library, or undefined when nothing changes. `theme` is the folder's own
+ * workbench.colorTheme. A slot label a saved theme holds moves to that theme's label with its
+ * frame; a slot label no saved theme holds is left as it is, to migrate once the library holds
+ * that slot; a saved theme's label gets its frame rewritten when it changed; a 'GigglyBits: '
+ * label of no saved theme loses its frame block.
  */
-export function projectFrameRefresh(current: unknown, theme: string | undefined, library: SavedTheme[]): Settings | undefined {
+export function projectFrameRefresh(current: unknown, theme: string | undefined, library: SavedTheme[]): { colors?: Settings; theme?: string } | undefined {
+  const before = canonical(isObject(current) ? current : {});
   const slot = slotOfLabel(theme);
-  if (slot === undefined) {
+  if (slot !== undefined) {
+    const holder = library.find(t => t.slot === slot);
+    if (!holder) {
+      return undefined;
+    }
+    return { colors: withProjectFrame(current, themeLabel(holder), projectFrame(holder)), theme: themeLabel(holder) };
+  }
+  if (theme === undefined || !theme.startsWith('GigglyBits: ')) {
     return undefined;
   }
-  const saved = library.find(t => t.slot === slot);
-  const next = saved ? withProjectFrame(current, slot, projectFrame(saved)) : withoutProjectFrames(current);
-  return canonical(next) === canonical(isObject(current) ? current : {}) ? undefined : next;
+  const saved = library.find(t => themeLabel(t) === theme);
+  const next = saved ? withProjectFrame(current, theme, projectFrame(saved)) : withoutProjectFrames(current);
+  return canonical(next) === before ? undefined : { colors: next };
 }
 
 /**
@@ -464,8 +505,3 @@ export function freshestSetting(text: string | undefined, key: string, configVal
   return { value, fromFile: true, differs: JSON.stringify(value) !== JSON.stringify(configValue) };
 }
 
-/** values with slot's block removed from both settings. */
-export function clearSlot(values: SlotSettingValues, slot: number): { colors: Settings; tokens: Settings } {
-  const label = slotLabel(slot);
-  return { colors: withoutScope(values.colors, label), tokens: withoutScope(values.tokens, label) };
-}

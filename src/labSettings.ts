@@ -7,7 +7,7 @@
 // whenever a folder is open or the workspace has a theme of its own (src/themeLabPanel.ts
 // tryThemeTarget). It also
 // removes any workspace or folder copy of the Lab block, which would hide the Try (withoutLabScope).
-import { LAB_THEME_LABEL, SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
+import { LAB_THEME_LABEL, LEGACY_SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
 
 export const LAB_SCOPE = `[${LAB_THEME_LABEL}]`;
 
@@ -107,8 +107,15 @@ export interface ColorOverride {
   count: number;
 }
 
-/** LAB_THEME_LABEL and every slot label: the themes GigglyBits contributes. */
-const gigglyLabels = (): string[] => [LAB_THEME_LABEL, ...Array.from({ length: SLOT_COUNT }, (_, i) => slotLabel(i + 1))];
+/** The GigglyBits theme labels colorOverrides knows: the Lab theme, the legacy slot labels, and each saved theme's label. */
+export interface GigglyLabels {
+  lab: string;
+  legacy: string[];
+  saved: string[];
+}
+
+/** LAB_THEME_LABEL and the twelve legacy slot labels, with no saved themes. */
+export const defaultGigglyLabels = (): GigglyLabels => ({ lab: LAB_THEME_LABEL, legacy: Array.from({ length: LEGACY_SLOT_COUNT }, (_, i) => slotLabel(i + 1)), saved: [] });
 
 /** How many colors or rules a block (or a semantic rules object) sets, by setting. */
 function blockCount(setting: OverrideSetting, block: Settings): number {
@@ -125,16 +132,18 @@ function blockCount(setting: OverrideSetting, block: Settings): number {
 /**
  * The settings that can change a GigglyBits theme's colors, from each level's values: every
  * '[...]' block naming a GigglyBits theme (under themeNameMatches) that GigglyBits did not write,
- * and every semantic `rules` object not tied to a theme. Skipped as GigglyBits' own: an exact
- * GigglyBits block in user colors or code colors (Try and the slot writes put them there), and an
- * exact slot block in workspace colors (refreshProjectFrame owns those). Semantic highlighting
+ * and every semantic `rules` object not tied to a theme. Skipped as GigglyBits' own: an exact Lab
+ * or retired slot block in user colors or code colors (Try writes the Lab's; slot blocks written
+ * before 2026-11-10 stay until the start-up migration removes them), and an exact retired slot or
+ * saved-theme block in workspace colors (refreshProjectFrame owns those). Semantic highlighting
  * switched off (`enabled`) is never reported, and nothing with a count of 0 is returned. Order:
  * user, workspace, folders in input order; within a level colors, code colors, then semantic;
  * within a setting, key order.
  */
-export function colorOverrides(input: { user: Levels; workspace: Levels; folders: { name: string; values: Levels }[] }): ColorOverride[] {
-  const labels = gigglyLabels();
-  const slots = labels.slice(1);
+export function colorOverrides(input: { user: Levels; workspace: Levels; folders: { name: string; values: Levels }[]; labels: GigglyLabels }): ColorOverride[] {
+  const labels = [input.labels.lab, ...input.labels.legacy, ...input.labels.saved];
+  const userOwn = [input.labels.lab, ...input.labels.legacy];
+  const folderOwn = [...input.labels.legacy, ...input.labels.saved];
   const out: ColorOverride[] = [];
   const levels: { level: ColorOverride['level']; folder?: string; values: Levels }[] = [
     { level: 'user', values: input.user },
@@ -158,8 +167,8 @@ export function colorOverrides(input: { user: Levels; workspace: Levels; folders
           if (!names.some(n => labels.some(label => themeNameMatches(n, label)))) { continue; }
           kind = names.length > 1 || names.some(n => n.includes('*')) ? 'several' : 'one';
           if (kind === 'one') {
-            const ours = level === 'user' && setting !== 'editor.semanticTokenColorCustomizations'
-              || level === 'workspace' && setting === 'workbench.colorCustomizations' && slots.includes(names[0]);
+            const ours = level === 'user' && setting !== 'editor.semanticTokenColorCustomizations' && userOwn.includes(names[0])
+              || level === 'workspace' && setting === 'workbench.colorCustomizations' && folderOwn.includes(names[0]);
             if (ours) { continue; }
           }
           count = blockCount(setting, block);

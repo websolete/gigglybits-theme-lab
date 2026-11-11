@@ -150,12 +150,10 @@ export interface ColorEdits {
 
 export const LAB_THEME_LABEL: string;
 export const LAB_THEME_FILE: string;
-/** How many theme slots the build ships for saved library themes. */
-export const SLOT_COUNT: number;
-/** 'GigglyBits Theme <n>', the label of slot n (1 to SLOT_COUNT). */
+/** How many theme slots saved themes were bound to before 2026-11-10; kept for migration. */
+export const LEGACY_SLOT_COUNT: number;
+/** 'GigglyBits Theme <n>', the label of retired slot n (1 to LEGACY_SLOT_COUNT). */
 export function slotLabel(n: number): string;
-/** 'gigglybits-theme-<n>-color-theme.json', the theme file of slot n. */
-export function slotFile(n: number): string;
 /** The theme's colors and token rules, with the color edits applied. */
 export function labSettings(entry: BuilderEntry, chrome?: ChromeChoice, edits?: ColorEdits): LabSettings;
 /** A key edit value that leaves the key to VS Code's default ('default', as colorCustomizations reads it). */

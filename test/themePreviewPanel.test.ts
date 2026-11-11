@@ -1,7 +1,7 @@
 // The host side of the floating Theme Preview window (src/themePreviewPanel.ts with
 // src/themeLabPanel.ts): a fresh Lab opens the panel and floats it, Open Preview opens it
-// again once closed, and a part clicked in the window reaches the Theme Lab that is open at the
-// time, including one opened after the Lab that opened the window was closed.
+// again once closed, a part clicked in the window reaches the Theme Lab that is open at the
+// time, and closing the Lab closes the window.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -137,7 +137,8 @@ const library: any = { library: () => [], syntaxSets: () => [], hasFolder: () =>
 const extensionUri: any = { path: '/ext', fsPath: '/ext' };
 
 const labs = () => panels.filter(p => p.viewType === 'gigglybits.themeLab');
-const preview = () => panels.find(p => p.viewType === 'gigglybits.themePreview')!;
+/** The newest Theme Preview panel, the open one when one is open. */
+const preview = () => panels.filter(p => p.viewType === 'gigglybits.themePreview').pop()!;
 
 describe('Theme Preview window, host side', () => {
   it('Open Preview opens Theme Preview, floats it, and sends a pick to the Theme Lab open at the time', async () => {
@@ -158,16 +159,30 @@ describe('Theme Preview window, host side', () => {
     await window.receive!({ type: 'pickPart', part });
     expect(first.posted.filter(m => m.type === 'pickPart')).toEqual([{ type: 'pickPart', part }]);
 
-    // The Lab tab that opened the window closes, and a new one opens; the window stays.
-    first.dispose();
+  });
+
+  it('{#lab-close-closes-preview} closing the Theme Lab closes the Theme Preview window with it', async () => {
+    for (const p of [...panels]) { p.dispose(); }
     ThemeLabPanel.show(extensionUri, identity, memento, library);
-    const second = labs()[1];
-    expect(second).toBeDefined();
-    await second.receive!({ type: 'previewState', palette: { hue: 40 }, syntaxSets: [] });
-    expect(window.posted[window.posted.length - 1]).toEqual({ type: 'state', palette: { hue: 40 }, syntaxSets: [] });
-    await window.receive!({ type: 'pickPart', part });
-    expect(second.posted.filter(m => m.type === 'pickPart')).toEqual([{ type: 'pickPart', part }]);
-    expect(first.posted.filter(m => m.type === 'pickPart')).toHaveLength(1);
+    const lab = labs()[labs().length - 1];
+    await lab.receive!({ type: 'openPreviewWindow' });
+    expect(ThemePreviewPanel.isOpen()).toBe(true);
+    const disposed = jest.spyOn(preview(), 'dispose');
+    lab.dispose();
+    expect(disposed).toHaveBeenCalledTimes(1);
+    expect(ThemePreviewPanel.isOpen()).toBe(false);
+    expect(ThemeLabPanel.isOpen()).toBe(false);
+  });
+
+  it('closing the Theme Preview on its own leaves the Theme Lab open and tells it so', async () => {
+    for (const p of [...panels]) { p.dispose(); }
+    ThemeLabPanel.show(extensionUri, identity, memento, library);
+    const lab = labs()[labs().length - 1];
+    await lab.receive!({ type: 'openPreviewWindow' });
+    preview().dispose();
+    await Promise.resolve();
+    expect(ThemeLabPanel.isOpen()).toBe(true);
+    expect(lab.posted.filter(m => m.type === 'previewDetached').pop()).toEqual({ type: 'previewDetached', detached: false });
   });
 
   it('{#preview-gets-sets} passes the syntax sets in previewState on to the preview window', async () => {
@@ -228,7 +243,7 @@ describe('Theme Preview window, host side', () => {
     expect(detached()).toEqual([true]);
     const count = windows();
     // The user closes the window: disposing its panel tells the Lab.
-    panels.filter(p => p.viewType === 'gigglybits.themePreview').pop()!.dispose();
+    preview().dispose();
     expect(detached()).toEqual([true, false]);
     // The page reloading sends ready again; the window stays closed.
     await lab.receive!({ type: 'ready' });
@@ -281,17 +296,6 @@ describe('Theme Preview window, host side', () => {
     } finally {
       installedExtensions.length = 0;
     }
-  });
-
-  it('a Lab opened while the window is open starts with its preview hidden', async () => {
-    for (const p of [...panels]) { p.dispose(); }
-    ThemeLabPanel.show(extensionUri, identity, memento, library);
-    await labs()[labs().length - 1].receive!({ type: 'openPreviewWindow' });
-    labs()[labs().length - 1].dispose();
-    ThemeLabPanel.show(extensionUri, identity, memento, library);
-    const lab = labs()[labs().length - 1];
-    await lab.receive!({ type: 'ready' });
-    expect(lab.posted.filter(m => m.type === 'previewDetached')).toEqual([{ type: 'previewDetached', detached: true }]);
   });
 
   it('{#reveal-pick} a pick from the Theme Preview brings the Lab forward and focuses it, before posting pickPart', async () => {

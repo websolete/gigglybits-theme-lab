@@ -1,8 +1,11 @@
 // What a freshly opened Theme Lab starts from, decided without VS Code so jest tests it
 // directly. src/themeLabPanel.ts sends the result as the 'start' message on 'ready'.
-import { cleanChrome, cleanEdits, isShift, LAB_THEME_LABEL, SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
+import { cleanChrome, cleanEdits, isShift, LAB_THEME_LABEL, LEGACY_SLOT_COUNT, slotLabel } from '../scripts/theme-builder';
 import type { AccentGroups, TextLevel } from '../scripts/theme-builder';
 import type { Design, SavedTheme } from './themeLibrary';
+
+/** 'GigglyBits: <name>', as src/themeLibrary.ts themeLabel builds it; repeated here because that module imports this one. */
+const savedLabel = (theme: SavedTheme) => 'GigglyBits: ' + theme.name.replace(/[[\]*]/g, '');
 
 /** What Try in VS Code records about the tried candidate, stored in globalState. */
 export interface TryRecord {
@@ -125,14 +128,14 @@ export function parseTryRecord(value: unknown): TryRecord | undefined {
 /** The 'start' message's payload: the last Try, a saved theme, or a note on why none. */
 export interface StartConfig {
   lastTry?: TryRecord;
-  /** The saved theme bound to the active slot. */
+  /** The saved theme the active theme names, by its label or a legacy slot label. */
   saved?: { name: string; design: Design };
   note?: string;
 }
 
 /** The slot number of a slot label such as 'GigglyBits Theme 2', or undefined. */
 function slotNumber(label: string): number | undefined {
-  for (let n = 1; n <= SLOT_COUNT; n++) {
+  for (let n = 1; n <= LEGACY_SLOT_COUNT; n++) {
     if (slotLabel(n) === label) { return n; }
   }
   return undefined;
@@ -162,6 +165,12 @@ export function startConfig(active: string | undefined, lastTry: unknown, librar
     return theme
       ? { saved: { name: theme.name, design: theme.design } }
       : { note: `${active} holds no saved theme, so the Lab starts from the default palette.` };
+  }
+  if (active.startsWith('GigglyBits: ')) {
+    const theme = library.find(t => savedLabel(t) === active);
+    return theme
+      ? { saved: { name: theme.name, design: theme.design } }
+      : { note: `${active} is not a saved theme, so the Lab starts from the default palette.` };
   }
   return {};
 }

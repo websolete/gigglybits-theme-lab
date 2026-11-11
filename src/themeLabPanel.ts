@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { labPageHtml, labWebviewOptions, PreviewState, ThemePreviewPanel } from './themePreviewPanel';
-import { colorOverrides, ColorOverride, Levels, OverrideSetting, TOKEN_KEYS_KEPT, unscopedKeys, withLabScope, withoutLabScope } from './labSettings';
+import { colorOverrides, ColorOverride, defaultGigglyLabels, Levels, OverrideSetting, TOKEN_KEYS_KEPT, unscopedKeys, withLabScope, withoutLabScope } from './labSettings';
 import { captureThemeSnapshot, InstalledSyntaxStarter, InstalledTheme, listInstalledSyntaxStarters, listInstalledThemes } from './themeSource';
 import { BuilderEntry, ChromeChoice, cleanEdits, LAB_THEME_LABEL, labSettings } from '../scripts/theme-builder';
 import { parseTryRecord, startConfig } from './labStart';
-import { parseDesign } from './themeLibrary';
+import { parseDesign, themeLabel } from './themeLibrary';
 import { ThemeLibraryController, UseTarget } from './themeLibraryController';
 import { affectsModernUI, modernUISettings } from './modernUI';
 
@@ -294,7 +294,8 @@ export class ThemeLabPanel {
     const folders = vscode.workspace.workspaceFile
       ? (vscode.workspace.workspaceFolders ?? []).map(f => ({ name: f.name, values: levelsOf(vscode.workspace.getConfiguration(undefined, f.uri), 'workspaceFolderValue') }))
       : [];
-    return colorOverrides({ user: levelsOf(root, 'globalValue'), workspace: levelsOf(root, 'workspaceValue'), folders });
+    const labels = { ...defaultGigglyLabels(), saved: this.library.library().map(themeLabel) };
+    return colorOverrides({ user: levelsOf(root, 'globalValue'), workspace: levelsOf(root, 'workspaceValue'), folders, labels });
   }
 
   /** Step 1's overrides note: the settings that can change a GigglyBits theme's colors. */
@@ -494,9 +495,9 @@ export class ThemeLabPanel {
 
   /**
    * Opens the Theme Preview window, or reveals the open one. Picks go to whichever Theme Lab is
-   * open when the part is clicked, not to this one: the window outlives a Lab tab that is closed
-   * and opened again. When the window closes, the page's Preview card says so and offers Open
-   * Preview.
+   * open when the part is clicked, which after a reload is the revived one rather than this one.
+   * Closing the Lab closes the window (dispose). When the window closes on its own, the page's
+   * Preview card says so and offers Open Preview.
    */
   private async openPreviewWindow(): Promise<void> {
     await ThemePreviewPanel.open(this.extensionUri, this.previewState, ThemeLabPanel.pickFromPreview, ThemeLabPanel.previewClosed);
@@ -643,6 +644,9 @@ export class ThemeLabPanel {
 
   private dispose(): void {
     ThemeLabPanel.current = undefined;
+    // The Theme Preview belongs to the Lab: closing the Lab tab closes the window too. A reload
+    // disposes neither, so both still come back together through their serializers.
+    ThemePreviewPanel.close();
     this.disposables.forEach(d => d.dispose());
   }
 }

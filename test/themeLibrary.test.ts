@@ -1,8 +1,8 @@
-// src/themeLibrary.ts: the saved theme library, its slots, and the settings each slot carries.
+// src/themeLibrary.ts: the saved theme library, its generated named themes, project frames, and the migration off the retired slots.
 import {
-  bindTheme, clearSlot, deleteSyntaxSet, deleteTheme, Design, everywhereSettings, freshestSetting, parseDesign, parseLibrary, parseSyntaxSets,
+  companionPackage, companionTheme, deleteSyntaxSet, deleteTheme, Design, everywhereSettings, freshestSetting, parseDesign, parseLibrary, parseSyntaxSets,
   projectColors, projectFrame, projectFrameRefresh, SavedTheme, saveSyntaxSet, saveTheme, setDefaultSyntaxSet, settingsFilesFor, slotSettings, SyntaxSet,
-  themesUsingSyntaxSet, withoutScope, withProjectFrame, withScope, writeAllSlots, writeSlot,
+  themeLabel, themesUsingSyntaxSet, userSlotMigration, withoutScope, withProjectFrame, withScope,
 } from '../src/themeLibrary';
 import * as path from 'path';
 import { identityOverlay, IDENTITY_KEYS, IDENTITY_REGIONS, withIdentity } from '../src/identity';
@@ -19,20 +19,18 @@ const DESIGN: Design = {
 const OTHER: Design = { ...DESIGN, colors: ['#cc0000', '#990000', '#336699'], mode: 'pasted', pasted: ['#cc0000', '#990000', '#336699'], rule: undefined, hue: undefined, lightness: undefined, chroma: undefined };
 const NOW = '2026-11-04T18:00:00.000Z';
 
-function saved(library: SavedTheme[], name: string, design: Design = DESIGN, unbindId?: string): SavedTheme[] {
-  const result = saveTheme(library, { name, design, now: NOW }, unbindId);
-  if ('needsSlot' in result) { throw new Error('needsSlot'); }
-  return result.library;
-}
+const saved = (library: SavedTheme[], name: string, design: Design = DESIGN): SavedTheme[] => saveTheme(library, { name, design, now: NOW }).library;
+const fresh = saved;
 
 const byName = (library: SavedTheme[], name: string) => library.find(t => t.name === name) as SavedTheme;
 
 describe('slot names', () => {
-  it('labels and files the 12 slots', () => {
+  it('labels the 12 retired slots for migration and no longer names slot files', () => {
     expect(TB.slotLabel(1)).toBe('GigglyBits Theme 1');
     expect(TB.slotLabel(12)).toBe('GigglyBits Theme 12');
-    expect(TB.slotFile(3)).toBe('gigglybits-theme-3-color-theme.json');
-    expect(TB.SLOT_COUNT).toBe(12);
+    expect(TB.LEGACY_SLOT_COUNT).toBe(12);
+    expect(TB.slotFile).toBeUndefined();
+    expect(TB.SLOT_COUNT).toBeUndefined();
   });
 });
 
@@ -63,52 +61,136 @@ describe('parseLibrary', () => {
 });
 
 describe('saveTheme', () => {
-  it('slots new names in order and updates a theme saved under the same name', () => {
-    let library = saved([], 'Alpha');
-    expect(library[0]).toMatchObject({ name: 'Alpha', slot: 1 });
-    const alphaId = library[0].id;
-    library = saved(library, 'Beta');
-    expect(byName(library, 'Beta').slot).toBe(2);
-    library = saved(library, ' alpha ', OTHER);
+  it('{#save-no-slot} gives a new theme no slot and keeps the stored slot on an update', () => {
+    let library = fresh(fresh([], 'Alpha'), 'Beta');
+    expect(library.map(t => t.slot)).toEqual([null, null]);
+    library = library.map(t => (t.name === 'Alpha' ? { ...t, slot: 4 } : t));
+    const alphaId = byName(library, 'Alpha').id;
+    library = fresh(library, ' alpha ', OTHER);
     const alphas = library.filter(t => t.name.toLowerCase() === 'alpha');
     expect(alphas).toHaveLength(1);
-    expect(alphas[0]).toMatchObject({ id: alphaId, slot: 1, design: OTHER });
+    expect(alphas[0]).toMatchObject({ id: alphaId, slot: 4, design: OTHER });
+    for (let n = 1; n <= 14; n++) { library = fresh(library, `Theme ${n}`); }
+    expect(library).toHaveLength(16);
+    expect(library.filter(t => t.slot !== null).map(t => t.name)).toEqual(['Alpha']);
   });
 
-  it('asks for a slot when all 12 are bound, and frees the one named by unbindId', () => {
-    let library: SavedTheme[] = [];
-    for (let n = 1; n <= 12; n++) { library = saved(library, `Theme ${n}`); }
-    expect(library.map(t => t.slot)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    const before = JSON.stringify(library);
-    expect(saveTheme(library, { name: 'Thirteen', design: DESIGN, now: NOW })).toEqual({ needsSlot: true });
-    expect(JSON.stringify(library)).toBe(before);
-
-    const fifth = byName(library, 'Theme 5');
-    const after = saved(library, 'Thirteen', DESIGN, fifth.id);
-    expect(byName(after, 'Thirteen').slot).toBe(5);
-    expect(byName(after, 'Theme 5')).toMatchObject({ id: fifth.id, slot: null });
-    expect(after).toHaveLength(13);
+  it('{#name-chars} refuses a name containing [, ] or * and changes nothing', () => {
+    const library = fresh([], 'Alpha');
+    for (const name of ['a*', 'x[y', 'z]']) {
+      expect(() => saveTheme(library, { name, design: DESIGN, now: NOW })).toThrow('A theme name cannot contain [, ] or *.');
+    }
+    expect(library.map(t => t.name)).toEqual(['Alpha']);
   });
 });
 
-describe('bindTheme', () => {
-  it('gives an unslotted theme the lowest free slot', () => {
-    let library = saved(saved([], 'Alpha'), 'Beta');
-    library = library.map(t => (t.name === 'Alpha' ? { ...t, slot: null } : t));
-    const result = bindTheme(library, byName(library, 'Alpha').id);
-    expect('needsSlot' in result).toBe(false);
-    if (!('needsSlot' in result)) { expect(result.theme.slot).toBe(1); }
+describe('named themes', () => {
+  const COLORS = {
+    keyword: '#c792ea', function: '#82aaff', string: '#c3e88d', type: '#ffcb6b', number: '#f78c6c', comment: '#7f848e',
+    tag: '#f07178', attribute: '#ffcb6b', variable: '#eeffff', property: '#b2ccd6', constant: '#ff9cac', operator: '#89ddff', regex: '#c17e70',
+  };
+  const SET: SyntaxSet = { id: 's1', name: 'Mine', colors: { ...COLORS }, isDefault: false, savedAt: NOW };
+  const OPTS = { version: '1.0.3', engines: '^1.145.0' };
+  const theme = (name: string, design: Design = DESIGN, slot: number | null = null): SavedTheme => ({ id: 'id-' + name, name, slot, design, savedAt: NOW });
+  const fileOf = (pkg: ReturnType<typeof companionPackage>, n: number) => JSON.parse(String(pkg.files[n].data));
+
+  it('{#label-form} prefixes the name and removes [, ] and *', () => {
+    expect(themeLabel({ name: 'copirate' })).toBe('GigglyBits: copirate');
+    expect(themeLabel({ name: 'a[b]*c' })).toBe('GigglyBits: abc');
+  });
+
+  it('{#companion-content} builds each theme file from the everywhere colors, named by its label, with its syntax set', () => {
+    const onSet = theme('beta', { ...DESIGN, syntaxSet: 's1' });
+    const library = [theme('alpha'), onSet];
+    const pkg = companionPackage(library, [SET], OPTS);
+    library.forEach((t, n) => {
+      const file = fileOf(pkg, n);
+      const expected = everywhereSettings(t, [SET]);
+      expect(file.colors).toEqual(expected.colors);
+      expect(file.tokenColors).toEqual(expected.tokenColors);
+      expect(file.name).toBe(themeLabel(t));
+      expect(file).toEqual(JSON.parse(JSON.stringify(companionTheme(t, [SET]))));
+    });
+    const setRules = JSON.stringify(fileOf(pkg, 1).tokenColors);
+    expect(setRules).toContain(COLORS.keyword);
+    expect(JSON.stringify(everywhereSettings(onSet, []).tokenColors)).not.toContain(COLORS.keyword);
+  });
+
+  it('{#companion-twenty} lists every one of 20 themes once', () => {
+    const library = Array.from({ length: 20 }, (_, n) => theme(`Theme ${n + 1}`));
+    const pkg = companionPackage(library, [], OPTS);
+    const themes = (pkg.manifest.contributes as { themes: { label: string; uiTheme: string; path: string }[] }).themes;
+    expect(themes).toHaveLength(20);
+    expect(pkg.files.filter(f => f.name.startsWith('themes/'))).toHaveLength(20);
+    expect(new Set(themes.map(t => t.label)).size).toBe(20);
+    expect(themes.every(t => t.uiTheme === 'vs-dark')).toBe(true);
+  });
+
+  it('{#companion-manifest} names the generated extension and declares a dependency only when given one', () => {
+    const plain = companionPackage([theme('alpha')], [], OPTS);
+    expect(plain.manifest).toMatchObject({
+      name: 'gigglybits-saved-themes', publisher: 'EdgeInformation', version: '1.0.3', displayName: 'GigglyBits Saved Themes',
+      engines: { vscode: '^1.145.0' }, gigglybits: { contentHash: plain.hash },
+    });
+    expect(plain.manifest).not.toHaveProperty('extensionDependencies');
+    const linked = companionPackage([theme('alpha')], [], { ...OPTS, dependency: 'EdgeInformation.gigglybits-theme-lab' });
+    expect(linked.manifest.extensionDependencies).toEqual(['EdgeInformation.gigglybits-theme-lab']);
+  });
+
+  it('{#companion-readme-icon} adds a README always, and the icon with its package.json field only when given one', () => {
+    const icon = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    const plain = companionPackage([theme('alpha')], [], OPTS);
+    const readme = plain.files.find(f => f.name === 'README.md');
+    expect(String(readme?.data)).toContain('GigglyBits Theme Lab');
+    expect(String(readme?.data)).toMatch(/rebuil/i);
+    expect(plain.manifest).not.toHaveProperty('icon');
+    expect(plain.files.some(f => f.name === 'icon.png')).toBe(false);
+    const withIcon = companionPackage([theme('alpha')], [], { ...OPTS, icon });
+    expect(withIcon.manifest.icon).toBe('icon.png');
+    const file = withIcon.files.find(f => f.name === 'icon.png');
+    expect(Buffer.isBuffer(file?.data) && Buffer.compare(file.data as Buffer, icon)).toBe(0);
+    // The hash covers the README and icon, so an install made before them is replaced on the next start.
+    expect(withIcon.hash).not.toBe(plain.hash);
+    expect(companionPackage([theme('alpha')], [], { ...OPTS, icon: Buffer.from([9]) }).hash).not.toBe(withIcon.hash);
+  });
+
+  it('{#companion-hash} changes with a design or a used set, and not with an unused set', () => {
+    const library = [theme('alpha', { ...DESIGN, syntaxSet: 's1' })];
+    const base = companionPackage(library, [SET], OPTS).hash;
+    expect(companionPackage([theme('alpha', { ...DESIGN, syntaxSet: 's1', chromeIndex: 2 })], [SET], OPTS).hash).not.toBe(base);
+    expect(companionPackage(library, [{ ...SET, colors: { ...COLORS, keyword: '#00ff00' } }], OPTS).hash).not.toBe(base);
+    const unused: SyntaxSet = { ...SET, id: 's2', colors: { ...COLORS, string: '#00ff00' } };
+    expect(companionPackage(library, [SET, unused], OPTS).hash).toBe(base);
+    expect(companionPackage(library, [SET], { ...OPTS, version: '9.9.9' }).hash).toBe(base);
+  });
+
+  it('{#user-migration} removes slot blocks, moves a held slot label to its theme, and leaves everything else', () => {
+    const copirate = theme('copirate', DESIGN, 3);
+    const values = {
+      colors: { '[GigglyBits Theme 3]': { a: '1' }, '[GigglyBits Theme 5]': { b: '2' }, 'editor.background': '#000000' },
+      tokens: { '[GigglyBits Theme 3]': { textMateRules: [] } },
+      theme: 'GigglyBits Theme 3',
+    };
+    const result = userSlotMigration(values, [copirate])!;
+    expect(result.colors).toEqual({ 'editor.background': '#000000' });
+    expect(Object.keys(result.tokens).filter(k => k.startsWith('[GigglyBits Theme'))).toEqual([]);
+    expect(result.theme).toBe('GigglyBits: copirate');
+    expect(result.removed).toEqual({
+      'workbench.colorCustomizations': { '[GigglyBits Theme 3]': { a: '1' }, '[GigglyBits Theme 5]': { b: '2' } },
+      'editor.tokenColorCustomizations': { '[GigglyBits Theme 3]': { textMateRules: [] } },
+    });
+    expect(userSlotMigration({ ...values, theme: 'Default Dark Modern' }, [copirate])!.theme).toBe('Default Dark Modern');
+    expect(userSlotMigration({ ...values, theme: 'GigglyBits Theme 5' }, [copirate])!.theme).toBe('GigglyBits Theme 5');
+    expect(userSlotMigration(values, [])).toBeUndefined();
+    expect(userSlotMigration({ colors: { 'editor.background': '#000000' }, tokens: {}, theme: 'Default Dark Modern' }, [copirate])).toBeUndefined();
   });
 });
 
 describe('deleteTheme', () => {
-  it('removes the theme and frees its slot for the next save', () => {
-    let library = saved(saved(saved([], 'Alpha'), 'Beta'), 'Gamma');
+  it('removes the theme', () => {
+    const library = saved(saved(saved([], 'Alpha'), 'Beta'), 'Gamma');
     const result = deleteTheme(library, byName(library, 'Beta').id);
-    expect(result.freedSlot).toBe(2);
     expect(result.library.map(t => t.name)).toEqual(['Alpha', 'Gamma']);
-    library = saved(result.library, 'Delta');
-    expect(byName(library, 'Delta').slot).toBe(2);
   });
 });
 
@@ -123,36 +205,14 @@ describe('slotSettings', () => {
   });
 });
 
-describe('the controller settings edits', () => {
-  const user = {
-    colors: { 'editor.background': '#000000', '[Other]': { a: 1 } },
-    tokens: { '[Other]': { textMateRules: [] } },
-  };
-
-  it('writes a saved theme into both slot blocks and a delete removes both and the entry', () => {
-    const library = saved([], 'Alpha');
-    const alpha = library[0];
-    const written = writeSlot(user, alpha);
-    const expected = everywhereSettings(alpha);
-    expect(written.colors['[GigglyBits Theme 1]']).toEqual(expected.colors);
-    expect(written.tokens['[GigglyBits Theme 1]']).toEqual({ textMateRules: expected.tokenColors });
-    expect(written.colors['[Other]']).toEqual({ a: 1 });
-
-    const removed = deleteTheme(library, alpha.id);
-    expect(removed.library).toEqual([]);
-    const cleared = clearSlot(written, removed.freedSlot as number);
-    expect(cleared).toEqual({ colors: user.colors, tokens: user.tokens });
-  });
-});
-
 describe('Use everywhere applies the Editor colors; the frame belongs to the project', () => {
   const FILLED: Design = { ...DESIGN, frame: { index: 2, style: 'filled' }, edits: { swatches: { accent: '#ff8800', frameBg: '#abcdef' }, keys: {} } };
   const theme = (design: Design, slot = 1): SavedTheme => ({ id: 'f', name: 'Framed', slot, design, savedAt: NOW });
   const darkOf = (design: Design) => TB.labSettings({ name: 'Framed', colors: design.colors },
     { index: design.chromeIndex, surfaces: design.surfaces, frame: { index: design.chromeIndex, style: 'dark' } }, { swatches: { accent: '#ff8800' }, keys: {} });
 
-  it("writes the user slot block with a Dark frame and the theme's own editor colors", () => {
-    const block = writeSlot({ colors: {}, tokens: {} }, theme(FILLED)).colors['[GigglyBits Theme 1]'] as Record<string, string>;
+  it("builds the theme file with a Dark frame and the theme's own editor colors", () => {
+    const block = companionTheme(theme(FILLED)).colors as Record<string, string>;
     const full = slotSettings(theme(FILLED)).colors;
     expect(full['titleBar.activeBackground']).toBe('#abcdef');
     expect(block['titleBar.activeBackground']).toBe(darkOf(FILLED).colors['titleBar.activeBackground']);
@@ -167,7 +227,7 @@ describe('Use everywhere applies the Editor colors; the frame belongs to the pro
     for (const [key, value] of Object.entries(frame)) { expect({ key, value }).toEqual({ key, value: full[key] }); }
     expect(frame).not.toHaveProperty('button.background');
     const current = { 'editor.background': '#000000', '[GigglyBits Theme 4]': { 'titleBar.activeBackground': '#111111' }, '[GigglyBits*]': { a: 1 } };
-    expect(withProjectFrame(current, 1, frame)).toEqual({ 'editor.background': '#000000', '[GigglyBits*]': { a: 1 }, '[GigglyBits Theme 1]': frame });
+    expect(withProjectFrame(current, 'GigglyBits: Framed', frame)).toEqual({ 'editor.background': '#000000', '[GigglyBits*]': { a: 1 }, '[GigglyBits: Framed]': frame });
   });
 
   it("Use in this project's colors remove an old folder color and keep only the project's slot block", () => {
@@ -179,19 +239,25 @@ describe('Use everywhere applies the Editor colors; the frame belongs to the pro
     }, identityOverlay('#8753c6', IDENTITY_REGIONS));
     expect(old['titleBar.activeBackground']).toBe('#8753c6');
     expect(old).toHaveProperty(['[GigglyBits*]']);
-    const written = projectColors(old, 1, frame);
-    expect(written).toEqual({ 'editor.background': '#000000', '[Dark Modern]': { 'editor.background': '#222222' }, '[GigglyBits Theme 1]': frame });
+    const written = projectColors(old, 'GigglyBits: Framed', frame);
+    expect(written).toEqual({ 'editor.background': '#000000', '[Dark Modern]': { 'editor.background': '#222222' }, '[GigglyBits: Framed]': frame });
     expect(Object.keys(written).filter(k => IDENTITY_KEYS.includes(k))).toEqual([]);
   });
 
-  it('refreshes a changed frame, drops the frame of an empty slot, and leaves a matching frame alone', () => {
-    const before = theme({ ...FILLED, frame: { index: 0, style: 'filled' } });
-    const after = theme(FILLED);
-    const folder = withProjectFrame({ 'editor.background': '#000000' }, 1, projectFrame(before));
-    expect(projectFrameRefresh(folder, 'GigglyBits Theme 1', [after])).toEqual(withProjectFrame(folder, 1, projectFrame(after)));
-    expect(projectFrameRefresh(folder, 'GigglyBits Theme 1', [])).toEqual({ 'editor.background': '#000000' });
-    expect(projectFrameRefresh(folder, 'GigglyBits Theme 1', [before])).toBeUndefined();
-    expect(projectFrameRefresh(folder, 'Dark Modern', [after])).toBeUndefined();
+  it("{#folder-migration} moves a held slot label to its theme, rewrites a changed frame, and drops a deleted theme's block", () => {
+    const copirate: SavedTheme = { id: 'c', name: 'copirate', slot: 3, design: FILLED, savedAt: NOW };
+    const slotFolder = { 'editor.background': '#000000', '[GigglyBits Theme 3]': { 'titleBar.activeBackground': '#111111' } };
+    expect(projectFrameRefresh(slotFolder, 'GigglyBits Theme 3', [copirate])).toEqual({
+      theme: 'GigglyBits: copirate', colors: { 'editor.background': '#000000', '[GigglyBits: copirate]': projectFrame(copirate) },
+    });
+    const named = withProjectFrame({ 'editor.background': '#000000' }, 'GigglyBits: copirate', projectFrame(copirate));
+    expect(projectFrameRefresh(named, 'GigglyBits: copirate', [copirate])).toBeUndefined();
+    const changed: SavedTheme = { ...copirate, design: { ...FILLED, frame: { index: 0, style: 'filled' } } };
+    expect(projectFrameRefresh(named, 'GigglyBits: copirate', [changed])).toEqual({ colors: withProjectFrame(named, 'GigglyBits: copirate', projectFrame(changed)) });
+    const gone = withProjectFrame({ 'editor.background': '#000000' }, 'GigglyBits: gone', projectFrame(copirate));
+    expect(projectFrameRefresh(gone, 'GigglyBits: gone', [copirate])).toEqual({ colors: { 'editor.background': '#000000' } });
+    expect(projectFrameRefresh(slotFolder, 'GigglyBits Theme 5', [copirate])).toBeUndefined();
+    expect(projectFrameRefresh(slotFolder, 'Dark Modern', [copirate])).toBeUndefined();
   });
 });
 
@@ -237,20 +303,21 @@ describe('syntax sets', () => {
   const RULES = ['Keyword', 'Function', 'String', 'Type', 'Number', 'Comment', 'Tag', 'Attribute', 'Variable', 'Property', 'Constant', 'Operator', 'Regex'];
   const set = (over: Partial<SyntaxSet> = {}): SyntaxSet => ({ id: 's1', name: 'Mine', colors: { ...COLORS }, isDefault: false, savedAt: NOW, ...over });
   const plain = (colors: string[], syntaxSet?: string): Design => ({ ...DESIGN, colors, edits: { swatches: {}, keys: {} }, ...(syntaxSet ? { syntaxSet } : {}) });
-  const rulesOf = (written: { tokens: Record<string, unknown> }, theme: SavedTheme) =>
-    ((written.tokens[`[GigglyBits Theme ${theme.slot}]`] as { textMateRules: { name: string; settings: { foreground: string } }[] }).textMateRules);
-  const fg = (written: { tokens: Record<string, unknown> }, theme: SavedTheme, name: string) =>
+  type Built = { library: SavedTheme[]; pkg: ReturnType<typeof companionPackage> };
+  const build = (library: SavedTheme[], sets: SyntaxSet[]): Built => ({ library, pkg: companionPackage(library, sets, { version: '1.0.0', engines: '^1.145.0' }) });
+  const rulesOf = (written: Built, theme: SavedTheme): { name: string; settings: { foreground: string } }[] =>
+    JSON.parse(String(written.pkg.files[written.library.findIndex(t => t.id === theme.id)].data)).tokenColors;
+  const fg = (written: Built, theme: SavedTheme, name: string) =>
     rulesOf(written, theme).find(r => r.name === name)?.settings.foreground;
-  const values = { colors: { '[Other]': { a: 1 } }, tokens: {} };
 
   it('{#slot-same-across-palettes} two bound themes with different palettes on the same set write identical code foregrounds', () => {
     const library = saved(saved([], 'Alpha', plain(['#20c3d9', '#dc8fd5', '#ceaa3e'], 's1')), 'Beta', plain(['#cc3300', '#33cc66', '#3366cc'], 's1'));
-    const written = writeAllSlots(values, library, [set()]);
+    const written = build(library, [set()]);
     const [alpha, beta] = library;
     expect(RULES.map(r => fg(written, beta, r))).toEqual(RULES.map(r => fg(written, alpha, r)));
     expect(fg(written, alpha, 'Tag')).toBe(COLORS.tag);
     // Without the set the two palettes write different keyword colors.
-    const bare = writeAllSlots(values, library, []);
+    const bare = build(library, []);
     expect(fg(bare, alpha, 'Keyword')).not.toBe(fg(bare, beta, 'Keyword'));
   });
 
@@ -258,9 +325,9 @@ describe('syntax sets', () => {
     let library = saved([], 'Alpha', plain(['#20c3d9', '#dc8fd5', '#ceaa3e'], 's1'));
     library = saved(library, 'Beta', plain(['#cc3300', '#33cc66', '#3366cc'], 's1'));
     library = saved(library, 'Gamma', plain(['#aa66ff', '#66ffaa', '#ffaa66']));
-    const before = writeAllSlots(values, library, [set()]);
+    const before = build(library, [set()]);
     const changed = saveSyntaxSet([set()], { id: 's1', name: 'Mine', colors: { ...COLORS, keyword: '#ff79c6' }, now: NOW }).sets;
-    const after = writeAllSlots(before, library, changed);
+    const after = build(library, changed);
     expect([fg(after, byName(library, 'Alpha'), 'Keyword'), fg(after, byName(library, 'Beta'), 'Keyword')]).toEqual(['#ff79c6', '#ff79c6']);
     expect(fg(before, byName(library, 'Alpha'), 'Keyword')).toBe(COLORS.keyword);
     expect(rulesOf(after, byName(library, 'Gamma'))).toEqual(rulesOf(before, byName(library, 'Gamma')));

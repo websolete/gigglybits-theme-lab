@@ -2,7 +2,7 @@
   "name": "gigglybits-theme-lab",
   "displayName": "GigglyBits Theme Lab",
   "description": "Design your own dark VS Code theme, preview it live, and give each project a color of its own.",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "publisher": "EdgeInformation",
   "author": {
     "name": "Kevin Miller"
@@ -105,7 +105,7 @@
           "type": "array",
           "default": [],
           "scope": "application",
-          "markdownDescription": "Your saved themes, written by **Save theme** in the Theme Lab (**GigglyBits: Open Theme Lab**). Each is bound to one of the slots GigglyBits Theme 1 to 12. Use the Theme Lab or **GigglyBits: Choose Theme** rather than editing this by hand."
+          "markdownDescription": "Your saved themes, written by **Save theme** in the Theme Lab (**GigglyBits: Open Theme Lab**). There is no limit on how many you keep. Each appears in the theme picker as `GigglyBits: <name>`, from the extension GigglyBits generates for them, GigglyBits Saved Themes. Use the Theme Lab or **GigglyBits: Choose Theme** rather than editing this by hand."
         },
         "gigglybits.syntaxSets": {
           "type": "array",
@@ -120,66 +120,6 @@
         "label": "GigglyBits Dark (Lab)",
         "uiTheme": "vs-dark",
         "path": "./themes/gigglybits-lab-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 1",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-1-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 2",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-2-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 3",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-3-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 4",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-4-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 5",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-5-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 6",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-6-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 7",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-7-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 8",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-8-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 9",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-9-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 10",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-10-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 11",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-11-color-theme.json"
-      },
-      {
-        "label": "GigglyBits Theme 12",
-        "uiTheme": "vs-dark",
-        "path": "./themes/gigglybits-theme-12-color-theme.json"
       }
     ]
   },

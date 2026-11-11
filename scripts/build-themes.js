@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-// Writes the themes the extension ships: GigglyBits Dark (Lab), the theme Try in VS Code
-// applies candidates to, and the slots GigglyBits Theme 1 to 12 that saved themes bind to.
-// All 13 are built from BASE below, so each looks finished before scoped settings color it.
-// Removes any GigglyBits Dark (<name>) theme an older build wrote, and keeps package.json
-// contributes.themes in step.
+// Writes the one theme the extension ships: GigglyBits Dark (Lab), the theme Try in VS Code
+// applies candidates to, built from BASE below so it looks finished before scoped settings color
+// it. Saved themes reach the picker through the generated extension (src/companionThemes.ts).
+// Removes any GigglyBits Dark (<name>) or GigglyBits Theme <n> slot file an older build wrote,
+// and keeps package.json contributes.themes in step.
 //
 //   node scripts/build-themes.js            build into the repository
 //   node scripts/build-themes.js --check    write nothing; exit 1 when anything is out of date
 //   --root <dir>                            work on <dir> instead of the repository (tests)
 const fs = require('fs');
 const path = require('path');
-const { buildTheme, LAB_THEME_FILE, LAB_THEME_LABEL, SLOT_COUNT, slotFile, slotLabel } = require('./theme-builder');
+const { buildTheme, LAB_THEME_FILE, LAB_THEME_LABEL } = require('./theme-builder');
 
-/** The base palette: Candy, the palette the Lab theme and the slots have always been built from. */
+/** The base palette: Candy, the palette the Lab theme has always been built from. */
 const BASE = {
   source: 'generated',
   rule: 'triad',
@@ -24,7 +24,6 @@ const BASE = {
 
 const GENERATED = /^gigglybits-dark-.+-color-theme\.json$/;
 const SLOT = /^gigglybits-theme-\d+-color-theme\.json$/;
-const SLOTS = Array.from({ length: SLOT_COUNT }, (_, i) => i + 1);
 
 function parseArgs(argv) {
   const args = { check: false, root: path.resolve(__dirname, '..') };
@@ -44,9 +43,6 @@ function plan(root) {
   const writes = new Map();
   const base = buildTheme(BASE);
   writes.set('themes/' + LAB_THEME_FILE, json({ ...base, name: LAB_THEME_LABEL }));
-  for (const n of SLOTS) {
-    writes.set('themes/' + slotFile(n), json({ ...base, name: slotLabel(n) }));
-  }
   const themesDir = path.join(root, 'themes');
   const deletes = fs.existsSync(themesDir)
     ? fs.readdirSync(themesDir)
@@ -57,13 +53,12 @@ function plan(root) {
   pkg.contributes = pkg.contributes || {};
   pkg.contributes.themes = [
     { label: LAB_THEME_LABEL, uiTheme: 'vs-dark', path: './themes/' + LAB_THEME_FILE },
-    ...SLOTS.map(n => ({ label: slotLabel(n), uiTheme: 'vs-dark', path: './themes/' + slotFile(n) })),
   ];
   writes.set('package.json', json(pkg));
   return { writes, deletes };
 }
 
-const SUMMARY = `Lab theme and ${SLOT_COUNT} slots`;
+const SUMMARY = 'Lab theme';
 
 function main() {
   const { check, root } = parseArgs(process.argv.slice(2));

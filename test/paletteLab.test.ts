@@ -1403,13 +1403,17 @@ describe('Palette Lab saved themes', () => {
     expect(msg.design).toMatchObject({ mode: 'generated', rule: 'triad', hue: 210, lightness: 0.75, chroma: 0.13, chromeIndex: 0, surfaces: 'rich' });
   });
 
-  it('the Saved tab is labelled with the count and lists each theme with its slot', () => {
+  it('{#saved-row} the Saved tab is labelled with the count and lists each theme by name with no slot text', () => {
     const root = lab.render(ctx({ library: LIBRARY, hasFolder: true }));
     const label = savedTab(root);
     expect([label.firstChild?.firstChild?.textContent, label.querySelector('.count')?.textContent].join(' ')).toBe('Saved themes 2');
-    const rows = [...root.querySelectorAll('.gb-pl-lib-row')].map(r =>
-      [r.querySelector('.gb-pl-row-name')?.textContent, r.querySelector('.gb-pl-row-slot')?.textContent]);
-    expect(rows).toEqual([['Alpha', 'Theme 1'], ['Beta', 'No slot']]);
+    const rows = [...root.querySelectorAll('.gb-pl-lib-row')];
+    expect(rows.map(r => r.querySelector('.gb-pl-row-name')?.textContent)).toEqual(['Alpha', 'Beta']);
+    expect(LIBRARY[0].slot).toBe(1);
+    for (const row of rows) {
+      expect(row.textContent).not.toContain('Theme 1');
+      expect(row.textContent).not.toContain('No slot');
+    }
     expect(root.querySelector('.gb-pl-library .gb-pl-group')).toBeNull();
   });
 

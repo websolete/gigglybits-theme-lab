@@ -1365,13 +1365,12 @@
   const LAB_THEME_FILE = 'gigglybits-lab-color-theme.json';
 
   /**
-   * The theme slots a saved library theme binds to. VS Code lists only themes an extension
-   * ships as files, so the build ships SLOT_COUNT placeholder themes and a saved theme's
-   * colors go into user settings scoped to its slot's label.
+   * The retired theme slots, GigglyBits Theme 1 to 12, which saved themes were bound to until
+   * 2026-11-10. No longer shipped; the labels remain so settings that still name a slot migrate
+   * to the saved theme's own label (src/themeLibrary.ts userSlotMigration, projectFrameRefresh).
    */
-  const SLOT_COUNT = 12;
+  const LEGACY_SLOT_COUNT = 12;
   const slotLabel = n => `GigglyBits Theme ${n}`;
-  const slotFile = n => `gigglybits-theme-${n}-color-theme.json`;
 
   /**
    * Everything the Lab writes to try a candidate live: the theme colors and token rules,
@@ -1384,7 +1383,7 @@
 
   return {
     THEME_BACKGROUND, UNSET_KEYS, LEFT_TO_VSCODE, leftToVSCode, GENERIC_SCOPES, ROLE_NAMES, LAB_THEME_LABEL, LAB_THEME_FILE,
-    SLOT_COUNT, slotLabel, slotFile,
+    LEGACY_SLOT_COUNT, slotLabel,
     KEY_GROUPS, SWATCHES, SWATCH_OF, FRAME_KEYS, ROLE_FAMILIES, TEXT_LEVELS, cleanChrome, SYNTAX_SET_KEYS, SET_RULES,
     DEFAULT_COLOR, roleColors, themeLabel, themeFileName, swatches, cleanEdits, buildColors, tokenColors, buildTheme, labSettings,
     isShift, parseShift, applyShift, shiftFor, baseColor, preferredSwatch, preferredKey, toShifts,

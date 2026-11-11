@@ -2409,7 +2409,7 @@
 
   /**
    * Start from > Saved: your saved themes (src/themeLibrary.ts), one line each: its colors,
-   * name and slot, a visible Load, and a chevron that shows Use in this project (only with a
+   * name, a visible Load, and a chevron that shows Use in this project (only with a
    * folder open), Use everywhere and Delete. Enter on a row loads it. The host does the using
    * and deleting; Delete asks there first. `onLoad(name)` runs after a Load.
    */
@@ -2446,7 +2446,6 @@
       },
       h('div', { class: 'gb-pl-mini' }, (t.design && Array.isArray(t.design.colors) ? t.design.colors : []).map(dot)),
       h('span', { class: 'gb-pl-row-name', title: t.name }, t.name),
-      h('span', { class: 'gb-pl-row-slot muted' }, t.slot ? `Theme ${t.slot}` : 'No slot'),
       act('Load', 'load', loadIt, `Makes ${t.name} the design in the Lab`),
       more,
       strip);

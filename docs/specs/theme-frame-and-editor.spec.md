@@ -13,7 +13,7 @@ A theme has two color sets, each decided by its own settings and checked by its 
 
 Changing the Frame never changes an Editor key. In a Filled frame, changing the Editor never changes a Frame key; in a Dark frame the bars reuse the editor's dark surfaces on purpose, so they follow the surface tint.
 
-New designs in the Theme Lab start Filled in palette color 1, with Rich surfaces (since 0.1.2; Neutral before). A saved theme, a restored Try and a Lab state that already holds a surface choice keep their own. The Lab theme and the 12 slot files, built with no frame, are Dark, and so is an older Try with no frame when it is restored.
+New designs in the Theme Lab start Filled in palette color 1, with Rich surfaces (since 0.1.2; Neutral before). A saved theme, a restored Try and a Lab state that already holds a surface choice keep their own. The Lab theme, built with no frame, is Dark, and so is an older Try with no frame when it is restored.
 
 Rejected: a separate harmony rule for the Frame (the shared palette was enough for the user's happy path; recorded as deferred), and keeping the per-folder color as the only way to color the bars (it cannot travel with a saved theme).
 

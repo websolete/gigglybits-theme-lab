@@ -5,6 +5,7 @@ import * as path from 'path';
 import { parse, ParseError, printParseErrorCode } from 'jsonc-parser';
 import { starterFromRules, SyntaxColors } from '../scripts/theme-builder';
 import { themeNameMatches } from './labSettings';
+import { COMPANION_ID } from './themeLibrary';
 
 /**
  * Where a declared value came from. Colors that VS Code resolves on its own
@@ -193,7 +194,8 @@ export function ownExtensionId(): string {
 export async function listInstalledSyntaxStarters(): Promise<InstalledSyntaxStarter[]> {
   const out: InstalledSyntaxStarter[] = [];
   for (const ext of vscode.extensions.all) {
-    if (ext.id.toLowerCase() === ownExtensionId()) {
+    // GigglyBits' own themes, and the saved themes in its generated extension, are never starters.
+    if (ext.id.toLowerCase() === ownExtensionId() || ext.id.toLowerCase() === COMPANION_ID.toLowerCase()) {
       continue;
     }
     const pkg = ext.packageJSON as Json;
