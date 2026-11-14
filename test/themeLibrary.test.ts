@@ -223,9 +223,12 @@ describe('Use everywhere applies the Editor colors; the frame belongs to the pro
   it("gives the project exactly the frame keys with the Filled frame's colors, replacing another slot's block", () => {
     const frame = projectFrame(theme(FILLED));
     const full = slotSettings(theme(FILLED)).colors;
-    expect(Object.keys(frame).sort()).toEqual(TB.FRAME_KEYS.filter((k: string) => k in full).sort());
+    expect(Object.keys(frame).sort()).toEqual(TB.FRAME_KEYS.filter((k: string) => k in full && !k.startsWith('tab.')).sort());
     for (const [key, value] of Object.entries(frame)) { expect({ key, value }).toEqual({ key, value: full[key] }); }
     expect(frame).not.toHaveProperty('button.background');
+    // Modern UI draws a tab key from colorCustomizations over its own tab look, so the frame has none.
+    expect(TB.FRAME_KEYS).toEqual(expect.arrayContaining(['tab.activeBorder', 'tab.activeBorderTop']));
+    expect(Object.keys(frame).filter(k => k.startsWith('tab.'))).toEqual([]);
     const current = { 'editor.background': '#000000', '[GigglyBits Theme 4]': { 'titleBar.activeBackground': '#111111' }, '[GigglyBits*]': { a: 1 } };
     expect(withProjectFrame(current, 'GigglyBits: Framed', frame)).toEqual({ 'editor.background': '#000000', '[GigglyBits*]': { a: 1 }, '[GigglyBits: Framed]': frame });
   });

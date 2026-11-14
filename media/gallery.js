@@ -184,6 +184,11 @@
         const activePtab = modern
           ? { fg: 'modernTab.activeForeground', bg: 'modernTab.activeBackground' }
           : { fg: 'panelTitle.activeForeground', bdB: 'panelTitle.activeBorder' };
+        // The icon row at the top or bottom of the side bar: the modern UI paints its active item
+        // like a panel tab and hides activityBarTop.activeBackground and the activeBorder line.
+        const activeRowItem = modern
+          ? { fg: 'modernTab.activeForeground', bg: 'modernTab.activeBackground' }
+          : { fg: 'activityBarTop.foreground', bg: 'activityBarTop.activeBackground', bdB2: 'activityBarTop.activeBorder' };
         const title = region(P('div', 'wb-title', { bg: 'titleBar.activeBackground', fg: 'titleBar.activeForeground', bdB: 'titleBar.border' },
           S('wb-menu', 'File   Edit   Selection   View'),
           P('div', 'wb-cc', { bg: 'commandCenter.background', fg: 'commandCenter.foreground', bd: 'commandCenter.border' }, I('search'), ' gigglybits-theme-lab'),
@@ -200,7 +205,7 @@
         const actRow = place === 'top' || place === 'bottom'
           // Part of the side bar region, as in VS Code, where the row sits in the side bar.
           ? (P('div', `wb-actrow wb-actrow-${place}`, { bg: 'activityBarTop.background', [place === 'top' ? 'bdB' : 'bdT']: 'sideBarActivityBarTop.border' },
-            P('div', 'wb-actrow-item', { fg: 'activityBarTop.foreground', bg: 'activityBarTop.activeBackground', bdB2: 'activityBarTop.activeBorder' }, I('files')),
+            P('div', 'wb-actrow-item', activeRowItem, I('files')),
             P('div', 'wb-actrow-item', { fg: 'activityBarTop.inactiveForeground' }, I('search')),
             P('div', 'wb-actrow-item', { fg: 'activityBarTop.inactiveForeground' }, I('source-control'),
               P('span', 'wb-act-badge', { bg: 'activityBarBadge.background', fg: 'activityBarBadge.foreground' }, '3')),

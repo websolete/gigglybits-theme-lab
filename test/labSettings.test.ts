@@ -1,10 +1,21 @@
 // src/labSettings.ts and labSettings() in scripts/theme-builder.js: what Try in VS Code
 // writes to user settings. It writes nothing to the workspace.
-import { colorOverrides, defaultGigglyLabels, GigglyLabels, LAB_SCOPE, leftoverRemoval, Levels, unscopedKeys, withLabScope, withoutLabScope } from '../src/labSettings';
+import { colorOverrides, defaultGigglyLabels, GigglyLabels, LAB_SCOPE, leftoverRemoval, Levels, unscopedKeys, withLabScope, withoutLabScope, withoutTabKeys } from '../src/labSettings';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TB = require('../scripts/theme-builder.js');
 
 const CANDY = { name: 'Candy', colors: ['#20c3d9', '#dc8fd5', '#ceaa3e', '#6cdaed', '#eeafe8'] };
+
+describe('withoutTabKeys', () => {
+  it('drops every editor tab key and keeps the rest, terminal tab keys included', () => {
+    const colors = TB.labSettings(CANDY).colors as Record<string, string>;
+    const kept = withoutTabKeys(colors);
+    expect(Object.keys(colors).some(k => k.startsWith('tab.'))).toBe(true);
+    expect(Object.keys(kept).filter(k => k.startsWith('tab.'))).toEqual([]);
+    expect(Object.keys(kept)).toEqual(Object.keys(colors).filter(k => !k.startsWith('tab.')));
+    expect(kept['terminal.tab.activeBorder']).toBe(colors['terminal.tab.activeBorder']);
+  });
+});
 
 describe('labSettings', () => {
   it('builds the full theme colors and token rules, and nothing for the workspace', () => {

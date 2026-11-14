@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { labPageHtml, labWebviewOptions, PreviewState, ThemePreviewPanel } from './themePreviewPanel';
-import { colorOverrides, ColorOverride, defaultGigglyLabels, Levels, OverrideSetting, TOKEN_KEYS_KEPT, unscopedKeys, withLabScope, withoutLabScope } from './labSettings';
+import { colorOverrides, ColorOverride, defaultGigglyLabels, Levels, OverrideSetting, TOKEN_KEYS_KEPT, unscopedKeys, withLabScope, withoutLabScope, withoutTabKeys } from './labSettings';
 import { captureThemeSnapshot, InstalledSyntaxStarter, InstalledTheme, listInstalledSyntaxStarters, listInstalledThemes } from './themeSource';
 import { BuilderEntry, ChromeChoice, cleanEdits, LAB_THEME_LABEL, labSettings } from '../scripts/theme-builder';
 import { parseTryRecord, startConfig } from './labStart';
@@ -553,9 +553,12 @@ export class ThemeLabPanel {
     const Global = vscode.ConfigurationTarget.Global;
     try {
       const lab = labSettings(entry, chrome, cleanEdits(edits));
+      // Under modern UI the tab keys would replace VS Code's modern tab look (withoutTabKeys), and
+      // VS Code ignores the saved theme's own tab keys there, so the Try leaves them out to match.
+      const tryColors = modernUISettings().modern ? withoutTabKeys(lab.colors) : lab.colors;
 
       await cfg().update('workbench.colorCustomizations',
-        withLabScope(cfg().inspect('workbench.colorCustomizations')?.globalValue, lab.colors), Global);
+        withLabScope(cfg().inspect('workbench.colorCustomizations')?.globalValue, tryColors), Global);
       await cfg().update('editor.tokenColorCustomizations',
         withLabScope(cfg().inspect('editor.tokenColorCustomizations')?.globalValue, { textMateRules: lab.tokenColors }), Global);
       // A workspace or folder copy of the Lab block would hide these colors; it goes, and the

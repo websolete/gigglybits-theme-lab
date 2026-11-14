@@ -15,6 +15,7 @@ import {
 } from '../scripts/theme-builder';
 import { parseTryRecord, TryFrame } from './labStart';
 import { withoutIdentity } from './identity';
+import { withoutTabKeys } from './labSettings';
 
 /** Everything the Lab holds about a design, so Load brings it back exactly. */
 export interface Design {
@@ -408,10 +409,14 @@ export function userSlotMigration(values: UserThemeValues, library: SavedTheme[]
   return { colors, tokens, theme, removed };
 }
 
-/** The frame Use in this project gives the folder: the FRAME_KEYS of the theme's full colors. */
+/**
+ * The frame Use in this project gives the folder: the FRAME_KEYS of the theme's full colors,
+ * except the tab keys (withoutTabKeys). Written to colorCustomizations they would replace modern
+ * UI's tab look, and the theme file already carries them for the classic look.
+ */
 export function projectFrame(theme: SavedTheme): Record<string, string> {
   const colors = slotSettings(theme).colors;
-  return Object.fromEntries(FRAME_KEYS.filter(key => key in colors).map(key => [key, colors[key]]));
+  return withoutTabKeys(Object.fromEntries(FRAME_KEYS.filter(key => key in colors).map(key => [key, colors[key]])));
 }
 
 /** A folder's workbench.colorCustomizations with only `label`'s frame block among the GigglyBits blocks; every other key kept. */

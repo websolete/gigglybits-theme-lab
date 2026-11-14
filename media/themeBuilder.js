@@ -1320,7 +1320,10 @@
     for (const [key, v] of Object.entries(out.keys)) {
       if (isShift(v) || v === DEFAULT_COLOR) {continue;}
       const from = preferredKey(entry, chrome, out, key);
-      if (typeof from === 'string' && HEX.test(from)) {out.keys[key] = shiftFor(v, from);}
+      // The key editor writes an opaque color as '#rrggbb'. Over a color with an alpha, such
+      // as a transparent '#00000000', the shift must set 'ff', or the key would keep that alpha.
+      const target = v.length === 7 && typeof from === 'string' && from.length === 9 ? `${v}ff` : v;
+      if (typeof from === 'string' && HEX.test(from)) {out.keys[key] = shiftFor(target, from);}
     }
     return out;
   }

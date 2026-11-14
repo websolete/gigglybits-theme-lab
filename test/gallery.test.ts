@@ -221,6 +221,12 @@ describe('Workbench drawing and VS Code\'s modern UI settings', () => {
       const after = Boolean(tree.compareDocumentPosition(row[0]) & Node.DOCUMENT_POSITION_FOLLOWING);
       expect({ place, afterTree: after }).toEqual({ place, afterTree: place === 'bottom' });
     }
+    // Under the modern UI, VS Code paints the row's active item with the modern tab keys.
+    const modernRow = (gallery as any).renderParts({ ...ctx(), modernUI: { ...MODERN, activityBar: 'top' } }, ['workbench'])[0].preview as HTMLElement;
+    const item = modernRow.querySelector('.wb-actrow-item')!;
+    expect(keysOf(item)).toEqual(expect.arrayContaining(['modernTab.activeBackground', 'modernTab.activeForeground']));
+    expect(keysOf(item)).not.toContain('activityBarTop.activeBackground');
+    expect(keysOf(item)).not.toContain('activityBarTop.activeBorder');
     const hidden = draw('hidden');
     expect(paintedWith(hidden, 'activityBarTop.background')).toHaveLength(0);
     expect(paintedWith(hidden, 'activityBar.background')).toHaveLength(0);

@@ -2,13 +2,12 @@
 
 All notable changes to GigglyBits Theme Lab are documented in this file.
 
-## Unreleased
+## 0.2.0
 
-- **Every saved theme in the theme picker, by name.** Each theme you save now appears in **Preferences: Color Theme** as `GigglyBits: <name>`, with no limit on how many, from a small extension GigglyBits generates and installs for you, GigglyBits Saved Themes. Saving a change to the theme you're looking at recolors that window at once; other open windows are not repainted. The twelve GigglyBits Theme 1 to 12 slots are gone: on its next start GigglyBits moves your settings to the named themes, takes the slot color blocks out of your user settings (keeping a backup in its storage folder), and switches each project that used a slot to that theme's name when you next open it. Uninstalling or disabling GigglyBits Theme Lab offers to do the same to GigglyBits Saved Themes.
-- **GigglyBits Saved Themes explains itself.** It shows the GigglyBits icon in the Extensions view, and its page says what it is, that GigglyBits rebuilds it on every save, and how to remove themes.
-- **No limit on saved themes.** Saving a thirteenth theme no longer asks you to give up one of the twelve slots.
-- **The Theme Preview closes with the Theme Lab.** Closing the Lab now closes its preview window too.
-- **Update GigglyBits on every machine that syncs settings.** The moved settings sync to your other machines, and a GigglyBits older than this release cannot show the named themes.
+- **Every saved theme in the theme picker, by name.** Each theme you save appears in **Preferences: Color Theme** as `GigglyBits: <name>`, with no limit on how many, and saving a change to the theme you're looking at recolors that window at once. The twelve theme slots are gone: GigglyBits moves your saved themes over on its next start, and a project that used a slot switches to that theme's name when you next open it.
+- **Modern tabs look right.** With VS Code's modern UI on, Try in VS Code and Use in this project no longer add a line under the active editor tab that cut it off from the editor.
+- **Fine-tune a part fixes.** With the activity bar icons at the top or bottom of the side bar, clicking the selected icon in the preview now offers the color VS Code paints it with. A color picked at full opacity for a part that starts out transparent no longer comes out invisible.
+- **Update GigglyBits on every machine that syncs settings.** Your saved themes sync to your other machines, and a GigglyBits older than 0.2.0 can't show them in the theme picker.
 
 ## 0.1.3
 

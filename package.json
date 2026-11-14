@@ -2,7 +2,7 @@
   "name": "gigglybits-theme-lab",
   "displayName": "GigglyBits Theme Lab",
   "description": "Design your own dark VS Code theme, preview it live, and give each project a color of its own.",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "publisher": "EdgeInformation",
   "author": {
     "name": "Kevin Miller"

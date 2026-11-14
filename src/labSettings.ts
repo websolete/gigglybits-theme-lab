@@ -15,6 +15,17 @@ type Settings = Record<string, unknown>;
 
 const isObject = (v: unknown): v is Settings => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/**
+ * colors without the editor tab keys (tab.*). Under modern UI, VS Code 1.146 ignores a theme
+ * file's tab colors but draws any tab color in workbench.colorCustomizations over its own tab
+ * look (workbench.contrib.modernUI uses a legacy tab key only when it is a customization). So a
+ * tab key GigglyBits writes there brings back old-style lines on modern tabs, such as a
+ * tab.activeBorder line that cuts the active tab off from the editor. terminal.tab.* is kept.
+ */
+export function withoutTabKeys<T>(colors: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.entries(colors).filter(([key]) => !key.startsWith('tab.')));
+}
+
 /** current with the Lab scope's block replaced by block; every other key kept. */
 export function withLabScope(current: unknown, block: unknown): Settings {
   return { ...(isObject(current) ? current : {}), [LAB_SCOPE]: block };

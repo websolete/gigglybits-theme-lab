@@ -606,6 +606,13 @@ describe('shifts: edits and a custom frame color that follow the palette', () =>
     expect(TB.buildColors(green, {}, key)['button.background']).toBe('#102030');
   });
 
+  it('{#to-shifts-opaque} an opaque key edit over a transparent color stays opaque; one with an alpha keeps it', () => {
+    const key = 'activityBarTop.activeBackground';
+    expect(TB.buildColors(green)[key]).toBe('#00000000');
+    expect(TB.buildColors(green, {}, TB.toShifts(green, {}, { swatches: {}, keys: { [key]: '#7a5dad' } }))[key]).toBe('#7a5dadff');
+    expect(TB.buildColors(green, {}, TB.toShifts(green, {}, { swatches: {}, keys: { [key]: '#7a5dad80' } }))[key]).toBe('#7a5dad80');
+  });
+
   it('{#to-shifts-keeps} toShifts keeps default and a key the theme leaves unset as they are', () => {
     const unset = Object.keys(TB.UNSET_KEYS)[0];
     const out = TB.toShifts(green, {}, { swatches: {}, keys: { 'button.background': 'default', [unset]: '#123456' } });
