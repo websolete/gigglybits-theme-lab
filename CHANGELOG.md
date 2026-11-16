@@ -2,6 +2,10 @@
 
 All notable changes to GigglyBits Theme Lab are documented in this file.
 
+## Unreleased
+
+- **A grey base color gives grey surfaces.** With the base color's chroma at 0, the side bar, borders, menus, Selected row and text are now plain grey in Neutral, Tinted and Rich surfaces, instead of olive or brown.
+
 ## 0.2.0
 
 - **Every saved theme in the theme picker, by name.** Each theme you save appears in **Preferences: Color Theme** as `GigglyBits: <name>`, with no limit on how many, and saving a change to the theme you're looking at recolors that window at once. The twelve theme slots are gone: GigglyBits moves your saved themes over on its next start, and a project that used a slot switches to that theme's name when you next open it.

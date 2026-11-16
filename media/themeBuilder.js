@@ -482,9 +482,11 @@
     const editedAccentLch = GB.hexToOklch(accent);
     const hue = accentLch.h;
     const bgL = GB.hexToOklch(opaque(put('bg', THEME_BACKGROUND))).l;
-    const neutral = l => GB.oklchToHex({ l, c: 0.01, h: hue });
+    // A grey accent tints nothing: its hue is noise, so every tint below drops to chroma 0.
+    const tint = c => GB.tintChroma(accentLch, c);
+    const neutral = l => GB.oklchToHex({ l, c: tint(0.01), h: hue });
     const surfaceChroma = (GB.CHROME_SURFACES[chrome.surfaces] || GB.CHROME_SURFACES.neutral).chroma;
-    const surface = l => GB.oklchToHex({ l, c: surfaceChroma, h: hue });
+    const surface = l => GB.oklchToHex({ l, c: tint(surfaceChroma), h: hue });
 
     // Surfaces, stepped from the editor background and tinted toward the accent's hue. The
     // Roles step's Depth multiplies each step (1 is the steps themes have always had).
@@ -493,7 +495,7 @@
     put('line', surface(step(0.025)));
     put('raised', surface(step(0.045)));
     put('hover', surface(step(0.07)));
-    put('select', GB.oklchToHex({ l: step(0.09), c: Math.max(0.04, surfaceChroma), h: hue }));
+    put('select', GB.oklchToHex({ l: step(0.09), c: tint(Math.max(0.04, surfaceChroma)), h: hue }));
     put('divider', surface(step(0.04)));
     const border = opaque(put('border', surface(step(0.11))));
     // Input outlines: the border, lifted until it reads 3:1 on the editor and on the side bar.
@@ -553,7 +555,7 @@
     put('warningText', textOn(warning));
     put('errorDeep', statusDeep(25));
     put('warningDeep', statusDeep(85));
-    put('infoDeep', GB.oklchToHex({ l: bgL + 0.08, c: 0.06, h: hue }));
+    put('infoDeep', GB.oklchToHex({ l: bgL + 0.08, c: tint(0.06), h: hue }));
     put('successWash', success + '33');
     put('successFaint', success + '1a');
     put('errorWash', error + '33');

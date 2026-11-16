@@ -328,6 +328,15 @@
     rich: { name: 'Rich', chroma: 0.06 },
   };
 
+  /**
+   * Below this chroma an accent reads as grey. Its hue is then rounding noise (a pure grey
+   * comes out near 90, olive), so surfaces and text tinted toward it would turn olive.
+   */
+  const GREY_CHROMA = 0.005;
+
+  /** `c`, or 0 when `accent` (an { l, c, h }) is grey, so a grey palette keeps grey surfaces. */
+  const tintChroma = (accent, c) => (accent.c < GREY_CHROMA ? 0 : c);
+
   /** Regions a workspace identity color can fill, in the order Peacock users expect. */
   const CHROME_REGIONS = {
     titleBar: 'Title bar and window border',
@@ -350,10 +359,11 @@
     const style = CHROME_SURFACES[surfaces] || CHROME_SURFACES.neutral;
     const accent = liftTo(color, background, 4.5);
     // Hue from the lifted accent, as scripts/theme-builder.js does, so Neutral matches it.
-    const hue = hexToOklch(accent).h;
+    const accentLch = hexToOklch(accent);
+    const hue = accentLch.h;
     const bgL = hexToOklch(background).l;
-    const surface = (dl, c = style.chroma) => oklchToHex({ l: bgL + dl, c, h: hue });
-    const ink = l => oklchToHex({ l, c: 0.01, h: hue });
+    const surface = (dl, c = style.chroma) => oklchToHex({ l: bgL + dl, c: tintChroma(accentLch, c), h: hue });
+    const ink = l => oklchToHex({ l, c: tintChroma(accentLch, 0.01), h: hue });
     const deep = surface(-0.025);
     const divider = surface(0.04);
 
@@ -464,6 +474,6 @@
   return {
     VAR_PREFIX, h, tabs, varFor, parseColor, toHex, over, luminance, contrastRatio, contrastGrade, resolveTokenStyle,
     hexToOklch, oklchToHex, oklchInGamut, HARMONY_RULES, harmony, paletteId, parseHexList,
-    textOn, liftTo, CHROME_SURFACES, CHROME_REGIONS, chromeColors, modernUIDefaults,
+    textOn, liftTo, CHROME_SURFACES, GREY_CHROMA, tintChroma, CHROME_REGIONS, chromeColors, modernUIDefaults,
   };
 });

@@ -384,6 +384,35 @@ describe('Frame and Editor', () => {
   });
 });
 
+describe('a grey palette keeps grey surfaces', () => {
+  // A pure grey's OKLCH hue is rounding noise near 90 (olive); nothing should be tinted toward it.
+  const GREY = entry('mono-grey', 'Grey', ['#868686', '#5e5e5e', '#2e2e2e', '#b0b0b0', '#d4d4d4']);
+  const TINTED = ['deep', 'line', 'raised', 'hover', 'select', 'divider', 'border', 'bright', 'text', 'muted', 'faint', 'infoDeep'];
+  const chroma = (hex: string) => GB.hexToOklch(hex.slice(0, 7)).c;
+
+  it('gives every surface, text and info swatch chroma 0 in every surface style, the Selected row included', () => {
+    for (const surfaces of Object.keys(GB.CHROME_SURFACES)) {
+      const sw = TB.swatches(GREY, { surfaces });
+      for (const key of TINTED) {
+        expect([surfaces, key, chroma(sw[key]) < 0.001]).toEqual([surfaces, key, true]);
+      }
+    }
+  });
+
+  it('still tints a colored palette toward its accent', () => {
+    const sw = TB.swatches(CANDY, { surfaces: 'rich' });
+    expect(chroma(sw.deep)).toBeGreaterThan(0.03);
+    expect(chroma(sw.select)).toBeGreaterThan(0.03);
+  });
+
+  it('keeps grey identity surfaces in chromeColors', () => {
+    const { base } = GB.chromeColors({ color: '#868686', surfaces: 'rich' });
+    for (const key of ['sideBar.background', 'list.activeSelectionBackground', 'sideBar.foreground']) {
+      expect([key, chroma(base[key]) < 0.001]).toEqual([key, true]);
+    }
+  });
+});
+
 describe('syntax sets: code colors that do not follow the palette', () => {
   const SET = {
     keyword: '#c792ea', function: '#82aaff', string: '#c3e88d', type: '#ffcb6b', number: '#f78c6c', comment: '#7f848e',
