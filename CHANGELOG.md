@@ -2,7 +2,7 @@
 
 All notable changes to GigglyBits Theme Lab are documented in this file.
 
-## Unreleased
+## 0.2.1
 
 - **A grey base color gives grey surfaces.** With the base color's chroma at 0, the side bar, borders, menus, Selected row and text are now plain grey in Neutral, Tinted and Rich surfaces, instead of olive or brown.
 
